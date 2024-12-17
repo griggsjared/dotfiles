@@ -1,4 +1,3 @@
-# builtin source "${HOME}/Library/Application Support/amazon-q/shell/zshrc.pre.zsh"
 source $HOME/.docker/init-zsh.sh || true 
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh || true
 source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh || true
@@ -66,5 +65,3 @@ export BAT_THEME="base16" #theme for the bat (cat replacement) command
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true
-
-# builtin source "${HOME}/Library/Application Support/amazon-q/shell/zshrc.post.zsh"

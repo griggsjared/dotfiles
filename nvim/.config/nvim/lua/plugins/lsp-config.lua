@@ -108,6 +108,13 @@ return {
     "neovim/nvim-lspconfig",
     lazy = false,
     config = function()
+      local symbols = { Error = "󰅙", Info = "󰋼", Hint = "󰌵", Warn = "" }
+
+      for name, icon in pairs(symbols) do
+        local hl = "DiagnosticSign" .. name
+        vim.fn.sign_define(hl, { text = icon, numhl = hl, texthl = hl })
+      end
+
       local orig_util_open_floating_preview = vim.lsp.util.open_floating_preview
       function vim.lsp.util.open_floating_preview(contents, syntax, opts, ...)
         opts = opts or {}

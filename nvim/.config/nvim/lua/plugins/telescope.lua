@@ -30,6 +30,7 @@ return {
       vim.keymap.set("n", "<leader>fg", require("telescope.multigrep").live_multigrep, {})
       vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, {})
       vim.keymap.set("n", "<leader>fo", telescope_builtin.oldfiles, {})
+      vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, {})
       vim.keymap.set("n", "<leader>fc", function()
         telescope_builtin.find_files({
           prompt_title = "Find Config Files",
@@ -46,7 +47,7 @@ return {
       local last_search = nil
       vim.keymap.set("n", "<leader><leader>", function()
         if last_search == nil then
-          telescope.find_files()
+          telescope_builtin.find_files()
           local cached_pickers = require("telescope.state").get_global_key("cached_pickers") or {}
           last_search = cached_pickers[1]
         else

@@ -1,0 +1,28 @@
+[window]
+opacity = 0.98
+startup_mode = "Maximized"
+option_as_alt = "OnlyLeft"
+
+[font]
+normal = { family = "Hack Nerd Font Mono", style = "Regular" }
+size = 15
+
+[colors]
+primary.background = "#1a1a1a"
+primary.foreground = "#fbfcfa"
+normal.black = "#1a1a1a"
+bright.black = "#ec6b88"
+normal.red = "#ff6188"
+bright.red = "#ec6b88"
+normal.green = "#a9dc76"
+bright.green = "#b3da82"
+normal.yellow = "#ffd866"
+bright.yellow = "#f8d977"
+normal.blue = "#fc9867"
+bright.blue = "#ee9c70"
+normal.magenta = "#ab9df2"
+bright.magenta = "#a89dec"
+normal.cyan = "#78dce8"
+bright.cyan = "#90d9e5"
+normal.white = "#fbfcfa"
+bright.white = "#fbfcfa"

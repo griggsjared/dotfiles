@@ -28,14 +28,14 @@ zstyle ':vcs_info:git*' formats "(%b) "
 precmd() {
     vcs_info
 }
-# Allow prompt substition
+# Allow prompt substitution
 setopt PROMPT_SUBST 
 
 PROMPT='%F{blue}%~%f %F{red}${vcs_info_msg_0_}%f$ '
 
 #ALIASES
 
-alias ls='colorls'
+alias ls='colorls -A'
 alias php='valet php'
 alias composer='valet composer'
 alias lgit='lazygit'
@@ -62,6 +62,7 @@ fi
 
 # ENV VARIABLES
 export BAT_THEME="base16" #theme for the bat (cat replacement) command
+export EDITOR=nvim
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

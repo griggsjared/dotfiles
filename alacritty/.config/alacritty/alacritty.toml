@@ -4,7 +4,8 @@ startup_mode = "Maximized"
 option_as_alt = "OnlyLeft"
 
 [font]
-normal = { family = "Hack Nerd Font Mono", style = "Regular" }
+# Fix the always bold fonts by disableing font smoothing for alacritty with: defaults write org.alacritty AppleFontSmoothing -int 0
+normal = { family = "Hack Nerd Font", style = "Regular" }
 size = 15
 
 [colors]

@@ -5,6 +5,9 @@ return {
     'nvim-tree/nvim-web-devicons',
   },
   config = function()
+    require('barbar').setup({
+      no_name_title = 'New Buffer',
+    })
     vim.keymap.set("n", "<A-,>", ":BufferPrevious<CR>", { noremap = true, silent = true })
     vim.keymap.set("n", "<A-.>", ":BufferNext<CR>", { noremap = true, silent = true })
     vim.keymap.set("n", "<A-<>", ":BufferMovePrevious<CR>", { noremap = true, silent = true })

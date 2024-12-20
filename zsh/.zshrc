@@ -36,6 +36,7 @@ PROMPT='%F{blue}%~%f %F{red}${vcs_info_msg_0_}%f$ '
 #ALIASES
 
 alias ls='colorls -A'
+alias cat='bat'
 alias php='valet php'
 alias composer='valet composer'
 alias lgit='lazygit'
@@ -63,6 +64,7 @@ fi
 # ENV VARIABLES
 export BAT_THEME="base16" #theme for the bat (cat replacement) command
 export EDITOR=nvim
+export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS' --color=fg:#fbfcfa,bg:#1a1a1a,hl:#78dce8 --color=fg+:#fbfcfa,bg+:#1a1a1a,hl+:#78dce8 --color=info:#a9dc76,prompt:#ff6188,pointer:#fc9867 --color=marker:#a9dc76,spinner:#ab9df2,header:#fc9867'
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

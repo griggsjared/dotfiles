@@ -1,3 +1,6 @@
+[env]
+TERM = "xterm-256color"
+
 [window]
 opacity = 0.98
 startup_mode = "Maximized"
@@ -12,7 +15,7 @@ size = 15
 primary.background = "#1a1a1a"
 primary.foreground = "#fbfcfa"
 normal.black = "#1a1a1a"
-bright.black = "#ec6b88"
+bright.black = "#727072"
 normal.red = "#ff6188"
 bright.red = "#ec6b88"
 normal.green = "#a9dc76"
@@ -23,7 +26,7 @@ normal.blue = "#fc9867"
 bright.blue = "#ee9c70"
 normal.magenta = "#ab9df2"
 bright.magenta = "#a89dec"
-normal.cyan = "#78dce8"
+normal.cyan = "#90d9e5"
 bright.cyan = "#90d9e5"
 normal.white = "#fbfcfa"
 bright.white = "#fbfcfa"

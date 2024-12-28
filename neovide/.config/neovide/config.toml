@@ -1,0 +1,5 @@
+frame = "transparent"
+
+[font]
+normal = ["Hack Nerd Font"]
+size = 15

@@ -1,6 +1,11 @@
 local wezterm = require('wezterm')
 local config = wezterm.config_builder()
 
+wezterm.on("gui-startup", function()
+  local _, _, window = wezterm.mux.spawn_window{}
+  window:gui_window():maximize()
+end)
+
 --fonts
 config.font = wezterm.font("Hack Nerd Font")
 config.font_size = 15
@@ -9,9 +14,7 @@ config.font_size = 15
 config.colors = {
   foreground = "#fbfcfa",
   background = "#1a1a1a",
-
   cursor_border = "#fbfcfa",
-
   ansi = {
     "#1a1a1a", --black
     "#ff6188", --red

@@ -25,6 +25,7 @@ return {
         },
         keymaps = {
           ["<leader><esc>"] = "actions.close",
+          ["<esc><esc>"] = "actions.close"
         },
       })
 

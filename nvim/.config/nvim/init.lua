@@ -12,4 +12,7 @@ end
 vim.opt.rtp:prepend(lazypath)
 
 require("vim-options")
+if vim.g.neovide then
+  require("neovide-config")
+end
 require("lazy").setup("plugins")

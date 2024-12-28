@@ -9,17 +9,26 @@ return {
     config = function()
       local telescope = require("telescope")
       local telescope_builtin = require("telescope.builtin")
+      local telescope_themes = require("telescope.themes")
 
       require("telescope").setup({
         extensions = {
           ['ui-select'] = {
-            require("telescope.themes").get_dropdown({}),
+            telescope_themes.get_dropdown({}),
           },
           fzf = {
             fuzzy = true,
             override_generic_sorter = true,
             override_file_sorter = true,
           },
+        },
+        pickers = {
+          buffers = {
+            theme = "dropdown",
+          },
+          spell_suggest = {
+            theme = "dropdown",
+          }
         },
       })
 
@@ -31,6 +40,9 @@ return {
       vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, {})
       vim.keymap.set("n", "<leader>fo", telescope_builtin.oldfiles, {})
       vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, {})
+      vim.keymap.set("n", "<leader>ss", telescope_builtin.spell_suggest, {})
+      vim.keymap.set("n", "<leader>fh", telescope_builtin.help_tags, {})
+
       vim.keymap.set("n", "<leader>fc", function()
         telescope_builtin.find_files({
           prompt_title = "Find Config Files",

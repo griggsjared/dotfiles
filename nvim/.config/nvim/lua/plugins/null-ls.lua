@@ -8,7 +8,6 @@ return {
     null_ls.setup({
       on_attach = function() end,
       sources = {
-        null_ls.builtins.diagnostics.codespell,
         null_ls.builtins.formatting.stylua,
         null_ls.builtins.formatting.prettier.with({
           prefer_local = "node_modules/.bin",
@@ -67,11 +66,6 @@ return {
         }),
       },
     })
-
-    -- vim.api.nvim_create_autocmd({ "BufWritePre" }, {
-    --   pattern = { "*.templ", "*.go", "*.lua" },
-    --   callback = vim.lsp.buf.format,
-    -- })
 
     vim.keymap.set("n", "<leader>gf", vim.lsp.buf.format, {})
   end,

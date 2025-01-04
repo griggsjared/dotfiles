@@ -41,7 +41,6 @@ return {
         },
         keymaps = {
           ["<leader><esc>"] = "actions.close",
-          ["<esc><esc>"] = "actions.close",
           ["gd"] = {
             desc = "Toggle file detail view",
             callback = function()

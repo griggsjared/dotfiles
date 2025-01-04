@@ -1,5 +1,6 @@
 font-family = "Hack Nerd Font"
 font-size = 15
+adjust-cell-width = -1
 
 background-opacity = 0.98
 cursor-invert-fg-bg = true
@@ -27,6 +28,8 @@ palette = 15=#fbfcfa
 macos-titlebar-style = "tabs"
 macos-icon = custom-style
 macos-icon-frame = plastic
-macos-icon-screen-color = #1a1a1a
-macos-icon-ghost-color = #fbfcfa
+macos-icon-screen-color = #a9dc76
+macos-icon-ghost-color = #ffffff
+
+window-save-state = always
 

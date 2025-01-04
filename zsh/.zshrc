@@ -66,5 +66,9 @@ export BAT_THEME="base16" #theme for the bat (cat replacement) command
 export EDITOR=nvim
 export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS' --color=fg:#fbfcfa,bg:#1a1a1a,hl:#78dce8 --color=fg+:#fbfcfa,bg+:#1a1a1a,hl+:#78dce8 --color=info:#a9dc76,prompt:#ff6188,pointer:#fc9867 --color=marker:#a9dc76,spinner:#ab9df2,header:#fc9867'
 
+if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
+    export TERM=xterm-256color
+fi
+
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

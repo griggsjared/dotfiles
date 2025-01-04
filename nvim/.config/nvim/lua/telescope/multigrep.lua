@@ -45,6 +45,13 @@ M.live_multigrep = function(opts)
     cwd = opts.cwd,
   })
 
+  -- local default_text = opts.default_text or ""
+  -- if default_text == "" then
+  --   if vim.fn.mode() == "v" or vim.fn.mode() == "V" then
+  --     default_text = vim.fn.getreg(vim.v.register)
+  --   end
+  -- end
+
   pickers.new(opts, {
     prompt_title = "Live Multi Grep",
     finder = finder,

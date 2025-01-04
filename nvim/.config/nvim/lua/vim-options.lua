@@ -5,7 +5,6 @@ vim.cmd("set shiftwidth=2") -- Number of spaces to use for each step of (auto)in
 vim.cmd("set smartindent") -- Do smart auto indenting when starting a new line
 vim.cmd("set autoindent") -- Copy indent from current line when starting a new line
 vim.cmd("set clipboard=unnamedplus") -- Use system clipboard
-vim.cmd("set spell!") -- Enable spell check
 
 vim.g.mapleader = " "
 vim.opt.swapfile = false
@@ -23,6 +22,9 @@ vim.o.foldlevel = 99 -- Using ufo provider need a large value, feel free to decr
 vim.o.foldlevelstart = 99
 vim.o.foldenable = true
 
+vim.opt.spelllang = 'en_us'
+vim.opt.spell = false -- off by default
+
 --map Del and backspace to the empty register in visual mode
 vim.api.nvim_set_keymap("v", '<Del>', '"_d', { noremap = true })
 vim.api.nvim_set_keymap("v", '<BS>', '"_d', { noremap = true })
@@ -33,5 +35,6 @@ vim.api.nvim_set_keymap("n", "<leader>sc", ":set spell!<CR>", { noremap = true }
 vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true })
 
 --add close the current buffer and all buffers
-vim.api.nvim_set_keymap("n", "<leader>bc", ":bd<CR>", { noremap = true })
+vim.api.nvim_set_keymap("n", "<leader>bc", ":bp<bar>sp<bar>bn<bar>bd<CR>", { noremap = true })
 vim.api.nvim_set_keymap("n", "<leader>ba", ":bufdo bd<CR>", { noremap = true })
+

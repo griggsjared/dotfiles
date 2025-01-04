@@ -24,37 +24,58 @@ return {
         },
         pickers = {
           buffers = {
-            theme = "dropdown",
+            theme = "ivy",
           },
           spell_suggest = {
             theme = "dropdown",
           }
         },
+        defaults = {
+          mappings = {
+            i = {
+              ["<esc>"] = require("telescope.actions").close,
+            }
+          }
+        }
       })
 
       telescope.load_extension('ui-select')
       telescope.load_extension('fzf')
 
-      vim.keymap.set("n", "<leader>ff", telescope_builtin.find_files, {})
-      vim.keymap.set("n", "<leader>fg", require("telescope.multigrep").live_multigrep, {})
-      vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, {})
-      vim.keymap.set("n", "<leader>fo", telescope_builtin.oldfiles, {})
-      vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, {})
-      vim.keymap.set("n", "<leader>ss", telescope_builtin.spell_suggest, {})
-      vim.keymap.set("n", "<leader>fh", telescope_builtin.help_tags, {})
-
+      vim.keymap.set("n", "<leader>ff", telescope_builtin.find_files, { desc = "Find Files" })
+      vim.keymap.set({"n", "v"}, "<leader>fg", require("telescope.multigrep").live_multigrep, { desc = "Grep Files w/ Glob" })
+      vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, { desc = "Find Current Buffers" })
+      vim.keymap.set("n", "<leader>fo", function()
+        telescope_builtin.oldfiles({
+          cwd_only = true,
+          prompt_title = "Old Files (Project)"
+        })
+      end, { desc = "Find Recenty Opened Files in CWD/Project" })
+      vim.keymap.set("n", "<leader>fO", function()
+        telescope_builtin.oldfiles({
+          cwd_only = false,
+          default_term = "foobar",
+          prompt_title = "Old Files (All)"
+        })
+      end, { desc = "Find Recenty Opened Files" })
+      vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, {
+        desc = "Grep In Current Buffer",
+      })
+      vim.keymap.set("n", "<leader>ss", telescope_builtin.spell_suggest, { desc = "Spell Suggest" })
+      vim.keymap.set("n", "<leader>fh", telescope_builtin.help_tags, { desc = "Find Help Tags" })
+      vim.keymap.set("n", "<leader>fk", telescope_builtin.keymaps, { desc = "Find Keymaps" })
       vim.keymap.set("n", "<leader>fc", function()
         telescope_builtin.find_files({
           prompt_title = "Find Config Files",
           cwd = vim.fn.stdpath("config"),
         })
-      end, {})
+      end, { desc = "Find Config Files" })
       vim.keymap.set("n", "<leader>fp", function()
         telescope_builtin.find_files({
           prompt_title = "Find In All Project Files",
           cwd = "~/Projects",
         })
-      end, {})
+      end, { desc = "Find In All Project Files" })
 
       local last_search = nil
       vim.keymap.set("n", "<leader><leader>", function()

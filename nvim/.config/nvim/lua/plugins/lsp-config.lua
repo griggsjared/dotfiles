@@ -199,7 +199,7 @@ return {
         ["tailwindcss"] = function()
           lspconfig["tailwindcss"].setup({
             capabilities = capabilities,
-            filetypes = { "html", "css", "scss", "less", "vue", "javascript", "typescript", "javascriptreact", "typescriptreact" },
+            filetypes = { "html", "css", "scss", "less", "vue", "javascript", "typescript", "javascriptreact", "typescriptreact", "templ" },
           })
         end,
 

@@ -11,7 +11,7 @@ return {
       local telescope_builtin = require("telescope.builtin")
       local telescope_themes = require("telescope.themes")
       local telescope_actions = require("telescope.actions")
-      local telescope_multigrep = require("telescope.multigrep")
+      local telescope_globgrep = require("telescope.globgrep")
 
       telescope.setup({
         extensions = {
@@ -45,7 +45,7 @@ return {
       telescope.load_extension('fzf')
 
       vim.keymap.set("n", "<leader>ff", telescope_builtin.find_files, { desc = "Find Files" })
-      vim.keymap.set({"n", "v"}, "<leader>fg", telescope_multigrep.live_multigrep, { desc = "Grep Files w/ Glob" })
+      vim.keymap.set({"n", "v"}, "<leader>fg", telescope_globgrep.live_multigrep, { desc = "Grep Files w/ Glob" })
       vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, { desc = "Find Current Buffers" })
       vim.keymap.set("n", "<leader>fo", function()
         telescope_builtin.oldfiles({

@@ -10,8 +10,10 @@ return {
       local telescope = require("telescope")
       local telescope_builtin = require("telescope.builtin")
       local telescope_themes = require("telescope.themes")
+      local telescope_actions = require("telescope.actions")
+      local telescope_multigrep = require("telescope.multigrep")
 
-      require("telescope").setup({
+      telescope.setup({
         extensions = {
           ['ui-select'] = {
             telescope_themes.get_dropdown({}),
@@ -33,7 +35,7 @@ return {
         defaults = {
           mappings = {
             i = {
-              ["<esc>"] = require("telescope.actions").close,
+              ["<esc>"] = telescope_actions.close,
             }
           }
         }
@@ -43,7 +45,7 @@ return {
       telescope.load_extension('fzf')
 
       vim.keymap.set("n", "<leader>ff", telescope_builtin.find_files, { desc = "Find Files" })
-      vim.keymap.set({"n", "v"}, "<leader>fg", require("telescope.multigrep").live_multigrep, { desc = "Grep Files w/ Glob" })
+      vim.keymap.set({"n", "v"}, "<leader>fg", telescope_multigrep.live_multigrep, { desc = "Grep Files w/ Glob" })
       vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, { desc = "Find Current Buffers" })
       vim.keymap.set("n", "<leader>fo", function()
         telescope_builtin.oldfiles({
@@ -84,7 +86,7 @@ return {
           local cached_pickers = require("telescope.state").get_global_key("cached_pickers") or {}
           last_search = cached_pickers[1]
         else
-          telescope.resume({ picker = last_search })
+          telescope_builtin.resume({ picker = last_search })
         end
       end, {})
     end,

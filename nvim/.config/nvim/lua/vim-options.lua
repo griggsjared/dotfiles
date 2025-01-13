@@ -38,3 +38,10 @@ vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true })
 vim.api.nvim_set_keymap("n", "<leader>bc", ":bp<bar>sp<bar>bn<bar>bd<CR>", { noremap = true })
 vim.api.nvim_set_keymap("n", "<leader>ba", ":bufdo bd<CR>", { noremap = true })
 
+--go to last buffer
+vim.api.nvim_set_keymap("n", "<leader><leader>", ":b#<CR>", { noremap = true })
+vim.api.nvim_set_keymap("n", "<leader>bl", ":b#<CR>", { noremap = true })
+
+-- go to next buffer
+vim.api.nvim_set_keymap("n", "<leader>bn", ":bn<CR>", { noremap = true })
+vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true })

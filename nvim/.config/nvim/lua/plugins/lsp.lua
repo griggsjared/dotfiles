@@ -3,79 +3,6 @@ return {
     "hrsh7th/cmp-nvim-lsp",
   },
   {
-    "L3MON4D3/LuaSnip",
-    dependencies = {
-      "saadparwaiz1/cmp_luasnip",
-      "rafamadriz/friendly-snippets",
-    },
-  },
-  {
-    "onsails/lspkind.nvim"
-  },
-  {
-    "hrsh7th/nvim-cmp",
-    config = function()
-      local cmp = require("cmp")
-      local lspkind = require("lspkind")
-      local nvim_web_devicons = require("nvim-web-devicons")
-
-      lspkind.init({
-        symbol_map = {
-          Copilot = "",
-        },
-      })
-
-      require("luasnip.loaders.from_vscode").lazy_load()
-
-      local window_config = {
-        border = "rounded",
-        winhighlight = "Normal:NormalFloat,FloatBorder:FloatBorder",
-      }
-
-      cmp.setup({
-        snippet = {
-          expand = function(args)
-            require("luasnip").lsp_expand(args.body)
-          end,
-        },
-        window = {
-          completion = window_config,
-          documentation = window_config,
-        },
-        formatting = {
-          format = function(entry, vim_item)
-            if vim.tbl_contains({ 'path' }, entry.source.name) then
-              local icon, hl_group = nvim_web_devicons.get_icon(entry:get_completion_item().label)
-              if icon then
-                vim_item.kind = icon
-                vim_item.kind_hl_group = hl_group
-                return vim_item
-              end
-            end
-            return lspkind.cmp_format({ with_text = true })(entry, vim_item)
-          end
-        },
-        mapping = cmp.mapping.preset.insert({
-          ["<C-b>"] = cmp.mapping.scroll_docs(-4),
-          ["<C-f>"] = cmp.mapping.scroll_docs(4),
-          ["<C-Space>"] = cmp.mapping.complete(),
-          ["<C-e>"] = cmp.mapping.abort(),
-          ["<CR>"] = cmp.mapping.confirm({ select = false }),
-        }),
-        sources = cmp.config.sources({
-          { name = "copilot",  group_index = 2 },
-          { name = "nvim_lsp", group_index = 2 },
-          { name = "luasnip",  group_index = 2 },
-        }, {
-          { name = "buffer" },
-        }),
-      })
-
-      local cmp_autopairs = require("nvim-autopairs.completion.cmp")
-      cmp.event:on("confirm_done", cmp_autopairs.on_confirm_done())
-    end,
-  },
-  {
     "williamboman/mason.nvim",
     lazy = false,
     config = function()
@@ -136,7 +63,7 @@ return {
       local mason_lspconfig = require("mason-lspconfig")
       local cmp_nvim_lsp = require("cmp_nvim_lsp")
 
-      -- cmp capabilities for each lsp server
+      --cmp capabilities for each lsp server
       local capabilities = cmp_nvim_lsp.default_capabilities()
 
       -- setup handlers for each lsp server
@@ -206,7 +133,85 @@ return {
         ["intelephense"] = function()
           lspconfig["intelephense"].setup({
             capabilities = capabilities,
-            filetypes = { "php", "blade" },
+            filetypes = { "php" },
+            settings = {
+              intelephense = {
+                stubs = {
+                  "apache",
+                  "bcmath",
+                  "bz2",
+                  "calendar",
+                  "com_dotnet",
+                  "Core",
+                  "ctype",
+                  "curl",
+                  "date",
+                  "dba",
+                  "dom",
+                  "enchant",
+                  "exif",
+                  "FFI",
+                  "fileinfo",
+                  "filter",
+                  "fpm",
+                  "ftp",
+                  "gd",
+                  "gettext",
+                  "gmp",
+                  "hash",
+                  "iconv",
+                  "imap",
+                  "intl",
+                  "json",
+                  "ldap",
+                  "libxml",
+                  "mbstring",
+                  "meta",
+                  "mysqli",
+                  "oci8",
+                  "odbc",
+                  "openssl",
+                  "pcntl",
+                  "pcre",
+                  "PDO",
+                  "pdo_ibm",
+                  "pdo_mysql",
+                  "pdo_pgsql",
+                  "pdo_sqlite",
+                  "pgsql",
+                  "Phar",
+                  "posix",
+                  "pspell",
+                  "readline",
+                  "Reflection",
+                  "session",
+                  "shmop",
+                  "SimpleXML",
+                  "snmp",
+                  "soap",
+                  "sockets",
+                  "sodium",
+                  "SPL",
+                  "sqlite3",
+                  "standard",
+                  "superglobals",
+                  "sysvmsg",
+                  "sysvsem",
+                  "sysvshm",
+                  "tidy",
+                  "tokenizer",
+                  "xml",
+                  "xmlreader",
+                  "xmlrpc",
+                  "xmlwriter",
+                  "xsl",
+                  "Zend OPcache",
+                  "zip",
+                  "zlib",
+                  "wordpress"
+                }
+              }
+            }
           })
         end,
 
@@ -221,6 +226,19 @@ return {
                 usePlaceholders = true,
                 analyses = {
                   unusedparams = true,
+                },
+              },
+            },
+          })
+        end,
+
+        ["rust_analyzer"] = function()
+          lspconfig["rust_analyzer"].setup({
+            capabilities = capabilities,
+            settings = {
+              ["rust-analyzer"] = {
+                checkOnSave = {
+                  command = "clippy",
                 },
               },
             },
@@ -247,9 +265,9 @@ return {
                 hybridMode = false,
               },
               -- NOTE: This might not be needed. Uncomment if you encounter issues.
-              -- typescript = {
-              --   tsdk = vim.fn.getcwd() .. "/node_modules/typescript/lib",
-              -- },
+              typescript = {
+                tsdk = vim.fn.getcwd() .. "/node_modules/typescript/lib",
+              },
             },
             settings = {
               typescript = {

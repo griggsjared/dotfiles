@@ -57,7 +57,7 @@ M.live_multigrep = function(opts)
   end
 
   pickers.new(opts, {
-    prompt_title = "Live Multi Grep",
+    prompt_title = "Live Glob Grep",
     finder = finder,
     debounce = 100,
     previewer = conf.grep_previewer(opts),

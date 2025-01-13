@@ -34,8 +34,8 @@ return {
         },
         defaults = {
           mappings = {
-            i = {
-              ["<esc>"] = telescope_actions.close,
+            n = {
+              ["d"] = telescope_actions.delete_buffer,
             }
           }
         }
@@ -45,8 +45,13 @@ return {
       telescope.load_extension('fzf')
 
       vim.keymap.set("n", "<leader>ff", telescope_builtin.find_files, { desc = "Find Files" })
-      vim.keymap.set({"n", "v"}, "<leader>fg", telescope_globgrep.live_multigrep, { desc = "Grep Files w/ Glob" })
-      vim.keymap.set("n", "<leader>fb", telescope_builtin.buffers, { desc = "Find Current Buffers" })
+      vim.keymap.set({ "n", "v" }, "<leader>fg", telescope_globgrep.live_multigrep, { desc = "Grep Files w/ Glob" })
+      vim.keymap.set("n", "<leader>fb", function()
+        telescope_builtin.buffers({
+          -- sort_lastused = true,
+          sort_mru = true,
+        })
+      end, { desc = "Find Current Buffers" })
       vim.keymap.set("n", "<leader>fo", function()
         telescope_builtin.oldfiles({
           cwd_only = true,
@@ -56,7 +61,6 @@ return {
       vim.keymap.set("n", "<leader>fO", function()
         telescope_builtin.oldfiles({
           cwd_only = false,
-          default_term = "foobar",
           prompt_title = "Old Files (All)"
         })
       end, { desc = "Find Recenty Opened Files" })
@@ -80,7 +84,7 @@ return {
       end, { desc = "Find In All Project Files" })
 
       local last_search = nil
-      vim.keymap.set("n", "<leader><leader>", function()
+      vim.keymap.set("n", "<leader>fl", function()
         if last_search == nil then
           telescope_builtin.find_files()
           local cached_pickers = require("telescope.state").get_global_key("cached_pickers") or {}
@@ -88,7 +92,7 @@ return {
         else
           telescope_builtin.resume({ picker = last_search })
         end
-      end, {})
+      end, { desc = "Last Search" })
     end,
   },
 }

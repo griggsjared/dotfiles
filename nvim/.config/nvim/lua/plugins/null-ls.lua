@@ -64,6 +64,7 @@ return {
             return utils.root_has_file({ "vendor/bin/pint", "pint.json" })
           end,
         }),
+        null_ls.builtins.diagnostics.phpstan.with({})
       },
     })
 

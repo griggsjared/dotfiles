@@ -40,6 +40,7 @@ return {
           end,
         },
         keymaps = {
+          ["<C-p>"] = { "actions.preview", opts = {vertical = true, split = "botright"} },
           ["<leader><esc>"] = "actions.close",
           ["gd"] = {
             desc = "Toggle file detail view",

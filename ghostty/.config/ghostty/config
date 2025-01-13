@@ -2,7 +2,11 @@ font-family = "Hack Nerd Font"
 font-size = 15
 adjust-cell-width = -1
 
-background-opacity = 0.98
+window-height = 1000000
+window-width = 1000000
+
+background-opacity = 0.90
+background-blur-radius = 20
 cursor-invert-fg-bg = true
 
 foreground = #fbfcfa
@@ -32,4 +36,3 @@ macos-icon-screen-color = #a9dc76
 macos-icon-ghost-color = #ffffff
 
 window-save-state = always
-

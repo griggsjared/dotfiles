@@ -12,7 +12,8 @@ return {
       })
 
       vim.keymap.set("i", "<S-Tab>", function() require("copilot.suggestion").accept() end, { silent = true })
-      vim.keymap.set("n", "<leader>gq", function() require("copilot.suggestion").toggle_auto_trigger() end, { silent = true })
+      vim.keymap.set("n", "<leader>cs", function() require("copilot.suggestion").toggle_auto_trigger() end,
+        { silent = true })
     end,
   },
   {
@@ -29,8 +30,21 @@ return {
       { "nvim-lua/plenary.nvim", branch = "master" },
     },
     build = "make tiktoken",
-    opts = {
-      -- See Configuration section for options
-    },
-  },
+    config = function()
+      require("CopilotChat").setup({
+        model = "claude-3.5-sonnet"
+      })
+
+      vim.keymap.set({ "v", "n" }, "<leader>cc", function() require("CopilotChat").toggle() end, { silent = true })
+      vim.keymap.set("n", "<leader>cq",
+        function()
+          local input = vim.fn.input("Quick Chat: ")
+          if input ~= "" then
+            require("CopilotChat").ask(input, { selection = require("CopilotChat.select").buffer })
+          end
+        end,
+        { silent = true }
+      )
+    end
+  }
 }

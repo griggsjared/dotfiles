@@ -28,6 +28,9 @@ return {
           buffers = {
             theme = "ivy",
           },
+          oldfiles = {
+            theme = "ivy",
+          },
           spell_suggest = {
             theme = "dropdown",
           }

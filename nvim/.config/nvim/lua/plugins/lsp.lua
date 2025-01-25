@@ -182,6 +182,7 @@ return {
                   "Phar",
                   "posix",
                   "pspell",
+                  "random",
                   "readline",
                   "Reflection",
                   "session",

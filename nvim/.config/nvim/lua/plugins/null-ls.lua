@@ -64,7 +64,10 @@ return {
             return utils.root_has_file({ "vendor/bin/pint", "pint.json" })
           end,
         }),
-        null_ls.builtins.diagnostics.phpstan.with({})
+        null_ls.builtins.diagnostics.phpstan.with({}),
+        null_ls.builtins.formatting.blade_formatter.with({
+          filetypes = { "blade" },
+        }),
       },
     })
 

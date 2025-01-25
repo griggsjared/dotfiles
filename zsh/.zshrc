@@ -49,6 +49,7 @@ if [ -d $HOME/.composer/vendor/bin ]; then
 fi
 
 if [ -d $HOME/go/bin ]; then
+  export GOPATH=$HOME/go
   export PATH=$HOME/go/bin:$PATH
 fi
 

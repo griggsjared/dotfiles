@@ -31,10 +31,13 @@ return {
     },
     build = "make tiktoken",
     config = function()
+      vim.opt.splitright = true;
       require("CopilotChat").setup({
-        model = "claude-3.5-sonnet"
+        model = "claude-3.5-sonnet",
+        window = {
+          width = 0.40,
+        },
       })
-
       vim.keymap.set({ "v", "n" }, "<leader>cc", function() require("CopilotChat").toggle() end, { silent = true })
       vim.keymap.set("n", "<leader>cq",
         function()
@@ -46,5 +49,5 @@ return {
         { silent = true }
       )
     end
-  }
+  },
 }

@@ -9,6 +9,21 @@ return {
       on_attach = function() end,
       sources = {
         null_ls.builtins.formatting.stylua,
+        require("none-ls.diagnostics.eslint").with({
+          prefer_local = "node_modules/.bin",
+          condition = function(utils)
+            return utils.root_has_file({
+              ".eslintrc.js",
+              ".eslintrc.json",
+              ".eslintrc",
+              ".eslintrc.yml",
+              ".eslintrc.yaml",
+              ".eslint.config.mjs",
+              ".eslint.config.cjs",
+              ".eslint.config.js",
+            })
+          end,
+        }),
         null_ls.builtins.formatting.prettier.with({
           prefer_local = "node_modules/.bin",
           condition = function(utils)
@@ -39,18 +54,6 @@ return {
             "lua",
           },
         }),
-        require("none-ls.diagnostics.eslint").with({
-          prefer_local = "node_modules/.bin",
-          condition = function(utils)
-            return utils.root_has_file({
-              ".eslintrc.js",
-              ".eslintrc.json",
-              ".eslintrc",
-              ".eslintrc.yml",
-              ".eslintrc.yaml",
-            })
-          end,
-        }),
         null_ls.builtins.formatting.goimports.with({
           filetypes = { "go" },
         }),
@@ -64,7 +67,14 @@ return {
             return utils.root_has_file({ "vendor/bin/pint", "pint.json" })
           end,
         }),
-        null_ls.builtins.diagnostics.phpstan.with({}),
+        null_ls.builtins.diagnostics.phpstan.with({
+          condition = function(utils)
+            return utils.root_has_file({
+              "phpstan.neon",
+              "phpstan.neon.dist",
+            })
+          end,
+        }),
         null_ls.builtins.formatting.blade_formatter.with({
           filetypes = { "blade" },
         }),

@@ -25,6 +25,7 @@ return {
       vim.api.nvim_set_hl(0, "FloatBorder", { bg = palette.dark2, fg = palette.dimmed2 })
       vim.api.nvim_set_hl(0, "NormalFloat", { bg = palette.dark2, fg = palette.text })
       vim.api.nvim_set_hl(0, "CmpItemKindCopilot", { fg = palette.cyan })
+      vim.api.nvim_set_hl(0, "Visual", { bg = palette.dimmed4 })
     end,
   }
 }

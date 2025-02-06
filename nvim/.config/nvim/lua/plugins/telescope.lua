@@ -25,23 +25,27 @@ return {
           },
         },
         pickers = {
-          buffers = {
-            theme = "ivy",
-          },
-          oldfiles = {
-            theme = "ivy",
-          },
           spell_suggest = {
             theme = "dropdown",
-          }
+          },
+          buffers = {
+            theme = "dropdown",
+          },
+          current_buffer_fuzzy_find = {
+            theme = "dropdown",
+            previewer = false,
+            layout_config = {
+              height = 25,
+            },
+          },
         },
-        defaults = {
+        defaults = telescope_themes.get_ivy({
           mappings = {
             n = {
               ["d"] = telescope_actions.delete_buffer,
             }
-          }
-        }
+          },
+        })
       })
 
       telescope.load_extension('ui-select')
@@ -67,9 +71,7 @@ return {
           prompt_title = "Old Files (All)"
         })
       end, { desc = "Find Recenty Opened Files" })
-      vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, {
-        desc = "Grep In Current Buffer",
-      })
+      vim.keymap.set("n", "<leader>fi", telescope_builtin.current_buffer_fuzzy_find, { desc = "Grep In Current Buffer", })
       vim.keymap.set("n", "<leader>ss", telescope_builtin.spell_suggest, { desc = "Spell Suggest" })
       vim.keymap.set("n", "<leader>fh", telescope_builtin.help_tags, { desc = "Find Help Tags" })
       vim.keymap.set("n", "<leader>fk", telescope_builtin.keymaps, { desc = "Find Keymaps" })

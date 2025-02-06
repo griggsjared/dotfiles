@@ -5,6 +5,7 @@ vim.cmd("set shiftwidth=2") -- Number of spaces to use for each step of (auto)in
 vim.cmd("set smartindent") -- Do smart auto indenting when starting a new line
 vim.cmd("set autoindent") -- Copy indent from current line when starting a new line
 vim.cmd("set clipboard=unnamedplus") -- Use system clipboard
+vim.cmd("set listchars=eol:¬,tab:>·,trail:~,extends:>,precedes:<,space:␣") -- highlight special characters
 
 vim.g.mapleader = " "
 vim.opt.swapfile = false
@@ -45,3 +46,7 @@ vim.api.nvim_set_keymap("n", "<leader>bl", ":b#<CR>", { noremap = true })
 -- go to next buffer
 vim.api.nvim_set_keymap("n", "<leader>bn", ":bn<CR>", { noremap = true })
 vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true })
+
+--toggle to show hidden characters
+vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true })
+

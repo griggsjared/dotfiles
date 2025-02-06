@@ -1,12 +1,13 @@
-font-family = "Hack Nerd Font"
-font-size = 15
-adjust-cell-width = -1
+font-family = "UbuntuMono Nerd Font"
+font-size = 17
+adjust-cell-width = 0
+adjust-cell-height = 2
+adjust-cursor-height= 2
 
 window-height = 1000000
 window-width = 1000000
 
-background-opacity = 0.90
-background-blur-radius = 20
+background-opacity = 0.95
 cursor-invert-fg-bg = true
 
 foreground = #fbfcfa

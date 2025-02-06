@@ -246,6 +246,20 @@ return {
           })
         end,
 
+        ["zls"] = function()
+          lspconfig["zls"].setup({
+            capabilities = capabilities,
+            settings = {
+              zls = {
+                checkOnSave = {
+                  command = "clippy",
+                },
+              },
+            },
+          })
+          vim.g.zig_fmt_autosave = 0
+        end,
+
         ["volar"] = function()
           lspconfig["volar"].setup({
             -- NOTE: Uncomment to enable volar in file types other than vue.

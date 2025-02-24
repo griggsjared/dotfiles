@@ -23,31 +23,4 @@ return {
       require("copilot_cmp").setup()
     end,
   },
-  {
-    "CopilotC-Nvim/CopilotChat.nvim",
-    dependencies = {
-      { "zbirenbaum/copilot.lua" },
-      { "nvim-lua/plenary.nvim", branch = "master" },
-    },
-    build = "make tiktoken",
-    config = function()
-      vim.opt.splitright = true;
-      require("CopilotChat").setup({
-        model = "claude-3.5-sonnet",
-        window = {
-          width = 0.40,
-        },
-      })
-      vim.keymap.set({ "v", "n" }, "<leader>cc", function() require("CopilotChat").toggle() end, { silent = true })
-      vim.keymap.set("n", "<leader>cq",
-        function()
-          local input = vim.fn.input("Quick Chat: ")
-          if input ~= "" then
-            require("CopilotChat").ask(input, { selection = require("CopilotChat.select").buffer })
-          end
-        end,
-        { silent = true }
-      )
-    end
-  },
 }

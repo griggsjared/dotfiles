@@ -11,7 +11,7 @@ return {
       local telescope_builtin = require("telescope.builtin")
       local telescope_themes = require("telescope.themes")
       local telescope_actions = require("telescope.actions")
-      local telescope_globgrep = require("telescope.globgrep")
+      local telescope_globgrep = require("plugins.telescope.globgrep")
 
       telescope.setup({
         extensions = {
@@ -55,8 +55,9 @@ return {
       vim.keymap.set({ "n", "v" }, "<leader>fg", telescope_globgrep.live_multigrep, { desc = "Grep Files w/ Glob" })
       vim.keymap.set("n", "<leader>fb", function()
         telescope_builtin.buffers({
-          -- sort_lastused = true,
+          sort_lastused = true,
           sort_mru = true,
+          path_display = { "shorten" },
         })
       end, { desc = "Find Current Buffers" })
       vim.keymap.set("n", "<leader>fo", function()
@@ -87,6 +88,7 @@ return {
           cwd = "~/Projects",
         })
       end, { desc = "Find In All Project Files" })
+      vim.keymap.set("n", "<leader>fs", telescope_builtin.git_status, { desc = "Git Status" })
 
       local last_search = nil
       vim.keymap.set("n", "<leader>fl", function()

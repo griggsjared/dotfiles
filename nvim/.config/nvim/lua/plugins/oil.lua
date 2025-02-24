@@ -56,7 +56,15 @@ return {
         },
       })
 
-      vim.keymap.set("n", "-", "<CMD>Oil --preview<CR>", { desc = "Open parent directory" })
+      -- vim.keymap.set("n", "-", "<CMD>Oil --preview<CR>", { desc = "Open parent directory" })
+      vim.keymap.set("n", "-", function ()
+        require("oil").open(nil, {
+          preview = {
+            vertical = true,
+            split = "botright",
+          }
+        })
+      end, { desc = "Open parent directory" })
     end,
   },
 }

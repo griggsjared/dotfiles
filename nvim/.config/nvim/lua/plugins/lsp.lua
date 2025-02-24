@@ -249,15 +249,24 @@ return {
         ["zls"] = function()
           lspconfig["zls"].setup({
             capabilities = capabilities,
-            settings = {
-              zls = {
-                checkOnSave = {
-                  command = "clippy",
-                },
-              },
+            on_attach = function(client, bufnr)
+              vim.g.zig_fmt_autosave = 0
+            end,
+          })
+        end,
+
+        ['clangd'] = function()
+          lspconfig['clangd'].setup({
+            capabilities = capabilities,
+            cmd = { "clangd", "--background-index" },
+            filetypes = { "c", "cpp", "objc", "objcpp" },
+            init_options = {
+              clangdFileStatus = true,
+              usePlaceholders = true,
+              completeUnimported = true,
+              semanticHighlighting = true,
             },
           })
-          vim.g.zig_fmt_autosave = 0
         end,
 
         ["volar"] = function()

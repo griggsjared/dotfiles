@@ -1,5 +1,5 @@
 frame = "transparent"
 
 [font]
-normal = ["Hack Nerd Font"]
-size = 15
+normal = ["UbuntuMono Nerd Font"]
+size = 18

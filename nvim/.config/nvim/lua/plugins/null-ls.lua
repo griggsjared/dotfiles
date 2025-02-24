@@ -78,6 +78,9 @@ return {
         null_ls.builtins.formatting.blade_formatter.with({
           filetypes = { "blade" },
         }),
+        null_ls.builtins.formatting.clang_format.with({
+          filetypes = { "c", "cpp", "objc", "objcpp" },
+        }),
       },
     })
 

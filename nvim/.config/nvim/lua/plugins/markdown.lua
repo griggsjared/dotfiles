@@ -21,12 +21,6 @@ return {
     dependencies = { 'nvim-treesitter/nvim-treesitter', 'nvim-tree/nvim-web-devicons' },
     ft = { "markdown", "codecompanion" },
     config = function()
-      local palette = require("monokai-pro.override")
-
-      vim.api.nvim_set_hl(0, "RenderMarkdownHeader", { bg = palette.dark1, fg = palette.green });
-      vim.api.nvim_set_hl(0, "RenderMarkdownCode", { bg = palette.dark1 });
-      vim.api.nvim_set_hl(0, "RenderMarkdownCodeInline", { bg = palette.dark1 });
-
       require('render-markdown').setup({
         heading = {
           backgrounds = {

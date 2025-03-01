@@ -20,7 +20,7 @@ return {
       options = {
         section_separators = "",
         component_separators = "",
-        theme = 'monokai-pro'
+        -- theme = 'monokai-pro'
       },
     })
   end,

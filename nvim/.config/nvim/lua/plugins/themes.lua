@@ -31,6 +31,21 @@ return {
         RenderMarkdownHeader = { bg = palette.dark1, fg = palette.green },
         RenderMarkdownCode = { bg = palette.dark1 },
         RenderMarkdownCodeInline = { bg = palette.dark1 },
+
+        -- Treesitter Bolds
+        ["@keyword"] = { bold = true },
+        ["@keyword.lua"] = { bold = true },
+        ["@keyword.function"] = { bold = true },
+        ["@keyword.function.lua"] = { bold = true },
+        ["@keyword.function.go"] = { bold = true },
+        ["@keyword.type"] = { bold = true },
+        ["@keyword.import"] = { bold = true },
+        ["@keyword.operator"] = { bold = true },
+        ["@keyword.conditional"] = { bold = true },
+        ["@keyword.repeat"] = { bold = true },
+        ["@keyword.return"] = { bold = true },
+        -- ["@function.builtin"] = { bold = true },
+        -- ["@type.builtin"] = { bold = true }
       }
 
       local transparent_background = true;
@@ -43,16 +58,6 @@ return {
         transparent_background = transparent_background,
         terminal_colors = true,
         filter = "pro",
-        styles = {
-          comment = { italic = true },
-          keyword = { italic = true },
-          type = { italic = true },
-          storageclass = { italic = true },
-          structure = { italic = true },
-          parameter = { italic = true },
-          annotation = { italic = true },
-          tag_attribute = { italic = true },
-        },
         overridePalette = function()
           return palette
         end,

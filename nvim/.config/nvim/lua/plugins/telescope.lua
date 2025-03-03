@@ -76,6 +76,7 @@ return {
       vim.keymap.set("n", "<leader>ss", telescope_builtin.spell_suggest, { desc = "Spell Suggest" })
       vim.keymap.set("n", "<leader>fh", telescope_builtin.help_tags, { desc = "Find Help Tags" })
       vim.keymap.set("n", "<leader>fk", telescope_builtin.keymaps, { desc = "Find Keymaps" })
+      vim.keymap.set("n", "<leader>fz", telescope_builtin.highlights, { desc = "Find Highlight Groups" })
       vim.keymap.set("n", "<leader>fc", function()
         telescope_builtin.find_files({
           prompt_title = "Find Config Files",

@@ -3,7 +3,6 @@ return {
   dependencies = { "nvim-tree/nvim-web-devicons" },
   config = function()
     require("lualine").setup({
-      extensions = { "neo-tree" },
       sections = {
         lualine_a = { "mode" },
         lualine_b = { "branch", "diff", "diagnostics" },
@@ -20,7 +19,6 @@ return {
       options = {
         section_separators = "",
         component_separators = "",
-        -- theme = 'monokai-pro'
       },
     })
   end,

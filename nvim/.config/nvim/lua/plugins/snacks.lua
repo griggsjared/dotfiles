@@ -13,7 +13,7 @@ return {
       input = { enabled = true },
       dashboard = {
         enabled = true,
-        width = 80,
+        width = 40,
         -- preset = {
         --   keys = {
         --     { icon = " ", key = "f", desc = "Find File", action = "<leader>ff" },

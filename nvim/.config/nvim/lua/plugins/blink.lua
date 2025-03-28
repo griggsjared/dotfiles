@@ -39,6 +39,14 @@ return {
           }
         },
       },
+      cmdline = {
+        enabled = true,
+        completion = {
+          menu = {
+            auto_show = true
+          }
+        }
+      },
       sources = {
         default = { 'lsp', 'path', 'snippets', 'buffer', 'copilot' },
         providers = {

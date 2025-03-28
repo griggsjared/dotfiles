@@ -1,8 +1,5 @@
 return {
   {
-    "hrsh7th/cmp-nvim-lsp",
-  },
-  {
     "williamboman/mason.nvim",
     lazy = false,
     config = function()
@@ -61,10 +58,12 @@ return {
 
       local lspconfig = require("lspconfig")
       local mason_lspconfig = require("mason-lspconfig")
-      local cmp_nvim_lsp = require("cmp_nvim_lsp")
 
-      --cmp capabilities for each lsp server
-      local capabilities = cmp_nvim_lsp.default_capabilities()
+      -- local cmp_nvim_lsp = require("cmp_nvim_lsp") -- need to add back in as dependancy if wanted back
+      -- local capabilities = cmp_nvim_lsp.default_capabilities()
+      
+      local blink = require('blink.cmp')
+      local capabilities = blink.get_lsp_capabilities()
 
       -- setup handlers for each lsp server
       mason_lspconfig.setup_handlers({

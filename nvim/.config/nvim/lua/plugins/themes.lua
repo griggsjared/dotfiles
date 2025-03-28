@@ -22,7 +22,6 @@ return {
       local highlights = {
         FloatBorder = { bg = palette.dark2, fg = palette.dimmed2 },
         NormalFloat = { bg = palette.dark2, fg = palette.text },
-        CmpItemKindCopilot = { fg = palette.cyan },
         Visual = { bg = palette.dimmed4 },
         CursorLineNr = { fg = palette.green },
         -- Indent Blankline
@@ -33,6 +32,14 @@ return {
         RenderMarkdownCode = { bg = palette.dark1 },
         RenderMarkdownCodeInline = { bg = palette.dark1 },
         SnacksDashboardHeader = { fg = palette.green },
+        -- CMP
+        CmpItemKindCopilot = { fg = palette.cyan },
+        -- Blink
+        BlinkCmpMenu = { bg = palette.dark2, fg = palette.text },
+        BlinkCmpMenuBorder = { bg = palette.dark2, fg = palette.dimmed2 },
+        BlinkCmpDocBorder = { bg = palette.dark2, fg = palette.dimmed2 },
+        BlinkCmpMenuSelection = { bg = palette.dimmed5 },
+        BlinkCmpKindCopilot = { fg = palette.cyan },
 
         -- Treesitter
         ["@keyword"] = { bold = true },

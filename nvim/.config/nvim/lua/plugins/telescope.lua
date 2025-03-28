@@ -83,14 +83,8 @@ return {
           cwd = vim.fn.stdpath("config"),
         })
       end, { desc = "Find Config Files" })
-      vim.keymap.set("n", "<leader>fp", function()
-        telescope_builtin.find_files({
-          prompt_title = "Find In All Project Files",
-          cwd = "~/Projects",
-        })
-      end, { desc = "Find In All Project Files" })
-      vim.keymap.set("n", "<leader>fs", telescope_builtin.git_status, { desc = "Git Status" })
-
+      vim.keymap.set("n", "<leader>fp", telescope_builtin.git_status, { desc = "Git Status" })
+      vim.keymap.set("n", "<leader>fs", telescope_builtin.lsp_document_symbols, { desc = "Find Symbols" })
       local last_search = nil
       vim.keymap.set("n", "<leader>fl", function()
         if last_search == nil then

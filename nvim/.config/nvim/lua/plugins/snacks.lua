@@ -14,18 +14,6 @@ return {
       dashboard = {
         enabled = true,
         width = 40,
-        -- preset = {
-        --   keys = {
-        --     { icon = " ", key = "f", desc = "Find File", action = "<leader>ff" },
-        --     { icon = " ", key = "g", desc = "Find Text", action = "<leader>fg" },
-        --     { icon = " ", key = "r", desc = "Recent Files", action = "<leader>fo" },
-        --     { icon = "󰏇 ", key = "o", desc = "Oil", action = ":Oil", },
-        --     { icon = " ", key = "l", desc = "LazyGit", action = "<leader>lg" },
-        --     { icon = " ", key = "c", desc = "Config", action = "<leader>fc" },
-        --     { icon = "󰒲 ", key = "L", desc = "Lazy", action = ":Lazy" },
-        --     { icon = " ", key = "q", desc = "Quit", action = ":qa" },
-        --   },
-        -- },
         sections = {
           {
             header = [[
@@ -39,6 +27,14 @@ return {
             padding = 1,
             gap = 1,
           },
+          {
+            section = "terminal",
+            cmd = "nvim --version | head -n 1",
+            height = 1,
+            padding = 1,
+            ttl = 5 * 60 * 60,
+            indent = 14
+          },
           { section = "startup", gap = 1, padding = 1 },
           {
             icon = " ",
@@ -50,7 +46,6 @@ return {
             ttl = 5 * 60,
             indent = 3,
           },
-          -- { section = "keys",    gap = 1, padding = 1 },
           {
             icon = " ",
             title = "Git Status",

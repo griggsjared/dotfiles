@@ -24,6 +24,7 @@ return {
         NormalFloat = { bg = palette.dark2, fg = palette.text },
         CmpItemKindCopilot = { fg = palette.cyan },
         Visual = { bg = palette.dimmed4 },
+        CursorLineNr = { fg = palette.green },
         -- Indent Blankline
         IndentActive = { fg = palette.red },
         IndentInactive = { fg = palette.dimmed4 },
@@ -31,13 +32,14 @@ return {
         RenderMarkdownHeader = { bg = palette.dark1, fg = palette.green },
         RenderMarkdownCode = { bg = palette.dark1 },
         RenderMarkdownCodeInline = { bg = palette.dark1 },
+        SnacksDashboardHeader = { fg = palette.green },
 
-        -- Treesitter Bolds
+        -- Treesitter
         ["@keyword"] = { bold = true },
         ["@keyword.lua"] = { bold = true },
-        ["@keyword.function"] = { bold = true },
-        ["@keyword.function.lua"] = { bold = true },
-        ["@keyword.function.go"] = { bold = true },
+        ["@keyword.function"] = { bold = true, italic = false },
+        ["@keyword.function.lua"] = { bold = true, italic = false },
+        ["@keyword.function.go"] = { bold = true, italic = false },
         ["@keyword.type"] = { bold = true },
         ["@keyword.import"] = { bold = true },
         ["@keyword.operator"] = { bold = true },
@@ -48,14 +50,9 @@ return {
         -- ["@type.builtin"] = { bold = true }
       }
 
-      local transparent_background = true;
-      if vim.g.neovide then
-        transparent_background = false
-      end
-
       require("monokai-pro").setup({
         devicons = true,
-        transparent_background = transparent_background,
+        transparent_background = false,
         terminal_colors = true,
         filter = "pro",
         overridePalette = function()
@@ -65,6 +62,7 @@ return {
           return highlights
         end
       })
+
       vim.cmd([[colorscheme monokai-pro]])
     end,
   },

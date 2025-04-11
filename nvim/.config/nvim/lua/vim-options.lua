@@ -9,6 +9,7 @@ vim.cmd("set listchars=eol:¬,tab:>·,trail:~,extends:>,precedes:<,space:␣") -
 
 vim.g.mapleader = " "
 vim.opt.swapfile = false
+vim.opt.showmode = false
 
 vim.wo.number = true
 vim.wo.relativenumber = true
@@ -23,12 +24,12 @@ vim.o.foldlevel = 99 -- Using ufo provider need a large value, feel free to decr
 vim.o.foldlevelstart = 99
 vim.o.foldenable = true
 
-vim.opt.spelllang = 'en_us'
+vim.opt.spelllang = "en_us"
 vim.opt.spell = false -- off by default
 
 --map Del and backspace to the empty register in visual mode
-vim.api.nvim_set_keymap("v", '<Del>', '"_d', { noremap = true })
-vim.api.nvim_set_keymap("v", '<BS>', '"_d', { noremap = true })
+vim.api.nvim_set_keymap("v", "<Del>", '"_d', { noremap = true })
+vim.api.nvim_set_keymap("v", "<BS>", '"_d', { noremap = true })
 
 --add toggle for spell check
 vim.api.nvim_set_keymap("n", "<leader>sc", ":set spell!<CR>", { noremap = true })
@@ -50,3 +51,5 @@ vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true })
 --toggle to show hidden characters
 vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true })
 
+--show virtual text for diagnostics by default
+vim.diagnostic.config({ virtual_text = true })

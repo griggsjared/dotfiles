@@ -39,8 +39,7 @@ return {
         BlinkCmpMenuBorder = { bg = palette.dark2, fg = palette.dimmed2 },
         BlinkCmpDocBorder = { bg = palette.dark2, fg = palette.dimmed2 },
         BlinkCmpMenuSelection = { bg = palette.dimmed5 },
-        BlinkCmpKindCopilot = { fg = palette.cyan },
-
+        BlinkCmpKindCopilot = { fg = palette.magenta },
         -- Treesitter
         ["@keyword"] = { bold = true },
         ["@keyword.lua"] = { bold = true },

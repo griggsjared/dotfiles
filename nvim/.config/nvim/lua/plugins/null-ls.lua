@@ -52,6 +52,7 @@ return {
             "svelte",
             "graphql",
             "lua",
+            "astro"
           },
         }),
         null_ls.builtins.formatting.goimports.with({

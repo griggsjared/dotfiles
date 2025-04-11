@@ -10,7 +10,8 @@ return {
       bigfile = { enabled = true },
       quickfile = { enabled = true },
       scroll = { enabled = true, speed = 2 },
-      input = { enabled = true },
+      picker = { enabled = true },
+      -- input = { enabled = true },
       dashboard = {
         enabled = true,
         width = 40,
@@ -29,11 +30,11 @@ return {
           },
           {
             section = "terminal",
-            cmd = "nvim --version | head -n 1",
+            cmd = "nvim --version | head -n 1 | scram",
             height = 1,
             padding = 1,
-            ttl = 5 * 60 * 60,
-            indent = 14
+            ttl = 0,
+            indent = 14,
           },
           { section = "startup", gap = 1, padding = 1 },
           {
@@ -63,6 +64,7 @@ return {
     keys = {
       { "<leader>sd", "<CMD>lua Snacks.dashboard()<CR>", desc = "Show the dashboard" },
       { "<leader>lg", "<CMD>lua Snacks.lazygit()<CR>",   desc = "Show the lazygit" },
+      { "<leader>st", "<CMS>lua Snacks.scratch()<CR>",  desc = "Show the scratch" },
     },
   },
 }

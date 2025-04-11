@@ -41,29 +41,6 @@ alias php='valet php'
 alias composer='valet composer'
 alias lgit='lazygit'
 alias v='nvim'
-tm() {
-    local session_name="$1"
-    local projects_dir="$HOME/projects"
-    
-    # If session exists, attach to it
-    if tmux has-session -t "$session_name" 2>/dev/null; then
-        tmux attach -t "$session_name"
-        return
-    fi
-
-    if [ "$session_name" = "config" ]; then # if session_name is "config"        
-        # Create new session in ~/.dotfiles
-        tmux new-session -d -s "$session_name" -c "$HOME/.dotfiles"
-    elif [ -d "$projects_dir/$session_name" ]; then # Check if directory exists in ~/projects
-        # Create new session in that directory
-        tmux new-session -d -s "$session_name" -c "$projects_dir/$session_name"
-    else
-        # Create new session in current directory
-        tmux new-session -d -s "$session_name"
-    fi
-    
-    tmux attach -t "$session_name"
-}
 
 #PATHS
 
@@ -93,6 +70,8 @@ export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS' --color=fg:#fbfcfa,bg:#1a1a1a,hl:#78d
 if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
     export TERM=xterm-256color
 fi
+
+export HOMEBREW_NO_AUTO_UPDATE=1
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

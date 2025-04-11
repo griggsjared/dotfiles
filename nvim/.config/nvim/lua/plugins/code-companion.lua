@@ -35,8 +35,15 @@ return {
             return require("codecompanion.adapters").extend("copilot", {
               schema = {
                 model = {
-                  default = "claude-3.7-sonnet-thought",
+                  default = "claude-3.7-sonnet",
                 }
+              }
+            })
+          end,
+          openai = function()
+            return require("codecompanion.adapters").extend("openai", {
+              env = {
+                api_key = 'cmd:echo "$OPENAI_API_KEY"'
               }
             })
           end,

@@ -2,8 +2,8 @@ return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons" },
 	config = function()
-    local codecompanion_model = require("plugins.code-companion.lualine-model")
-    local codecompanion_adapter = require("plugins.code-companion.lualine-adapter")
+		local codecompanion_model = require("plugins.code-companion.lualine-model")
+		local codecompanion_adapter = require("plugins.code-companion.lualine-adapter")
 		require("lualine").setup({
 			sections = {
 				lualine_a = { "mode" },
@@ -17,7 +17,7 @@ return {
 				lualine_x = {
 					{
 						"lsp_status",
-						icon = "",
+						icon = "",
 					},
 					"encoding",
 					"fileformat",
@@ -50,15 +50,14 @@ return {
 						},
 					},
 					inactive_sections = {
-						lualine_a = {},
-						lualine_b = {
+						lualine_a = {
 							codecompanion_adapter,
+							codecompanion_model,
 						},
+						lualine_b = {},
 						lualine_c = {},
 						lualine_x = {},
-						lualine_y = {
-							"progress",
-						},
+						lualine_y = {},
 						lualine_z = {},
 					},
 				},

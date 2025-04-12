@@ -64,8 +64,6 @@ return {
         }
       })
 
-      require("plugins.code-companion.fidget-spinner"):init()
-
       vim.keymap.set({ "n", "v" }, "<leader>cq", "<cmd>CodeCompanionActions<cr>", { noremap = true, silent = true })
       vim.keymap.set({ "n", "v" }, "<leader>cc", "<cmd>CodeCompanionChat Toggle<cr>",
         { noremap = true, silent = true })

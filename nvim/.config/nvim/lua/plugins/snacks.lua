@@ -9,7 +9,7 @@ return {
       lazygit = { enabled = true },
       bigfile = { enabled = true },
       quickfile = { enabled = true },
-      scroll = { enabled = true, speed = 2 },
+      scroll = { enabled = false, speed = 2 },
       picker = { enabled = true },
       -- input = { enabled = true },
       dashboard = {

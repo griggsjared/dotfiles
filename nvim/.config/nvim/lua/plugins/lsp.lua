@@ -2,12 +2,14 @@ return {
 	{
 		"williamboman/mason.nvim",
 		lazy = false,
+    version = "1.11.0",
 		config = function()
 			require("mason").setup()
 		end,
 	},
 	{
 		"williamboman/mason-lspconfig.nvim",
+    version = "1.32.0",
 		lazy = false,
 		opts = {
 			auto_install = true,
@@ -68,9 +70,9 @@ return {
 			-- local cmp_nvim_lsp = require("cmp_nvim_lsp") -- need to add back in as dependancy if wanted back
 			-- local capabilities = cmp_nvim_lsp.default_capabilities()
 
-			local blink = require("blink.cmp")
-			local capabilities = blink.get_lsp_capabilities()
-			-- local capabilities = vim.lsp.protocol.make_client_capabilities()
+			-- local blink = require("blink.cmp")
+			-- local capabilities = blink.get_lsp_capabilities()
+			local capabilities = vim.lsp.protocol.make_client_capabilities()
 
 			-- setup handlers for each lsp server
 			mason_lspconfig.setup_handlers({
@@ -99,7 +101,7 @@ return {
 				["html"] = function()
 					lspconfig["html"].setup({
 						capabilities = capabilities,
-						filetypes = { "html", "templ", "blade" },
+						filetypes = { "html", "templ", "blade", "php" },
 					})
 				end,
 
@@ -380,12 +382,12 @@ return {
 			vim.keymap.set("n", "K", vim.lsp.buf.hover, {})
 			vim.keymap.set("n", "<leader>gd", vim.lsp.buf.definition, {})
 			vim.keymap.set("n", "<leader>gr", vim.lsp.buf.references, {})
+      vim.keymap.set("n", "<leader>gi", vim.lsp.buf.implementation, {})
 			vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, {})
 			vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, {})
 
 			vim.keymap.set("n", "<leader>xx", function()
 				vim.diagnostic.config({ virtual_lines = { current_line = true }, virtual_text = false })
-
 				vim.api.nvim_create_autocmd("CursorMoved", {
 					group = vim.api.nvim_create_augroup("line-diagnostics", { clear = true }),
 					callback = function()

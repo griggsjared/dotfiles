@@ -5,6 +5,7 @@ return {
     lazy = false,
     config = function()
       local default_palette = require('monokai-pro.colorscheme.palette.pro')
+      local color_helper = require("monokai-pro.color_helper")
       local palette = vim.tbl_extend("force", default_palette, {
         -- overrides
         background = "#1a1a1a",
@@ -25,8 +26,8 @@ return {
         Visual = { bg = palette.dimmed4 },
         CursorLineNr = { fg = palette.green },
         -- Indent Blankline
-        IndentActive = { fg = palette.red },
-        IndentInactive = { fg = palette.dimmed4 },
+        IndentActive = { fg = color_helper.blend(palette.magenta, 0.50, palette.background) },
+        IndentInactive = { fg = palette.dimmed5 },
         -- Render Markdown
         RenderMarkdownHeader = { bg = palette.dark1, fg = palette.green },
         RenderMarkdownCode = { bg = palette.dark1 },

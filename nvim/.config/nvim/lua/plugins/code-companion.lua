@@ -7,6 +7,9 @@ return {
       "j-hui/fidget.nvim"
     },
     config = function()
+      local spinner = require("plugins.code-companion.spinner")
+      spinner:init()
+
       require("codecompanion").setup({
         strategies = {
           chat = {
@@ -16,7 +19,16 @@ return {
                 return "CodeCompanion (" .. adapter.formatted_name .. ")"
               end,
               user = "Jared",
-            }
+            },
+            send = {
+              callback = function(chat)
+                vim.cmd("stopinsert")
+                chat:add_buf_message({ role = "llm", content = "" })
+                chat:submit()
+              end,
+              index = 1,
+              description = "Send",
+            },
           },
           inline = {
             adapter = "copilot"
@@ -25,8 +37,9 @@ return {
         display = {
           chat = {
             window = {
-              position = "right",
-              width = 0.40
+              -- position = "right",
+              -- width = 0.50
+              layout = "float"
             },
           },
         },
@@ -35,7 +48,7 @@ return {
             return require("codecompanion.adapters").extend("copilot", {
               schema = {
                 model = {
-                  default = "claude-3.7-sonnet",
+                  default = "gemini-2.5-pro",
                 }
               }
             })

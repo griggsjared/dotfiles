@@ -101,7 +101,7 @@ return {
 				["html"] = function()
 					lspconfig["html"].setup({
 						capabilities = capabilities,
-						filetypes = { "html", "templ", "blade", "php" },
+						filetypes = { "html", "templ", "blade" },
 					})
 				end,
 

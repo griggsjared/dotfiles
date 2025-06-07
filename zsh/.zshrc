@@ -2,7 +2,6 @@ source $HOME/.docker/init-zsh.sh || true
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh || true
 source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh || true
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh || true
-source $(dirname $(gem which colorls))/tab_complete.sh || true
 
 # ZSH autocomplete functions
 if type brew &>/dev/null; then
@@ -34,9 +33,7 @@ setopt PROMPT_SUBST
 PROMPT='%F{blue}%~%f %F{red}${vcs_info_msg_0_}%f$ '
 
 #ALIASES
-
-alias ls='colorls -A'
-alias cat='bat'
+alias ls='lsd -A'
 alias php='valet php'
 alias composer='valet composer'
 alias lgit='lazygit'
@@ -70,8 +67,6 @@ export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS' --color=fg:#fbfcfa,bg:#1a1a1a,hl:#78d
 if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
     export TERM=xterm-256color
 fi
-
-export HOMEBREW_NO_AUTO_UPDATE=1
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

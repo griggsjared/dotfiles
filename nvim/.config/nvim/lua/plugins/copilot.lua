@@ -18,8 +18,18 @@ return {
 			vim.keymap.set("n", "<leader>cs", function()
 				require("copilot.suggestion").toggle_auto_trigger()
 			end, { silent = true })
+
+			local copilot_enabled = true
 			vim.keymap.set("n", "<leader>cp", function()
-				vim.cmd("Copilot toggle")
+				if copilot_enabled then
+					vim.cmd("Copilot disable")
+					copilot_enabled = false
+					print("Copilot disabled")
+				else
+					vim.cmd("Copilot enable")
+					copilot_enabled = true
+					print("Copilot enabled")
+				end
 			end, { silent = true })
 		end,
 	},

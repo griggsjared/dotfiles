@@ -10,7 +10,7 @@ return {
       bigfile = { enabled = true },
       quickfile = { enabled = true },
       scroll = { enabled = false, speed = 2 },
-      picker = { enabled = true },
+      picker = { enabled = false },
       -- input = { enabled = true },
       dashboard = {
         enabled = true,
@@ -27,14 +27,6 @@ return {
 █▄█  █▄▄█▄▄▄▄▄▄▄█▄▄▄▄▄▄▄█ █▄▄▄█ █▄▄▄█▄█   █▄█]],
             padding = 1,
             gap = 1,
-          },
-          {
-            section = "terminal",
-            cmd = "nvim --version | head -n 1 | scram",
-            height = 1,
-            padding = 1,
-            ttl = 0,
-            indent = 14,
           },
           { section = "startup", gap = 1, padding = 1 },
           {

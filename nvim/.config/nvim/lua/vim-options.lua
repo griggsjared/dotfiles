@@ -51,8 +51,5 @@ vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true })
 --toggle to show hidden characters
 vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true })
 
---show virtual text for diagnostics by default
-vim.diagnostic.config({ virtual_text = true })
-
 --add :W to save the same as w
 vim.api.nvim_create_user_command("W", "w", { bang = false, force = true })

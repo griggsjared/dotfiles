@@ -20,5 +20,3 @@ macos-icon-screen-color = #a9dc76
 macos-icon-ghost-color = #ffffff
 
 window-save-state = always
-
-auto-update-channel = tip

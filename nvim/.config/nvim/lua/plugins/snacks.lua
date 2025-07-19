@@ -4,12 +4,8 @@ return {
 		priority = 1000,
 		lazy = false,
 		opts = {
-			notifier = { enabled = true },
-			statuscolumn = { enabled = true },
-			lazygit = { enabled = true },
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
-			scroll = { enabled = false, speed = 2 },
 			dashboard = {
 				enabled = true,
 				width = 40,
@@ -54,10 +50,6 @@ return {
 					},
 				},
 			},
-		},
-		keys = {
-			{ "<leader>sd", "<CMD>lua Snacks.dashboard()<CR>", desc = "Show the dashboard" },
-			{ "<leader>lg", "<CMD>lua Snacks.lazygit()<CR>", desc = "Show the lazygit" },
 		},
 	},
 }

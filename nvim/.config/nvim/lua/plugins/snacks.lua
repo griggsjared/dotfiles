@@ -10,8 +10,6 @@ return {
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
 			scroll = { enabled = false, speed = 2 },
-			picker = { enabled = false },
-			-- input = { enabled = true },
 			dashboard = {
 				enabled = true,
 				width = 40,
@@ -27,7 +25,8 @@ return {
 ░ ░░   ░ ▒░ ░ ░  ░  ░ ▒ ▒░    ░ ░░   ▒ ░░  ░      ░
 ░   ░ ░    ░   ░ ░ ░ ▒       ░░   ▒ ░░      ░   
       ░    ░  ░    ░ ░        ░   ░         ░   
-							                    ░                 ]],
+							                    ░                 
+]],
 						padding = 1,
 						gap = 1,
 					},
@@ -59,7 +58,6 @@ return {
 		keys = {
 			{ "<leader>sd", "<CMD>lua Snacks.dashboard()<CR>", desc = "Show the dashboard" },
 			{ "<leader>lg", "<CMD>lua Snacks.lazygit()<CR>", desc = "Show the lazygit" },
-			{ "<leader>st", "<CMS>lua Snacks.scratch()<CR>", desc = "Show the scratch" },
 		},
 	},
 }

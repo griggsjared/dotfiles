@@ -38,6 +38,7 @@ alias php='valet php'
 alias composer='valet composer'
 alias lgit='lazygit'
 alias v='nvim'
+alias cat='bat -pp'
 
 #PATHS
 

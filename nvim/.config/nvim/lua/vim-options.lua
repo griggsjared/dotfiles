@@ -51,18 +51,18 @@ vim.o.foldenable = true -- Enable folding
 vim.opt.spelllang = "en_us"
 vim.opt.spell = false -- off by default
 
-vim.api.nvim_set_keymap("n", "<leader>sc", ":set spell!<CR>", { noremap = true }) -- Toggle for spell check
-vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true }) -- Add current word to dictionary
+vim.api.nvim_set_keymap("n", "<leader>sc", ":set spell!<CR>", { noremap = true, desc = "Toggle for spell check" }) -- Toggle for spell check
+vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true, desc = "Add current word to dictionary" }) -- Add current word to dictionary
 
-vim.api.nvim_set_keymap("v", "<Del>", '"_d', { noremap = true }) -- Map Delete key to delete without yanking
-vim.api.nvim_set_keymap("v", "<BS>", '"_d', { noremap = true }) -- Map Backspace key to delete without yanking
+vim.api.nvim_set_keymap("v", "<Del>", '"_d', { noremap = true, desc = "Delete without yanking (Del key)" }) -- Map Delete key to delete without yanking
+vim.api.nvim_set_keymap("v", "<BS>", '"_d', { noremap = true, desc = "Delete without yanking (Backspace key)" }) -- Map Backspace key to delete without yanking
 
-vim.api.nvim_set_keymap("n", "<leader>bc", ":bp<bar>sp<bar>bn<bar>bd<CR>", { noremap = true }) -- Close current buffer
-vim.api.nvim_set_keymap("n", "<leader>ba", ":bufdo bd<CR>", { noremap = true }) -- Close all buffers
-vim.api.nvim_set_keymap("n", "<leader><leader>", ":b#<CR>", { noremap = true }) -- Go to last buffer
-vim.api.nvim_set_keymap("n", "<leader>bn", ":bn<CR>", { noremap = true }) -- Go to next buffer
-vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true }) -- Go to previous buffer
+vim.api.nvim_set_keymap("n", "<leader>bc", ":bp<bar>sp<bar>bn<bar>bd<CR>", { noremap = true, desc = "Close current buffer" }) -- Close current buffer
+vim.api.nvim_set_keymap("n", "<leader>ba", ":bufdo bd<CR>", { noremap = true, desc = "Close all buffers" }) -- Close all buffers
+vim.api.nvim_set_keymap("n", "<leader><leader>", ":b#<CR>", { noremap = true, desc = "Go to last buffer" }) -- Go to last buffer
+vim.api.nvim_set_keymap("n", "<leader>bn", ":bn<CR>", { noremap = true, desc = "Go to next buffer" }) -- Go to next buffer
+vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true, desc = "Go to previous buffer" }) -- Go to previous buffer
 
-vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true }) --toggle to show hidden characters
+vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true, desc = "Toggle show hidden characters" }) --toggle to show hidden characters
 
 vim.api.nvim_create_user_command("W", "w", { bang = false, force = true })

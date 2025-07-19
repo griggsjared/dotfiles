@@ -14,7 +14,7 @@ return {
 
 			vim.keymap.set("i", "<S-Tab>", function()
 				require("copilot.suggestion").accept()
-			end, { silent = true })
+			end, { silent = true, desc = "Toggle Copilot auto-trigger (<leader>cs)" })
 
       local copilot_inline_enabled = false;
 			vim.keymap.set("n", "<leader>cs", function()
@@ -26,7 +26,7 @@ return {
           copilot_inline_enabled = true
           print("Copilot inline suggestion enabled")
         end
-			end, { silent = true })
+			end, { silent = true, desc = "Toggle Copilot auto-trigger (<leader>cs)" })
 
 			local copilot_enabled = true
 			vim.keymap.set("n", "<leader>cp", function()
@@ -39,7 +39,7 @@ return {
 					copilot_enabled = true
 					print("Copilot enabled")
 				end
-			end, { silent = true })
+			end, { silent = true, desc = "Toggle Copilot auto-trigger (<leader>cs)" })
 		end,
 	},
 }

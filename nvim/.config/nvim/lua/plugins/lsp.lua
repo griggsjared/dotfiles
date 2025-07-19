@@ -221,7 +221,7 @@ return {
 							local response_data = { { id, r.body } }
 							---@diagnostic disable-next-line: param-type-mismatch
 							client:notify("tsserver/response", response_data)
-						end)
+end, { desc = "Show diagnostics in virtual lines" })
 					end
 				end,
 				settings = {
@@ -289,12 +289,12 @@ return {
 				vim.lsp.buf.hover({
 					border = "rounded",
 				})
-			end, {})
-			vim.keymap.set("n", "<leader>gd", vim.lsp.buf.definition, {})
-			vim.keymap.set("n", "<leader>gr", vim.lsp.buf.references, {})
-			vim.keymap.set("n", "<leader>gi", vim.lsp.buf.implementation, {})
-			vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, {})
-			vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, {})
+			end, { desc = "Show hover documentation" })
+			vim.keymap.set("n", "<leader>gd", vim.lsp.buf.definition, { desc = "Go to definition" })
+			vim.keymap.set("n", "<leader>gr", vim.lsp.buf.references, { desc = "Show references" })
+			vim.keymap.set("n", "<leader>gi", vim.lsp.buf.implementation, { desc = "Go to implementation" })
+			vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Show code actions" })
+			vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
 
 			vim.keymap.set("n", "<leader>xx", function()
 				vim.diagnostic.config({ virtual_lines = { current_line = true }, virtual_text = false })
@@ -305,11 +305,11 @@ return {
 						return true
 					end,
 				})
-			end)
+			end, { desc = "Toggle inlay hints" })
 
 			vim.keymap.set("n", "<leader>ih", function()
 				vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())
-			end)
+			end, { desc = "Toggle inlay hints" })
 		end,
 	},
 }

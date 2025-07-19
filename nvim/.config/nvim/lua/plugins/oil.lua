@@ -57,7 +57,7 @@ return {
       })
       vim.keymap.set("n", "-", function ()
         require("oil").open()
-      end, { desc = "Open parent directory" })
+      end, { desc = "Open parent directory (oil.nvim)" })
     end,
   },
 }

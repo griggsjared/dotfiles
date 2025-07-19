@@ -103,13 +103,13 @@ return {
 				{ "n", "v" },
 				"<leader>cq",
 				"<cmd>CodeCompanionActions<cr>",
-				{ noremap = true, silent = true }
+				{ noremap = true, silent = true, desc = "Toggle CodeCompanion Chat Actions" }
 			)
 			vim.keymap.set(
 				{ "n", "v" },
 				"<leader>cc",
 				"<cmd>CodeCompanionChat Toggle<cr>",
-				{ noremap = true, silent = true }
+				{ noremap = true, silent = true, desc = "Toggle CodeCompanion Chat" }
 			)
 			vim.cmd([[cab cc CodeCompanion]])
 		end,

@@ -36,7 +36,7 @@ return {
 			})
 			vim.keymap.set("n", "<leader>gf", function()
 				require("conform").format({ async = true, lsp_format = "fallback" })
-			end, {})
+			end, { desc = "Format with Conform" })
 		end,
 	},
 }

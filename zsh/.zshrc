@@ -39,6 +39,7 @@ alias composer='valet composer'
 alias lgit='lazygit'
 alias v='nvim'
 alias cat='bat -pp'
+alias y='yazi'
 
 #PATHS
 

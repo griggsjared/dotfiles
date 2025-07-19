@@ -6,6 +6,7 @@ return {
 			require("conform").setup({
 				formatters_by_ft = {
 					lua = { "stylua" },
+          svelte = { "prettier" },
 					javascript = { "prettier" },
 					typescript = { "prettier" },
 					vue = { "prettier" },
@@ -33,7 +34,6 @@ return {
 					},
 				},
 			})
-
 			vim.keymap.set("n", "<leader>gf", function()
 				require("conform").format({ async = true, lsp_format = "fallback" })
 			end, {})

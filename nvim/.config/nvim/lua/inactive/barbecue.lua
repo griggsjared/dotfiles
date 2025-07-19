@@ -3,7 +3,7 @@ return {
   name = "barbecue",
   version = "*",
   dependencies = {
-    "SmiteshP/nvim-navic",
+    -- "SmiteshP/nvim-navic",
     "nvim-tree/nvim-web-devicons",
   },
   config = function()

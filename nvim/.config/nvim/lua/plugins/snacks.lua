@@ -6,6 +6,7 @@ return {
 		opts = {
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
+      statuscolumn = { enabled = true },
 			dashboard = {
 				enabled = true,
 				width = 40,

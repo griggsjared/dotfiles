@@ -29,6 +29,7 @@ return {
             local black_list = {
               ".git/",
               ".DS_Store",
+              ".null-ls*"
             }
             for _, v in ipairs(black_list) do
               if name:match(v) then

@@ -47,6 +47,16 @@ local create_floating_opencode = function(opts)
 		vim.wo[win].number = false
 		vim.wo[win].relativenumber = false
 
+		vim.api.nvim_create_autocmd("TermClose", {
+			buffer = buf,
+			callback = function()
+				if vim.api.nvim_win_is_valid(win) then
+					vim.api.nvim_win_hide(win)
+				end
+				state.floating.buf = -1
+			end,
+		})
+
 		vim.cmd("startinsert")
 	else
 		vim.api.nvim_set_current_win(win)

@@ -33,6 +33,7 @@ local create_floating_lazygit = function(opts)
 		style = "minimal",
 		border = "rounded",
 		title = "LazyGit",
+		title_pos = "center",
 		focusable = true,
 	}
 	local win = vim.api.nvim_open_win(buf, true, win_config)
@@ -45,8 +46,13 @@ local create_floating_lazygit = function(opts)
 		vim.api.nvim_create_autocmd("TermClose", {
 			buffer = buf,
 			callback = function()
+				if vim.api.nvim_win_is_valid(win) then
+					vim.api.nvim_win_close(win, true)
+				end
 				if vim.api.nvim_buf_is_valid(buf) then
-					vim.api.nvim_buf_delete(buf, { force = true })
+					vim.schedule(function()
+						vim.api.nvim_buf_delete(buf, { force = true })
+					end)
 				end
 				state.floating.buf = -1
 				state.floating.win = -1
@@ -58,6 +64,14 @@ local create_floating_lazygit = function(opts)
 		vim.wo[win].number = false
 		vim.wo[win].relativenumber = false
 
+		vim.api.nvim_buf_set_keymap(
+			buf,
+			"t",
+			"<Esc>",
+			"<C-\\><C-n>:lua vim.api.nvim_win_close(" .. win .. ", true)<CR>",
+			{ noremap = true, silent = true }
+		)
+
 		vim.cmd("startinsert")
 	end
 
@@ -68,15 +82,26 @@ local create_floating_lazygit = function(opts)
 end
 
 local toggle_lazygit = function()
-	if not vim.api.nvim_win_is_valid(state.floating.win) then
-		state.floating = create_floating_lazygit({ buf = state.floating.buf })
-	else
+	if
+		vim.api.nvim_win_is_valid(state.floating.win)
+		and vim.api.nvim_buf_is_valid(state.floating.buf)
+		and vim.bo[state.floating.buf].buftype == "terminal"
+	then
 		vim.api.nvim_win_hide(state.floating.win)
+	else
+		state.floating.buf = -1
+		state.floating.win = -1
+		state.floating = create_floating_lazygit({ buf = state.floating.buf })
 	end
 end
 
 vim.api.nvim_create_user_command("Lazygit", toggle_lazygit, {})
 
-vim.keymap.set("n", "<leader>lg", toggle_lazygit, { noremap = true, silent = true, desc = "Toggle LazyGit Floating Window" })
+vim.keymap.set(
+	"n",
+	"<leader>lg",
+	toggle_lazygit,
+	{ noremap = true, silent = true, desc = "Toggle LazyGit Floating Window" }
+)
 
 return {}

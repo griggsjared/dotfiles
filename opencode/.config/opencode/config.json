@@ -14,6 +14,15 @@
         "qwen3:8b": {},
         "mistral": {}
       }
+    },
+    "moonshot": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "https://api.moonshot.ai/v1"
+      },
+      "models": {
+        "kimi-k2-0711-preview": {}
+      }
     }
   }
 }

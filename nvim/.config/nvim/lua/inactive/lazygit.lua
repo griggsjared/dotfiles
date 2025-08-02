@@ -61,6 +61,8 @@ local create_floating_lazygit = function(opts)
 		})
 
 		vim.bo[buf].modifiable = false
+		vim.bo[buf].filetype = "lazygit"
+		vim.bo[buf].buflisted = false
 		vim.wo[win].number = false
 		vim.wo[win].relativenumber = false
 

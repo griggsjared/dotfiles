@@ -7,6 +7,7 @@ return {
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
       statuscolumn = { enabled = true },
+      lazygit = { enabled = true },
 			dashboard = {
 				enabled = true,
 				width = 40,
@@ -52,5 +53,8 @@ return {
 				},
 			},
 		},
+    keys = {
+      { "<leader>lg", "<CMD>lua Snacks.lazygit()<CR>", desc = "Show lazygit floating window" }
+    }
 	},
 }

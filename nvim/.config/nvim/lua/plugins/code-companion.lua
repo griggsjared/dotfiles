@@ -71,13 +71,28 @@ return {
 							},
 						})
 					end,
-          tavily = function()
-            return require("codecompanion.adapters").extend("tavily", {
-              env = {
-                api_key = 'cmd:echo "$TAVILY_API_KEY"',
-              },
-            })
-          end,
+					tavily = function()
+						return require("codecompanion.adapters").extend("tavily", {
+							env = {
+								api_key = 'cmd:echo "$TAVILY_API_KEY"',
+							},
+						})
+					end,
+					moonshot = function()
+						return require("codecompanion.adapters").extend("openai_compatible", {
+              name = "moonshot",
+              formatted_name = "Moonshot",
+							env = {
+								url = "https://api.moonshot.ai",
+								api_key = 'cmd:echo "$MOONSHOT_API_KEY"',
+							},
+							schema = {
+								model = {
+									default = "kimi-k2-0711-preview",
+								},
+							},
+						})
+					end,
 				},
 				extensions = {
 					history = {

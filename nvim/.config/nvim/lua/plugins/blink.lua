@@ -7,7 +7,7 @@ return {
 			"saghen/blink.compat",
 			{
 				"supermaven-inc/supermaven-nvim",
-        enabled = false,
+				enabled = false,
 				opts = {
 					disable_inline_completion = true,
 					disable_keymaps = true,
@@ -15,9 +15,10 @@ return {
 			},
 			{
 				"huijiro/blink-cmp-supermaven",
-        enabled = false,
+				enabled = false,
 			},
 		},
+		version = "*",
 		build = "cargo build --release",
 		opts = {
 			keymap = { preset = "enter" },

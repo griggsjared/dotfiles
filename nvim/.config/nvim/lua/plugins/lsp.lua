@@ -272,10 +272,9 @@ end, { desc = "Show diagnostics in virtual lines" })
 				},
 			})
 
-			-- laravel_ls is not part of mason yet, so manually enabled
-      vim.lsp.config("laravel_ls", {
-        root_markers = { "artisan" },
-      })
+			-- laravel_ls doesnt seem top work when installing from mason, Installed manually...
+			-- go install github.com/laravel-ls/laravel-ls/cmd/laravel-ls@latest
+			-- manually enabled
 			vim.lsp.enable("laravel_ls")
 
 			vim.diagnostic.config({

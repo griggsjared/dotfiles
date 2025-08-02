@@ -217,11 +217,11 @@ return {
 								command,
 								payload,
 							},
-						}, { bufnr = context.bufnr }, function(err, r)
+						}, { bufnr = context.bufnr }, function(_, r)
 							local response_data = { { id, r.body } }
 							---@diagnostic disable-next-line: param-type-mismatch
 							client:notify("tsserver/response", response_data)
-end, { desc = "Show diagnostics in virtual lines" })
+						end)
 					end
 				end,
 				settings = {

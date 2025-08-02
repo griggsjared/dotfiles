@@ -11,6 +11,8 @@ if type brew &>/dev/null; then
     autoload -Uz compinit
     compinit -u
 fi
+  
+[ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
 # ZSH auto complete - disable the up and down history 
 bindkey '\e[A' up-line-or-history

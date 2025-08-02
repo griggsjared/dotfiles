@@ -20,6 +20,11 @@ return {
 				},
 				formatters = {
 					pint = {
+            cwd = require("conform.util").root_file({
+              'vendor/bin/pint',
+              "pint.json",
+              "pint.json.dist",
+            }),
 						require_cwd = true,
 					},
           php_cs_fixer = {

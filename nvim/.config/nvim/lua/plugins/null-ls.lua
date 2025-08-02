@@ -17,9 +17,9 @@ return {
 							".eslintrc",
 							".eslintrc.yml",
 							".eslintrc.yaml",
-							".eslint.config.mjs",
-							".eslint.config.cjs",
-							".eslint.config.js",
+							"eslint.config.mjs",
+							"eslint.config.cjs",
+							"eslint.config.js",
 						})
 					end,
 				}),

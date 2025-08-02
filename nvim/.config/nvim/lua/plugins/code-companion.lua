@@ -102,8 +102,8 @@ return {
 							delete_on_clearing_chat = true,
 							title_generation_opts = {
 								refresh_every_n_prompts = 1,
-                provider = "copilot",
-                model = "gpt-4o",
+								adapter = "copilot",
+								model = "gpt-4o",
 							},
 							max_refreshes = 10,
 							chat_filter = function(chat_data)

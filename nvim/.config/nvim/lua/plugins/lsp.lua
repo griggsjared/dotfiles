@@ -264,7 +264,12 @@ end, { desc = "Show diagnostics in virtual lines" })
 			})
 
 			vim.lsp.config("golangci_lint_ls", {
-				root_markers = { ".golangci.yaml", ".golangci.yml" },
+				root_markers = {
+					".golangci.yml",
+					".golangci.yaml",
+					".golangci.toml",
+					".golangci.json",
+				},
 			})
 
 			-- laravel_ls is not part of mason yet, so manually enabled

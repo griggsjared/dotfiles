@@ -42,6 +42,7 @@ alias lgit='lazygit'
 alias v='nvim'
 alias cat='bat -pp'
 alias y='yazi'
+alias oc='opencode'
 
 #PATHS
 

@@ -9,6 +9,8 @@ return {
           svelte = { "prettier" },
 					javascript = { "prettier" },
 					typescript = { "prettier" },
+          javascriptreact = { "prettier" },
+          typescriptreact = { "prettier" },
 					vue = { "prettier" },
 					blade = { "blade-formatter" },
 					php = { "pint" },

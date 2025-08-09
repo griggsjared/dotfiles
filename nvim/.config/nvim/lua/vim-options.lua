@@ -54,8 +54,8 @@ vim.opt.spell = false -- off by default
 vim.api.nvim_set_keymap("n", "<leader>sc", ":set spell!<CR>", { noremap = true, desc = "Toggle for spell check" })
 vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true, desc = "Add current word to dictionary" })
 
-vim.api.nvim_set_keymap("v", "<Del>", '"_d', { noremap = true, desc = "Delete without yanking (Del key)" })
-vim.api.nvim_set_keymap("v", "<BS>", '"_d', { noremap = true, desc = "Delete without yanking (Backspace key)" })
+vim.keymap.set({ "n", "x", "v" }, "d", '"_d', { noremap = true, silent = true, desc = "Delete without yanking" })
+vim.keymap.set("n", "D", '"_D', { noremap = true, silent = true, desc = "Delete to EOL without yanking" })
 
 vim.api.nvim_set_keymap(
 	"n",

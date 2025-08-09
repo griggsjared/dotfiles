@@ -45,7 +45,7 @@ return {
 						return require("codecompanion.adapters").extend("copilot", {
 							schema = {
 								model = {
-									default = "claude-sonnet-4",
+									default = "gpt-5",
 								},
 							},
 						})
@@ -103,7 +103,7 @@ return {
 							title_generation_opts = {
 								refresh_every_n_prompts = 1,
 								adapter = "copilot",
-								model = "gpt-4o",
+								model = "gpt-4.1",
 							},
 							max_refreshes = 10,
 							chat_filter = function(chat_data)

@@ -80,8 +80,8 @@ return {
 					end,
 					moonshot = function()
 						return require("codecompanion.adapters").extend("openai_compatible", {
-              name = "moonshot",
-              formatted_name = "Moonshot",
+							name = "moonshot",
+							formatted_name = "Moonshot",
 							env = {
 								url = "https://api.moonshot.ai",
 								api_key = 'cmd:echo "$MOONSHOT_API_KEY"',
@@ -93,6 +93,7 @@ return {
 							},
 						})
 					end,
+					openrouter = require("plugins.code-companion.openrouter"),
 				},
 				extensions = {
 					history = {

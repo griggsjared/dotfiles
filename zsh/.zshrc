@@ -73,5 +73,8 @@ if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
     export TERM=xterm-256color
 fi
 
+# Source fzf
+source <(fzf --zsh)
+
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

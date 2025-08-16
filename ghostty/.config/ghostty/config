@@ -6,6 +6,8 @@ adjust-cursor-height= 2
 
 window-height = 1000000
 window-width = 1000000
+window-padding-x = 4
+window-padding-y = 4
 
 background-opacity = 0.95
 cursor-invert-fg-bg = true

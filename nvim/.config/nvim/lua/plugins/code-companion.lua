@@ -104,7 +104,7 @@ return {
 							title_generation_opts = {
 								refresh_every_n_prompts = 1,
 								adapter = "copilot",
-								model = "gpt-4.1",
+								model = "gpt-5-mini",
 							},
 							max_refreshes = 10,
 							chat_filter = function(chat_data)

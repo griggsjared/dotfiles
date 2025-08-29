@@ -70,4 +70,7 @@ vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true, desc = "
 
 vim.api.nvim_set_keymap("n", "<leader>sh", ":set list!<CR>", { noremap = true, desc = "Toggle show hidden characters" })
 
+vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
+vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
+
 vim.api.nvim_create_user_command("W", "w", { bang = false, force = true })

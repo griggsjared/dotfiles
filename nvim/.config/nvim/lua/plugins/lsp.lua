@@ -26,6 +26,7 @@ return {
 					"zls",
 					"clangd",
 					"golangci_lint_ls",
+					"eslint",
 				},
 			})
 		end,

@@ -48,6 +48,7 @@ alias y='yazi'
 alias oc='opencode'
 
 #PATHS
+export PATH=$HOME/.local/bin:$PATH
 
 if [ -d $HOME/.composer/vendor/bin ]; then
   export PATH=$HOME/.composer/vendor/bin:$PATH

@@ -9,6 +9,9 @@ window-width = 1000000
 window-padding-x = 4
 window-padding-y = 4
 
+keybind = global:alt+right=unbind
+keybind = global:alt+left=unbind
+
 background-opacity = 0.95
 cursor-invert-fg-bg = true
 
@@ -24,5 +27,7 @@ macos-icon-ghost-color = #ffffff
 window-save-state = always
 
 auto-update-channel = tip
+
+
 
 custom-shader = shaders/cursor_smear.glsl

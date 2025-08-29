@@ -1,0 +1,57 @@
+let mapleader=" "
+
+" General settings
+set number
+set relativenumber
+set cursorline
+set nowrap
+set scrolloff=10
+set clipboard=unnamedplus
+set clipboard^=ideaput
+set listchars=eol:¬,tab:>·,trail:~,extends:>,precedes:<,space:␣
+set tabstop=2
+set shiftwidth=2
+set expandtab
+
+" Keymaps
+nnoremap d "_d
+nnoremap D "_D
+
+nnoremap <leader>bc :bd<CR>
+nnoremap <leader><leader> :b#<CR>
+nnoremap <leader>bn :bn<CR>
+nnoremap <leader>bp :bp<CR>
+
+nnoremap <leader>sc :set spell!<CR>
+nnoremap <leader>sa zg
+
+nnoremap <leader>sh :set list!<CR>
+
+vnoremap J :m '>+1<CR>gv=gv
+vnoremap K :m '<-2<CR>gv=gv
+
+command! W w
+
+" Telescope-like keymaps for JetBrains actions
+" <leader>ff: Find files (GotoFile)
+nnoremap <leader>ff :action GotoFile<CR>
+" <leader>fg: Find in path/grep (FindInPath)
+nnoremap <leader>fg :action FindInPath<CR>
+" <leader>fb: Find buffer/recent files (RecentFiles)
+nnoremap <leader>fb :action RecentFiles<CR>
+
+" LSP-like keymaps for JetBrains actions
+" <leader>gd: Go to definition (GotoDeclaration)
+nnoremap <leader>gd :action GotoDeclaration<CR>
+" <leader>gr: Find references (FindUsages)
+nnoremap <leader>gr :action FindUsages<CR>
+" <leader>rn: Rename symbol (RenameElement)
+nnoremap <leader>rn :action RenameElement<CR>
+" <leader>ca: Code action/quick fix (ShowIntentionActions)
+nnoremap <leader>ca :action ShowIntentionActions<CR>
+" <leader>gi: Go to implementation (GotoImplementation)
+nnoremap <leader>gi :action GotoImplementation<CR>
+" <leader>gh: Show documentation/hover (QuickDocumentation)
+nnoremap <leader>gh :action QuickDocumentation<CR>
+" <leader>ca: Show quick fix / code actions (ShowIntentionActions)
+nnoremap <leader>ca :action ShowIntentionActions<CR>

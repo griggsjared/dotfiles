@@ -20,6 +20,9 @@ bindkey '\eOA' up-line-or-history
 bindkey '\e[B' down-line-or-history
 bindkey '\eOB' down-line-or-history
 
+# Source fzf
+source <(fzf --zsh)
+
 #PROMPT CONFIG
 
 # Set the prompt to show the current directory and git branch using vcs_info function
@@ -72,9 +75,6 @@ export FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS' --color=fg:#fbfcfa,bg:#1a1a1a,hl:#78d
 if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
     export TERM=xterm-256color
 fi
-
-# Source fzf
-source <(fzf --zsh)
 
 # Load private configuration
 source $HOME/.zsh/private.zsh || true

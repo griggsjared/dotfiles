@@ -9,7 +9,6 @@ return {
 					auto_trigger = false,
 					accept_newline = true,
 				},
-				copilot_model = "gpt-4o-copilot",
 			})
 
 			vim.keymap.set("i", "<S-Tab>", function()

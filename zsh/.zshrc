@@ -47,6 +47,16 @@ alias cat='bat -pp'
 alias y='yazi'
 alias oc='opencode'
 
+# vf (vim find) function to find files with fzf and open in neovim
+vf() {
+  local initial_query="$1"
+  local file
+  file="$(fzf --query="$initial_query" --height=40% --ansi --preview='bat --style=numbers --color=always {}' --preview-window=right:60%:wrap --border)"
+  if [ -z "$file" ]; then
+    return 0
+  fi
+  nvim -- "$file"
+}
 alias tmf='tm $(tm ls-all | fzf --height=20% --ansi --reverse)'
 
 #PATHS

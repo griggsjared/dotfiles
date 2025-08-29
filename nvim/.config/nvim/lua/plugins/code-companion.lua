@@ -18,15 +18,15 @@ return {
 							end,
 							user = "Jared",
 						},
-						send = {
-							callback = function(chat)
-								vim.cmd("stopinsert")
-								chat:add_buf_message({ role = "llm", content = "" })
-								chat:submit()
-							end,
-							index = 1,
-							description = "Send",
-						},
+						-- send = {
+						-- 	callback = function(chat)
+						-- 		vim.cmd("stopinsert")
+						-- 		chat:add_buf_message({ role = "llm", content = "" })
+						-- 		chat:submit()
+						-- 	end,
+						-- 	index = 1,
+						-- 	description = "Send",
+						-- }`
 					},
 					inline = {
 						adapter = "copilot",
@@ -36,64 +36,65 @@ return {
 					chat = {
 						window = {
 							position = "right",
-							width = 0.50,
+							width = 0.33,
 						},
 					},
 				},
 				adapters = {
-					copilot = function()
-						return require("codecompanion.adapters").extend("copilot", {
-							schema = {
-								model = {
-									default = "gpt-5-mini",
+					http = {
+						copilot = function()
+							return require("codecompanion.adapters").extend("copilot", {
+								schema = {
+									model = {
+										default = "gpt-5-mini",
+									},
 								},
-							},
-						})
-					end,
-					openai = function()
-						return require("codecompanion.adapters").extend("openai", {
-							env = {
-								api_key = 'cmd:echo "$OPENAI_API_KEY"',
-							},
-						})
-					end,
-					deepseek = function()
-						return require("codecompanion.adapters").extend("deepseek", {
-							env = {
-								api_key = 'cmd:echo "$DEEPSEEK_API_KEY"',
-							},
-						})
-					end,
-					anthropic = function()
-						return require("codecompanion.adapters").extend("anthropic", {
-							env = {
-								api_key = 'cmd:echo "$ANTHROPIC_API_KEY"',
-							},
-						})
-					end,
-					tavily = function()
-						return require("codecompanion.adapters").extend("tavily", {
-							env = {
-								api_key = 'cmd:echo "$TAVILY_API_KEY"',
-							},
-						})
-					end,
-					moonshot = function()
-						return require("codecompanion.adapters").extend("openai_compatible", {
-							name = "moonshot",
-							formatted_name = "Moonshot",
-							env = {
-								url = "https://api.moonshot.ai",
-								api_key = 'cmd:echo "$MOONSHOT_API_KEY"',
-							},
-							schema = {
-								model = {
-									default = "kimi-k2-0711-preview",
+							})
+						end,
+						openai = function()
+							return require("codecompanion.adapters").extend("openai", {
+								env = {
+									api_key = 'cmd:echo "$OPENAI_API_KEY"',
 								},
-							},
-						})
-					end,
-					openrouter = require("plugins.code-companion.openrouter"),
+							})
+						end,
+						deepseek = function()
+							return require("codecompanion.adapters").extend("deepseek", {
+								env = {
+									api_key = 'cmd:echo "$DEEPSEEK_API_KEY"',
+								},
+							})
+						end,
+						anthropic = function()
+							return require("codecompanion.adapters").extend("anthropic", {
+								env = {
+									api_key = 'cmd:echo "$ANTHROPIC_API_KEY"',
+								},
+							})
+						end,
+						tavily = function()
+							return require("codecompanion.adapters").extend("tavily", {
+								env = {
+									api_key = 'cmd:echo "$TAVILY_API_KEY"',
+								},
+							})
+						end,
+						moonshot = function()
+							return require("codecompanion.adapters").extend("openai_compatible", {
+								name = "moonshot",
+								formatted_name = "Moonshot",
+								env = {
+									url = "https://api.moonshot.ai",
+									api_key = 'cmd:echo "$MOONSHOT_API_KEY"',
+								},
+								schema = {
+									model = {
+										default = "kimi-k2-0711-preview",
+									},
+								},
+							})
+						end,
+					},
 				},
 				extensions = {
 					history = {

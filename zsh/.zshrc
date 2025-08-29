@@ -47,6 +47,8 @@ alias cat='bat -pp'
 alias y='yazi'
 alias oc='opencode'
 
+alias tmf='tm $(tm ls-all | fzf --height=20% --ansi --reverse)'
+
 #PATHS
 export PATH=$HOME/.local/bin:$PATH
 

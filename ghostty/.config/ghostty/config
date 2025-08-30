@@ -26,8 +26,4 @@ macos-icon-ghost-color = #ffffff
 
 window-save-state = always
 
-auto-update-channel = tip
-
-
-
-custom-shader = shaders/cursor_smear.glsl
+#custom-shader = shaders/cursor_smear.glsl

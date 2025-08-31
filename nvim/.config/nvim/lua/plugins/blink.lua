@@ -48,8 +48,17 @@ return {
 		build = "cargo build --release",
 		opts_extend = { "sources.default" },
 		config = function()
-			local ai = require("plugins.blink.ai-providers")
-			ai.init(vim.env.NVIM_BLINK_AI_ACTIVE == true, vim.env.NVIM_BLINK_AI_PROVIDER)
+			local ai_manager = require("plugins.blink.ai-manager")
+
+			-- must have a default provider set in env to use ai sources
+			local default_provider = vim.env.NVIM_BLINK_AI_PROVIDER
+			if default_provider then
+				ai_manager.init(default_provider, {
+					"copilot",
+					"codeium",
+					"supermaven",
+				})
+			end
 
 			require("blink.cmp").setup({
 				keymap = { preset = "enter" },
@@ -69,6 +78,7 @@ return {
 						draw = {
 							columns = {
 								{ "label", "label_description", gap = 1 },
+
 								{ "kind" },
 							},
 						},
@@ -96,8 +106,12 @@ return {
 				},
 				sources = {
 					default = function()
-						local base_sources = { "lsp", "path", "snippets", "buffer" }
-						return ai.filter_sources(base_sources)
+						return ai_manager.filter_sources({
+							"lsp",
+							"path",
+							"snippets",
+							"buffer",
+						})
 					end,
 					providers = {
 						copilot = {

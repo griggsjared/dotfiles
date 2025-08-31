@@ -18,7 +18,7 @@ M.init = function(provider, valid_providers)
 	M.valid_providers = valid_providers or {}
 
 	if provider ~= "" then
-		M.set_provider(provider, true)
+		M.set_provider(provider)
 		M.active = true
 	end
 end
@@ -28,14 +28,14 @@ M.is_active = function()
 end
 
 M.toggle = function()
-	if M.initialized then
-		M.active = not M.active
+	if not M.initialized then
+		return
 	end
 
-	M.show_status()
+	M.active = not M.active
 end
 
-M.show_status = function()
+M.print_status = function()
 	if M.initialized == false then
 		print("Blink CMP AI suggestions are not initialized")
 		return
@@ -71,9 +71,9 @@ M.lualine_status = function()
 	return "ai: on"
 end
 
-M.set_provider = function(new_provider, silent)
-	if M.initialized == false and not silent then
 ---@param new_provider string: the new provider to set, e.g. "openai"
+M.set_provider = function(new_provider)
+	if M.initialized == false then
 		print("Blink CMP AI suggestions are not initialized")
 		return
 	end
@@ -83,10 +83,8 @@ M.set_provider = function(new_provider, silent)
 	end
 
 	assert(vim.tbl_contains(M.valid_providers, new_provider), "Invalid provider: " .. new_provider)
+
 	M.provider = new_provider
-	if not silent then
-		M.show_status()
-	end
 end
 
 M.filter_sources = function(sources)
@@ -102,21 +100,24 @@ end
 
 vim.keymap.set("n", "<leader>at", function()
 	M.toggle()
+  M.print_status()
 	blink.reload()
 end, { desc = "Toggle Blink CMP AI suggestions" })
 
 vim.api.nvim_create_user_command("BlinkCmpAiManagerSet", function(opts)
 	M.set_provider(opts.args)
+	M.print_status()
 	blink.reload()
 end, { nargs = 1, desc = "Set Blink CMS AI suggesions provider" })
 
 vim.api.nvim_create_user_command("BlinkCmpAiManagerToggle", function()
 	M.toggle()
+	M.print_status()
 	blink.reload()
 end, { nargs = 0, desc = "Toggle Blink CMS AI suggesions on or off" })
 
 vim.api.nvim_create_user_command("BlinkCmpAiManagerStatus", function()
-	M.show_status()
+	M.print_status()
 end, { nargs = 0, desc = "Show Blink CMS AI suggesions provider status" })
 
 return M

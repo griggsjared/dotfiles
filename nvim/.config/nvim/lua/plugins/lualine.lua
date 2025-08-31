@@ -2,9 +2,9 @@ return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons" },
 	config = function()
-		local codecompanion_model = require("plugins.code-companion.lualine-model")
-		local codecompanion_adapter = require("plugins.code-companion.lualine-adapter")
-		local codecompanion_spinner = require("plugins.code-companion.lualine-spinner")
+		local codecompanion_model = require("code-companion.lualine-model")
+		local codecompanion_adapter = require("code-companion.lualine-adapter")
+		local codecompanion_spinner = require("code-companion.lualine-spinner")
 		require("lualine").setup({
 			sections = {
 				lualine_a = { "mode" },

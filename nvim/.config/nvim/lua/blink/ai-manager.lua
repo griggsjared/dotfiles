@@ -51,6 +51,22 @@ M.show_status = function()
 	end
 end
 
+M.lualine_status_provider = function()
+	if M.is_active() == false then
+		return ""
+	end
+
+	return "ai: " .. M.provider
+end
+
+M.lualine_status = function()
+	if M.is_active() == false then
+		return "ai: off"
+	end
+
+	return "ai: on"
+end
+
 M.set_provider = function(new_provider, silent)
 	if M.initialized == false and not silent then
 		print("Blink CMP AI suggestions are not initialized")

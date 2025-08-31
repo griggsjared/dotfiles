@@ -48,7 +48,7 @@ return {
 		build = "cargo build --release",
 		opts_extend = { "sources.default" },
 		config = function()
-			local ai_manager = require("plugins.blink.ai-manager")
+			local ai_manager = require("blink.ai-manager")
 
 			-- must have a default provider set in env to use ai sources
 			local default_provider = vim.env.NVIM_BLINK_AI_PROVIDER

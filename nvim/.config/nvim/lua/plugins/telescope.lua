@@ -11,7 +11,7 @@ return {
 			local telescope_builtin = require("telescope.builtin")
 			local telescope_themes = require("telescope.themes")
 			local telescope_actions = require("telescope.actions")
-			local telescope_globgrep = require("plugins.telescope.globgrep")
+			local telescope_globgrep = require("telescope.globgrep")
 
 			telescope.setup({
 				extensions = {

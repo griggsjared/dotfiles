@@ -7,6 +7,8 @@ local M = {
 	valid_providers = {},
 }
 
+---@param provider string: the provider to use, e.g. "openai"
+---@param valid_providers table: a list of valid providers, e.g. {"openai", "azure"}, the provider must be in this list
 M.init = function(provider, valid_providers)
 	if M.initialized == true then
 		return
@@ -51,6 +53,7 @@ M.show_status = function()
 	end
 end
 
+---@return string
 M.lualine_status_provider = function()
 	if M.is_active() == false then
 		return ""
@@ -59,6 +62,7 @@ M.lualine_status_provider = function()
 	return "ai: " .. M.provider
 end
 
+---@return string
 M.lualine_status = function()
 	if M.is_active() == false then
 		return "ai: off"
@@ -69,6 +73,7 @@ end
 
 M.set_provider = function(new_provider, silent)
 	if M.initialized == false and not silent then
+---@param new_provider string: the new provider to set, e.g. "openai"
 		print("Blink CMP AI suggestions are not initialized")
 		return
 	end

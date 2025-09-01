@@ -12,6 +12,16 @@ return {
 						})
 					end,
 				}),
+				null_ls.builtins.diagnostics.phpcs.with({
+					condition = function(utils)
+						return utils.root_has_file({
+							"phpcs.xml",
+							"phpcs.xml.dist",
+							".phpcs.xml",
+							".phpcs.xml.dist",
+						})
+					end,
+				}),
 			},
 		})
 	end,

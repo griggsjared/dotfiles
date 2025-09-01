@@ -87,6 +87,7 @@ M.set_provider = function(new_provider)
 	M.provider = new_provider
 end
 
+---@return table: a list of sources to add to the completion engine
 M.filter_sources = function(sources)
 	if M.is_active() == false then
 		return sources

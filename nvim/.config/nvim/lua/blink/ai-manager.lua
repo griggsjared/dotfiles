@@ -65,10 +65,10 @@ end
 ---@return string
 M.lualine_status = function()
 	if M.is_active() == false then
-		return "ai: off"
+		return ""
 	end
 
-	return "ai: on"
+	return "✨"
 end
 
 ---@param new_provider string: the new provider to set, e.g. "openai"

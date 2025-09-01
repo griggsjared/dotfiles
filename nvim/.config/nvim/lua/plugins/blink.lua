@@ -43,6 +43,29 @@ return {
 					})
 				end,
 			},
+			-- Minuet / Ollama
+			{
+				"milanglacier/minuet-ai.nvim",
+				config = function()
+					require("minuet").setup({
+						provider = "openai_fim_compatible",
+						n_completions = 1,
+						context_window = 512,
+						provider_options = {
+							openai_fim_compatible = {
+								api_key = "TERM",
+								name = "Ollama",
+								end_point = "http://localhost:11434/v1/completions",
+								model = "qwen2.5-coder:3b",
+								optional = {
+									max_tokens = 256,
+									top_p = 0.9,
+								},
+							},
+						},
+					})
+				end,
+			},
 		},
 		version = "*",
 		build = "cargo build --release",
@@ -57,6 +80,7 @@ return {
 					"copilot",
 					"codeium",
 					"supermaven",
+          "minuet",
 				})
 			end
 
@@ -118,37 +142,50 @@ return {
 							name = "copilot",
 							module = "blink-copilot",
 							score_offset = 100,
+							async = true,
 							transform_items = function(_, items)
 								for _, item in ipairs(items) do
 									item.kind_name = "Super"
 								end
 								return items
 							end,
-							async = true,
 						},
 						codeium = {
 							name = "codeium",
 							module = "codeium.blink",
 							score_offset = 100,
+							async = true,
 							transform_items = function(_, items)
 								for _, item in ipairs(items) do
 									item.kind_name = "Super"
 								end
 								return items
 							end,
-							async = true,
 						},
 						supermaven = {
 							name = "supermaven",
 							module = "blink-cmp-supermaven",
 							score_offset = 100,
+							async = true,
 							transform_items = function(_, items)
 								for _, item in ipairs(items) do
 									item.kind_name = "Super"
 								end
 								return items
 							end,
+						},
+						minuet = {
+							name = "minuet",
+							module = "minuet.blink",
+							score_offset = 100,
+							timeout_ms = 3000,
 							async = true,
+							transform_items = function(_, items)
+								for _, item in ipairs(items) do
+									item.kind_name = "Super"
+								end
+								return items
+							end,
 						},
 					},
 				},

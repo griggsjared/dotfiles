@@ -1,7 +1,7 @@
 
 return {
 	"nvim-lualine/lualine.nvim",
-	dependencies = { "nvim-tree/nvim-web-devicons" },
+	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	config = function()
 		local codecompanion_model = require("code-companion.lualine-model")
 		local codecompanion_adapter = require("code-companion.lualine-adapter")

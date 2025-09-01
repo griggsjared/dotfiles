@@ -1,4 +1,3 @@
-
 return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
@@ -6,7 +5,8 @@ return {
 		local codecompanion_model = require("code-companion.lualine-model")
 		local codecompanion_adapter = require("code-companion.lualine-adapter")
 		local codecompanion_spinner = require("code-companion.lualine-spinner")
-    local blink_ai_manager_status = require("blink.ai-manager").lualine_status
+		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
+
 		require("lualine").setup({
 			sections = {
 				lualine_a = { "mode" },
@@ -21,8 +21,11 @@ return {
 					{
 						"lsp_status",
 						icon = "",
+						ignore_lsp = {
+							"copilot",
+						},
 					},
-          blink_ai_manager_status,
+					blink_ai_manager_status,
 					"encoding",
 					"fileformat",
 					"filetype",

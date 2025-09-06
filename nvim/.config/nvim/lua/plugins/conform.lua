@@ -42,7 +42,7 @@ return {
 							".prettierrc.yaml",
 							".prettierrc.yml",
 							".prettierrc.js",
-							",prettierrc.cjs",
+							".prettierrc.cjs",
 							"prettier.config.js",
 						}),
 						require_cwd = true,

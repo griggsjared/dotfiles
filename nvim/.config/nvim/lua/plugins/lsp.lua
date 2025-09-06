@@ -1,9 +1,28 @@
 return {
 	{
 		"williamboman/mason.nvim",
+		dependencies = {
+			"WhoIsSethDaniel/mason-tool-installer.nvim",
+		},
 		lazy = false,
 		config = function()
 			require("mason").setup()
+			-- use mason-tool-installer to install linters, formatters, and dsps that are not avilable as lsp servers
+			require("mason-tool-installer").setup({
+				ensure_installed = {
+					--linters
+					"phpcs",
+					"phpstan",
+					"eslint_d",
+					"golangci-lint",
+					--formatters
+					"blade-formatter",
+					"clang-format",
+					"goimports",
+					"php-cs-fixer",
+					"pint",
+				},
+			})
 		end,
 	},
 	{
@@ -11,23 +30,23 @@ return {
 		lazy = false,
 		config = function()
 			require("mason-lspconfig").setup({
-				ensure_installed = {
-					"html",
-					"somesass_ls",
-					"tailwindcss",
-					"intelephense",
-					"lua_ls",
-					"vtsls",
-					"vue_ls",
-					"gopls",
-					"templ",
-					"astro",
-					"rust_analyzer",
-					"zls",
-					"clangd",
-					"golangci_lint_ls",
-					"eslint",
-				},
+				-- lsps only
+				"html",
+				"somesass_ls",
+				"tailwindcss",
+				"intelephense",
+				"lua_ls",
+				"vtsls",
+				"vue_ls",
+				"gopls",
+				"templ",
+				"astro",
+				"rust_analyzer",
+				"zls",
+				"clangd",
+				"golangci_lint_ls",
+				"eslint",
+				"marksman",
 			})
 		end,
 	},

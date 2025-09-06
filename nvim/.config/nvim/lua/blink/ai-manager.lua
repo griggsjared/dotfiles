@@ -68,7 +68,7 @@ M.lualine_status = function()
 		return ""
 	end
 
-	return "✨"
+	return " "
 end
 
 ---@param new_provider string: the new provider to set, e.g. "openai"

@@ -1,19 +1,21 @@
 # Dotfiles
 
-
 ## Quick Start
 
 ```bash
 git clone https://github.com/griggsjared/dotfiles.git ~/.dotfiles
 cd ~/.dotfiles
+chmod +x mac-init.sh
+./mac-init.sh
 stow */
 ```
 
-## Prerequisites
+## The Mac Init Sccript
+Run `./mac-init.sh` to install or update packages and tools.
+This can be run at any time, either on a new Mac or to just make sure the current environment has
+has everything it need and is up to date.
 
-Must have GNU stow installed
-
-## Usage
+## Config Usage
 
 ### Install all configs
 ```bash
@@ -30,7 +32,7 @@ stow nvim zsh tmux
 stow -D nvim
 ```
 
-## Structure
+## Config Structure
 
 Each directory contains configs for a specific application. GNU stow creates symlinks from these directories to your home directory.
 

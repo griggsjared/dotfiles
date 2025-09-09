@@ -45,7 +45,6 @@ alias lgit='lazygit'
 alias v='nvim'
 alias cat='bat -pp'
 alias y='yazi'
-alias oc='opencode'
 
 # vf (vim find) function to find files with fzf and open in neovim
 vf() {

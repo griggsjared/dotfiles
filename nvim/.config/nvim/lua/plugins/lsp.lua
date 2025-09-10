@@ -111,6 +111,7 @@ return {
 					"typescriptreact",
 					"templ",
 					"astro",
+					"blade",
 				},
 			})
 

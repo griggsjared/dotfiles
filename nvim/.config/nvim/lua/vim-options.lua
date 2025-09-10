@@ -74,3 +74,10 @@ vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv")
 vim.keymap.set("v", "K", ":m '<-2<CR>gv=gv")
 
 vim.api.nvim_create_user_command("W", "w", { bang = false, force = true })
+
+vim.o.autoread = true
+vim.opt.updatetime = 300
+vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
+	pattern = "*", -- Apply to all files
+	command = "checktime",
+})

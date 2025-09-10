@@ -1,4 +1,4 @@
-source $HOME/.docker/init-zsh.sh || true 
+[[ -f "$HOME/.docker/init-zsh.sh" ]] && source "$HOME/.docker/init-zsh.sh"
 source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh || true
 source /opt/homebrew/share/zsh-autocomplete/zsh-autocomplete.plugin.zsh || true
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh || true
@@ -89,4 +89,4 @@ if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
 fi
 
 # Load private configuration
-source $HOME/.zsh/private.zsh || true
+[[ -f "$HOME/.zsh/private.zsh" ]] && source "$HOME/.zsh/private.zsh"

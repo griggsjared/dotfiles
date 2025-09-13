@@ -39,6 +39,8 @@ nnoremap <leader>ff :action GotoFile<CR>
 nnoremap <leader>fg :action FindInPath<CR>
 " <leader>fb: Find buffer/recent files (RecentFiles)
 nnoremap <leader>fb :action RecentFiles<CR>
+" <leader>fo: Find old files (RecentFiles)
+nnoremap <leader>fo :action RecentFiles<CR>
 
 " LSP-like keymaps for JetBrains actions
 " <leader>gd: Go to definition (GotoDeclaration)
@@ -55,3 +57,9 @@ nnoremap <leader>gi :action GotoImplementation<CR>
 nnoremap <leader>gh :action QuickDocumentation<CR>
 " <leader>ca: Show quick fix / code actions (ShowIntentionActions)
 nnoremap <leader>ca :action ShowIntentionActions<CR>
+
+" Some additional useful keymaps
+" <leader>xz: Show diagnostics/errors in current file (ShowErrorsInCurrentFile)
+nnoremap <leader>xz :action ShowErrorsInCurrentFile<CR>
+" <leader>gf: Format file (ReformatCode)"
+nnoremap <leader>gf :action ReformatCode<CR>

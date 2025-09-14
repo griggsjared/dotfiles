@@ -1,8 +1,8 @@
 font-family = "UbuntuMono Nerd Font"
 font-size = 18
 adjust-cell-width = 0
-adjust-cell-height = 2
-adjust-cursor-height= 2
+adjust-cell-height = 6
+adjust-cursor-height= 6
 
 window-height = 1000000
 window-width = 1000000

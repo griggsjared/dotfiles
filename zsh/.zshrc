@@ -64,7 +64,7 @@ tmf() {
   if [ -z "$session" ]; then
     return 0
   fi
-  tm "$session"
+  tm "${session%% *}"
 }
 
 #PATHS

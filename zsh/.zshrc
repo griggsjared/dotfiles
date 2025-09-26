@@ -56,7 +56,16 @@ vf() {
   fi
   nvim -- "$file"
 }
-alias tmf='tm $(tm ls-all | fzf --height=20% --ansi --reverse)'
+# tmf (tmux find) function to find tmux sessions with fzf and connect to them
+tmf() {
+  local initial_query="$1"
+  local session
+  session="$(tm ls-all | fzf --query="$initial_query" --height=20% --ansi --reverse)"
+  if [ -z "$session" ]; then
+    return 0
+  fi
+  tm "$session"
+}
 
 #PATHS
 export PATH=$HOME/.local/bin:$PATH

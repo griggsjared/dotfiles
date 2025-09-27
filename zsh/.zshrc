@@ -60,7 +60,7 @@ vf() {
 tmf() {
   local initial_query="$1"
   local session
-  session="$(tm ls-all | fzf --query="$initial_query" --height=20% --ansi --reverse)"
+  session="$(tm ls-all | fzf --query="$initial_query" --height=20% --ansi --reverse --select-1 --exit-0)"
   if [ -z "$session" ]; then
     return 0
   fi

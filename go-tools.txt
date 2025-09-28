@@ -1,0 +1,6 @@
+# Go tools and dependencies
+# Install with: cat go-tools.txt | xargs -I {} go install {}
+
+golang.org/x/tools/gopls@latest
+github.com/griggsjared/tm@latest
+github.com/griggsjared/scram@latest

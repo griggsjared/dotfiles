@@ -10,10 +10,55 @@ chmod +x mac-init.sh
 stow */
 ```
 
-## The Mac Init Sccript
+## The Mac Init Script
 Run `./mac-init.sh` to install or update packages and tools.
-This can be run at any time, either on a new Mac or to just make sure the current environment has
-has everything it need and is up to date.
+This can be run at any time, either on a new Mac or to just make sure the current environment
+has everything it needs and is up to date.
+
+### Package Management
+The script uses standard configuration files for each ecosystem:
+
+#### Homebrew (`Brewfile`)
+```bash
+# Install/update all packages from Brewfile
+brew bundle
+
+# Update Brewfile with currently installed packages
+brew bundle dump --force
+
+# Check what would be installed
+brew bundle check
+```
+
+#### Go Tools (`go-tools.txt`)
+Lists Go packages to install globally:
+```bash
+# Install manually
+cat go-tools.txt | xargs -I {} go install {}
+```
+
+#### Node.js (`.nvmrc` + `package.json`)
+- `.nvmrc`: Specifies Node.js version
+- `package.json`: Global npm packages
+```bash
+# Install manually
+nvm install && nvm use
+npm install -g $(node -p "Object.keys(require('./package.json').devDependencies).join(' ')")
+```
+
+#### Rust (`rust-toolchain.toml`)
+Configures Rust toolchain and components:
+```bash
+# Install manually
+rustup show  # Reads rust-toolchain.toml automatically
+```
+
+#### Composer (`composer.json`)
+Global PHP packages (like Laravel Valet):
+```bash
+# Install manually
+composer global install
+```
 
 ## Config Usage
 

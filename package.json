@@ -1,0 +1,9 @@
+{
+  "name": "dotfiles-global-packages",
+  "private": true,
+  "description": "Global npm packages for dotfiles setup",
+  "dependencies": {},
+  "devDependencies": {
+    "@antfu/ni": "latest"
+  }
+}

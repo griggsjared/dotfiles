@@ -1,0 +1,10 @@
+# Rust toolchain and components
+# This file is used by rustup to manage Rust toolchains and components
+
+[toolchain]
+channel = "stable"
+
+[components]
+rust-analyzer = true
+clippy = true
+rustfmt = true

@@ -42,6 +42,7 @@
   "quicker.nvim": { "branch": "master", "commit": "6b88ca4d70e35df877d9564beba83f00ba0c3133" },
   "render-markdown.nvim": { "branch": "main", "commit": "9ab9dade85d8c7d411cc89b592028da3d1b7955a" },
   "rsync.nvim": { "branch": "master", "commit": "70be22f23eee7879ebd1bc01de077eca77bdb680" },
+  "sidekick.nvim": { "branch": "main", "commit": "4953ea0599e43687e187b6a8e9ab0ae6d27a9877" },
   "snacks.nvim": { "branch": "main", "commit": "d67a47739dfc652cfcf66c59e929c704a854b37a" },
   "supermaven-nvim": { "branch": "main", "commit": "07d20fce48a5629686aefb0a7cd4b25e33947d50" },
   "telescope-fzf-native.nvim": { "branch": "main", "commit": "1f08ed60cafc8f6168b72b80be2b2ea149813e55" },

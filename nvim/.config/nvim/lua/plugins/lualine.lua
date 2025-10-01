@@ -43,6 +43,10 @@ return {
 					sections = {},
 				},
 				{
+					filetypes = { "sidekick_terminal" },
+					sections = {},
+				},
+				{
 					filetypes = { "codecompanion" },
 					sections = {
 						lualine_a = { "mode" },

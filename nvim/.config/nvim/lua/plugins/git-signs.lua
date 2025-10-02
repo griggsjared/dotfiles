@@ -5,7 +5,9 @@ return {
       require("gitsigns").setup({
         current_line_blame = true
       })
-      vim.keymap.set("n", "<leader>gp", ":Gitsigns preview_hunk<CR>", { desc = "Toggle git blame for current line" })
+      vim.keymap.set("n", "<leader>pp", ":Gitsigns preview_hunk_inline<CR>", { desc = "Preview hunk" })
+      vim.keymap.set("n", "<leader>pr", ":Gitsigns reset_hunk<CR>", { desc = "Reset git hunk" })
+      vim.keymap.set("n", "<leader>ps", ":Gitsigns stage_hunk<CR>", { desc = "Stage git hunk" })
     end,
   },
 }

@@ -57,6 +57,33 @@ table.insert(keys, {
 	desc = "Sidekick Toggle CLI " .. active_cli,
 })
 
+-- send this to active cli
+table.insert(keys, {
+	"<leader>ct",
+	function()
+		require("sidekick.cli").send({ msg = "{this}" })
+	end,
+	desc = "Sidekick Send File to CLI " .. active_cli,
+})
+
+-- send file to active cli
+table.insert(keys, {
+	"<leader>cf",
+	function()
+		require("sidekick.cli").send({ msg = "{file}" })
+	end,
+	desc = "Sidekick Send File to CLI " .. active_cli,
+})
+
+-- send selection to active cli
+table.insert(keys, {
+	"<leader>cv",
+	function()
+		require("sidekick.cli").send({ msg = "{selection}" })
+	end,
+	desc = "Send Selection to CLI " .. active_cli,
+})
+
 if nes_enabled then
 	table.insert(keys, {
 		"<tab>",

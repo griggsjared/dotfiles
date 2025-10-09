@@ -18,7 +18,7 @@ local active_cli = clis[1]
 -- Dynamically generate key mappings for each CLI
 local keys = {
 	{
-		"<c-T>",
+		"<c-\\>",
 		function()
 			require("sidekick.cli").focus()
 		end,

@@ -19,10 +19,6 @@ theme = monokai-pro-dark
 #theme = onedark-dark 
 
 macos-titlebar-style = "tabs"
-macos-icon = custom-style
-macos-icon-frame = plastic
-macos-icon-screen-color = #a9dc76
-macos-icon-ghost-color = #ffffff
 
 window-save-state = always
 

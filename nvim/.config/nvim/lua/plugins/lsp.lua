@@ -48,6 +48,7 @@ return {
           "golangci_lint_ls",
           "eslint",
           "marksman",
+          "jsonls"
         }
 			})
 		end,

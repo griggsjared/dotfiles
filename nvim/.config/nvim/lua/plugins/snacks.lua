@@ -1,3 +1,125 @@
+local keys = {
+	{
+		"<leader>lg",
+		function()
+			Snacks.lazygit()
+		end,
+		desc = "Show lazygit floating window",
+	},
+	--- Snacks Pickers
+	-- Files Picker
+	{
+		"<leader>fs",
+		function()
+			Snacks.picker.smart({
+				filter = { cwd = true },
+			})
+		end,
+		desc = "Find files (Smart Picker)",
+		mode = { "n", "v" },
+	},
+	{
+		"<leader>ff",
+		function()
+			Snacks.picker.files()
+		end,
+		desc = "Find files",
+		mode = { "n", "v" },
+	},
+	{
+		"<leader>fg",
+		function()
+			Snacks.picker.grep({
+				filter = { cwd = true },
+			})
+		end,
+		desc = "Grep Files",
+		mode = { "n", "v" },
+	},
+	{
+		"<leader>fb",
+		function()
+			Snacks.picker.buffers({
+				layout = {
+          preset = "select",
+					layout = {
+						width = 0.33,
+						min_width = 30,
+						height = 0.25,
+						min_height = 3,
+					},
+				},
+				formatters = {
+					file = {
+						filename_first = true,
+					},
+				},
+				win = {
+					input = {
+						keys = {
+							["dd"] = { "bufdelete", mode = { "n", "i" } },
+						},
+					},
+				},
+			})
+		end,
+		desc = "Find Buffers",
+	},
+	{
+		"<leader>fo",
+		function()
+			Snacks.picker.recent({
+				filter = { cwd = true },
+			})
+		end,
+		desc = "Recent Files",
+	},
+	{
+		"<leader>fk",
+		function()
+			Snacks.picker.keymaps()
+		end,
+		desc = "Keymaps",
+	},
+	{
+		"<leader>fz",
+		function()
+			Snacks.picker.highlights()
+		end,
+		desc = "Highlights",
+	},
+	{
+		"<leader>ss",
+		function()
+			Snacks.picker.spelling({
+				layout = "select",
+			})
+		end,
+		desc = "Spell Suggest",
+	},
+	{
+		"<leader>fc",
+		function()
+			Snacks.picker.files({ cwd = vim.fn.stdpath("config") })
+		end,
+		desc = "Config Files",
+	},
+	{
+		"<leader>fp",
+		function()
+			Snacks.picker.git_status()
+		end,
+		desc = "Git Status",
+	},
+	{
+		"<leader>fr",
+		function()
+			Snacks.picker.resume()
+		end,
+		desc = "Resume Last Search",
+	},
+}
+
 return {
 	{
 		"folke/snacks.nvim",
@@ -14,6 +136,16 @@ return {
 						border = "rounded",
 					},
 				},
+			},
+			picker = {
+				enabled = true,
+				win = {
+					style = {
+						border = "rounded",
+						backdrop = false,
+					},
+				},
+				layout = "ivy",
 			},
 			dashboard = {
 				enabled = true,
@@ -60,8 +192,6 @@ return {
 				},
 			},
 		},
-		keys = {
-			{ "<leader>lg", "<CMD>lua Snacks.lazygit()<CR>", desc = "Show lazygit floating window" },
-		},
+		keys = keys,
 	},
 }

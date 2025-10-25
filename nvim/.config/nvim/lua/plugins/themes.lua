@@ -11,8 +11,8 @@ return {
 				background = "#1a1a1a",
 				-- dark1 = "#090909",
 				-- dark2 = "#0a0a0a",
-				dark1 =  "#141414",
-        dark2 = "#0e0e0e",
+				dark1 = "#141414",
+				dark2 = "#0e0e0e",
 				-- aliases
 				red = default_palette.accent1,
 				orange = default_palette.accent2,
@@ -27,6 +27,23 @@ return {
 				NormalFloat = { bg = palette.dark1, fg = palette.text },
 				Visual = { bg = palette.dimmed4 },
 				CursorLineNr = { fg = palette.green },
+				SnacksDashboardHeader = { fg = palette.green },
+				-- Snacks Picker
+				SnacksPicker = { bg = "none", nocombine = true },
+				SnacksPickerBorder = { bg = "none", fg = palette.dimmed2 },
+				SnacksPickerDir = { fg = palette.dimmed1 },
+				SnacksPickerCursorLine = { bg = palette.dimmed5 },
+				SnacksPickerListCursorLine = { bg = palette.dimmed5 },
+				SnacksPickerBoxCursorLine = { bg = palette.dimmed5 },
+				SnacksPickerBufFlags = { fg = palette.red },
+				SnacksPickerCol = { fg = palette.cyan, bg = "none" },
+				SnacksPickerPathIgnored = { fg = palette.dimmed1 },
+				SnacksPickerUnselected = { fg = palette.dimmed1 },
+				SnacksPickerPathHidden = { fg = palette.dimmed1 },
+				SnacksPickerKeymapRhs = { fg = palette.dimmed1 },
+				SnacksPickerTotals = { fg = palette.dimmed1 },
+				SnacksPickerGitStatusIgnored = { fg = palette.dimmed1 },
+				SnacksPickerGitStatusUntracked = { fg = palette.dimmed1 },
 				-- Indent Blankline
 				IndentActive = { fg = color_helper.blend(palette.magenta, 0.50, palette.background) },
 				IndentInactive = { fg = palette.dimmed5 },
@@ -37,10 +54,8 @@ return {
 				RenderMarkdownHeader4 = { fg = palette.orange },
 				RenderMarkdownHeader5 = { fg = palette.red },
 				RenderMarkdownHeader6 = { fg = palette.cyan },
-
 				RenderMarkdownCode = { bg = palette.dark1 },
 				RenderMarkdownCodeInline = { bg = palette.dark1 },
-				SnacksDashboardHeader = { fg = palette.green },
 				-- CMP
 				CmpItemKindCopilot = { fg = palette.cyan },
 				-- Blink

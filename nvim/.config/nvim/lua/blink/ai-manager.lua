@@ -101,7 +101,7 @@ end
 
 vim.keymap.set("n", "<leader>at", function()
 	M.toggle()
-  M.print_status()
+	M.print_status()
 	blink.reload()
 end, { desc = "Toggle Blink CMP AI suggestions" })
 

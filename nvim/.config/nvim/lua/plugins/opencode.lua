@@ -44,8 +44,8 @@ local create_floating_opencode = function(opts)
 		end)
 
 		vim.bo[buf].modifiable = false
-    vim.bo[buf].filetype = "opencode"
-    vim.bo[buf].buflisted = false
+		vim.bo[buf].filetype = "opencode"
+		vim.bo[buf].buflisted = false
 		vim.wo[win].number = false
 		vim.wo[win].relativenumber = false
 

@@ -4,7 +4,7 @@ return {
 		"rcarriga/nvim-dap-ui",
 		"nvim-neotest/nvim-nio",
 		"leoluz/nvim-dap-go",
-    "jay-babu/mason-nvim-dap.nvim"
+		"jay-babu/mason-nvim-dap.nvim",
 	},
 	keys = {
 		{

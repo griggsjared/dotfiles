@@ -41,7 +41,7 @@ local keys = {
 		function()
 			Snacks.picker.buffers({
 				layout = {
-          preset = "select",
+					preset = "select",
 					layout = {
 						width = 0.33,
 						min_width = 30,
@@ -145,7 +145,12 @@ return {
 						backdrop = false,
 					},
 				},
-				layout = "ivy",
+				layout = {
+					preset = "ivy",
+					layout = {
+						title_pos = "center",
+					},
+				},
 			},
 			dashboard = {
 				enabled = true,

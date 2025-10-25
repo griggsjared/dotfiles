@@ -6,8 +6,8 @@ return {
 			mappings = {
 				next = "']",
 				prev = "'[",
-        delete_line = "dm,",
-        delete_buf = "dm.",
+				delete_line = "dm,",
+				delete_buf = "dm.",
 			},
 		},
 	},

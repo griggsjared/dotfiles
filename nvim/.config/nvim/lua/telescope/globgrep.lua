@@ -52,7 +52,7 @@ M.live_multigrep = function(opts)
 			debounce = 100,
 			previewer = conf.grep_previewer(opts),
 			sorter = sorters.highlighter_only(opts),
-			default_text = opts.default_text or ""
+			default_text = opts.default_text or "",
 		})
 		:find()
 end

@@ -24,13 +24,15 @@ return {
 
 			local highlights = {
 				FloatBorder = { bg = palette.dark1, fg = palette.dimmed2 },
+				FloatTitle = { bg = palette.green, fg = palette.dark1, bold = true },
 				NormalFloat = { bg = palette.dark1, fg = palette.text },
 				Visual = { bg = palette.dimmed4 },
 				CursorLineNr = { fg = palette.green },
 				SnacksDashboardHeader = { fg = palette.green },
 				-- Snacks Picker
-				SnacksPicker = { bg = "none", nocombine = true },
-				SnacksPickerBorder = { bg = "none", fg = palette.dimmed2 },
+				SnacksPicker = { bg = palette.background },
+				SnacksPickerBorder = { bg = palette.background, fg = palette.dimmed2 },
+				SnacksPickerPreview = { bg = palette.background },
 				SnacksPickerDir = { fg = palette.dimmed1 },
 				SnacksPickerCursorLine = { bg = palette.dimmed5 },
 				SnacksPickerListCursorLine = { bg = palette.dimmed5 },

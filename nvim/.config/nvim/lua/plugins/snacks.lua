@@ -142,12 +142,12 @@ return {
 				win = {
 					style = {
 						border = "rounded",
-						backdrop = false,
 					},
 				},
 				layout = {
 					preset = "ivy",
 					layout = {
+						backdrop = true,
 						title_pos = "center",
 					},
 				},

@@ -9,21 +9,13 @@ local keys = {
 	--- Snacks Pickers
 	-- Files Picker
 	{
-		"<leader>fs",
+		"<leader>ff",
 		function()
 			Snacks.picker.smart({
 				filter = { cwd = true },
 			})
 		end,
 		desc = "Find files (Smart Picker)",
-		mode = { "n", "v" },
-	},
-	{
-		"<leader>ff",
-		function()
-			Snacks.picker.files()
-		end,
-		desc = "Find files",
 		mode = { "n", "v" },
 	},
 	{

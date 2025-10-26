@@ -312,11 +312,7 @@ return {
 				},
 			})
 
-			vim.keymap.set("n", "K", function()
-				vim.lsp.buf.hover({
-					border = "rounded",
-				})
-			end, { desc = "Show hover documentation" })
+			vim.keymap.set("n", "K", vim.lsp.buf.hover, { desc = "Show hover documentation" })
 			vim.keymap.set("n", "<leader>gd", vim.lsp.buf.definition, { desc = "Go to definition" })
 			vim.keymap.set("n", "<leader>gr", vim.lsp.buf.references, { desc = "Show references" })
 			vim.keymap.set("n", "<leader>gi", vim.lsp.buf.implementation, { desc = "Go to implementation" })

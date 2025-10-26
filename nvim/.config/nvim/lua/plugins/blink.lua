@@ -93,12 +93,8 @@ return {
 					documentation = {
 						auto_show = true,
 						auto_show_delay_ms = 50,
-						window = {
-							border = "rounded",
-						},
 					},
 					menu = {
-						border = "rounded",
 						draw = {
 							columns = {
 								{ "label", "label_description", gap = 1 },
@@ -123,9 +119,6 @@ return {
 				},
 				signature = {
 					enabled = true,
-					window = {
-						border = "rounded",
-					},
 				},
 				sources = {
 					default = function()

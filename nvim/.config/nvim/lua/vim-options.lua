@@ -23,6 +23,7 @@ vim.opt.softtabstop = 2 -- Soft tab stop
 vim.opt.expandtab = true -- Use spaces instead of tabs
 vim.opt.smartindent = true -- Smart auto-indenting
 vim.opt.autoindent = true -- Copy indent from current line
+vim.o.winborder = 'rounded' -- Rounded window borders
 
 -- Set 4 space indentation for specific file types
 vim.api.nvim_create_autocmd("FileType", {

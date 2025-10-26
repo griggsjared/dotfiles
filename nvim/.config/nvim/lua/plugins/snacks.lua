@@ -151,11 +151,6 @@ return {
 			},
 			picker = {
 				enabled = true,
-				win = {
-					style = {
-						border = "rounded",
-					},
-				},
 				layout = {
 					preset = "ivy",
 					layout = {

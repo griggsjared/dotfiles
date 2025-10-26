@@ -2,9 +2,6 @@ return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	config = function()
-		local codecompanion_model = require("code-companion.lualine-model")
-		local codecompanion_adapter = require("code-companion.lualine-adapter")
-		local codecompanion_spinner = require("code-companion.lualine-spinner")
 		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
 
 		require("lualine").setup({
@@ -45,38 +42,6 @@ return {
 				{
 					filetypes = { "sidekick_terminal" },
 					sections = {},
-				},
-				{
-					filetypes = { "codecompanion" },
-					sections = {
-						lualine_a = { "mode" },
-						lualine_b = {
-							codecompanion_adapter,
-						},
-						lualine_c = {
-							codecompanion_model,
-						},
-						lualine_x = {
-							codecompanion_spinner,
-						},
-						lualine_y = {
-							"progress",
-						},
-						lualine_z = {
-							"location",
-						},
-					},
-					inactive_sections = {
-						lualine_a = {
-							codecompanion_adapter,
-							codecompanion_model,
-						},
-						lualine_b = {},
-						lualine_c = {},
-						lualine_x = {},
-						lualine_y = {},
-						lualine_z = {},
-					},
 				},
 				{
 					filetypes = { "oil" },

@@ -67,6 +67,15 @@ local keys = {
 		desc = "Recent Files",
 	},
 	{
+		"<leader>fO",
+		function()
+			Snacks.picker.recent({
+				title = "Recent Files (All)",
+			})
+		end,
+		desc = "Recent Files (All)",
+	},
+	{
 		"<leader>fk",
 		function()
 			Snacks.picker.keymaps()

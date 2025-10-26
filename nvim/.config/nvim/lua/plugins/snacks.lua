@@ -12,6 +12,7 @@ local keys = {
 		"<leader>ff",
 		function()
 			Snacks.picker.smart({
+				title = "Find Files (Smart Picker)",
 				filter = { cwd = true },
 			})
 		end,
@@ -32,6 +33,7 @@ local keys = {
 		"<leader>fb",
 		function()
 			Snacks.picker.buffers({
+				title = "Current Buffers",
 				layout = {
 					preset = "select",
 					layout = {
@@ -61,6 +63,7 @@ local keys = {
 		"<leader>fo",
 		function()
 			Snacks.picker.recent({
+				title = "Recent Files",
 				filter = { cwd = true },
 			})
 		end,
@@ -93,6 +96,7 @@ local keys = {
 		"<leader>ss",
 		function()
 			Snacks.picker.spelling({
+				title = "Spelling Suggestions",
 				layout = "select",
 			})
 		end,
@@ -101,21 +105,28 @@ local keys = {
 	{
 		"<leader>fc",
 		function()
-			Snacks.picker.files({ cwd = vim.fn.stdpath("config") })
+			Snacks.picker.files({
+				title = "Config Files",
+				cwd = vim.fn.stdpath("config")
+			})
 		end,
 		desc = "Config Files",
 	},
 	{
 		"<leader>fp",
 		function()
-			Snacks.picker.git_status()
+			Snacks.picker.git_status({
+				title = "Tracked Git Changes",
+			})
 		end,
 		desc = "Git Status",
 	},
 	{
 		"<leader>fr",
 		function()
-			Snacks.picker.resume()
+			Snacks.picker.resume({
+				title = "Resume Last Search",
+			})
 		end,
 		desc = "Resume Last Search",
 	},

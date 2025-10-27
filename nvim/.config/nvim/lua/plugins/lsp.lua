@@ -33,7 +33,7 @@ return {
 				-- lsps only
 				ensure_installed = {
 					"html",
-					"somesass_ls",
+					"cssls",
 					"tailwindcss",
 					"intelephense",
 					"lua_ls",
@@ -78,9 +78,9 @@ return {
 				filetypes = { "html", "templ", "blade" },
 			})
 
-			vim.lsp.config("somesass_ls", {
+			vim.lsp.config("cssls", {
 				settings = {
-					scss = {
+					css = {
 						validate = true,
 						lint = {
 							unknownAtRules = "ignore",
@@ -92,7 +92,7 @@ return {
 							unknownAtRules = "ignore",
 						},
 					},
-					css = {
+					scss = {
 						validate = true,
 						lint = {
 							unknownAtRules = "ignore",

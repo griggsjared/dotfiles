@@ -158,6 +158,11 @@ return {
 						title_pos = "center",
 					},
 				},
+				formatters = {
+					file = {
+						icon_width = 3,
+					}
+				}
 			},
 			dashboard = {
 				enabled = true,

@@ -298,7 +298,12 @@ return {
 			-- laravel_ls doesnt seem top work when installing from mason, Installed manually...
 			-- go install github.com/laravel-ls/laravel-ls/cmd/laravel-ls@latest
 			-- manually enabled
-			-- vim.lsp.enable("laravel_ls")
+			vim.lsp.config("laravel_ls", {
+				cmd = { "laravel-ls" },
+				filetypes = { "php", "blade" },
+				root_markers = { "artisan" },
+			})
+			vim.lsp.enable("laravel_ls")
 
 			vim.diagnostic.config({
 				virtual_text = true,

@@ -20,7 +20,7 @@ local keys = {
 	{
 		"<c-\\>",
 		function()
-			require("sidekick.cli").focus()
+			require("sidekick.cli").focus({ name = active_cli })
 		end,
 		mode = { "n", "x", "i", "t" },
 		desc = "Sidekick Switch Focus",

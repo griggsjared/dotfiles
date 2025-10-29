@@ -38,7 +38,7 @@ local keys = {
 					preset = "select",
 					layout = {
 						width = 0.25,
-						min_width = 30,
+						min_width = 75,
 						height = 0.25,
 						min_height = 3,
 					},

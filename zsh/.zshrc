@@ -46,6 +46,17 @@ alias v='nvim'
 alias cat='bat -pp'
 alias y='yazi'
 
+# nah function to reset git changes after confirmation
+nah() {
+  printf "This will reset any changes tracked by git. Continue? [y/N] "
+  read -r reply
+  if [[ "$reply" != "y" && "$reply" != "Y" ]]; then
+    echo "Aborted."
+    return 1
+  fi
+  git reset --hard && git clean -df
+}
+
 # vf (vim find) function to find files with fzf and open in neovim
 vf() {
   local initial_query="$1"

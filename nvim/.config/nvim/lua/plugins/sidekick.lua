@@ -105,6 +105,11 @@ return {
 		nes = {
 			enabled = nes_enabled,
 		},
+		cli = {
+			prompts = {
+				commit = "Please review the staged changes and recommend a concise git commit message. Do not create the commit, just provide the message. Follow the style most recently used in the commit history.",
+			},
+		},
 	},
 	keys = keys,
 }

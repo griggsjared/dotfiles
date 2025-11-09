@@ -3,6 +3,7 @@ return {
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	config = function()
 		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
+		local indent_info = require("lualine.indent-info")
 
 		require("lualine").setup({
 			sections = {
@@ -23,7 +24,7 @@ return {
 						},
 					},
 					blink_ai_manager_status,
-					"encoding",
+					indent_info,
 					"fileformat",
 					"filetype",
 				},

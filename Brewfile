@@ -49,6 +49,7 @@ brew "php@8.1"
 brew "php@8.2"
 brew "php@8.3"
 brew "php@8.4"
+brew "php@8.5"
 brew "composer"
 
 # Node.js Package Managers (Note: Node.js itself managed by NVM)

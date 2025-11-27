@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "theme": "system",
+  "theme": "monokai-pro-dark",
   "model": "github-copilot/claude-sonnet-4.5",
   "autoshare": false,
   "autoupdate": true,

@@ -4,6 +4,7 @@ return {
 	config = function()
 		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
 		local indent_info = require("lualine.indent-info")
+		local transparent_theme = require("lualine.transparent-theme")
 
 		require("lualine").setup({
 			sections = {
@@ -32,6 +33,7 @@ return {
 				lualine_z = { "location" },
 			},
 			options = {
+				theme = transparent_theme,
 				section_separators = "",
 				component_separators = "",
 			},

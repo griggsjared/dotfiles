@@ -29,6 +29,20 @@ return {
 				Visual = { bg = palette.dimmed4 },
 				CursorLineNr = { fg = palette.green },
 				SnacksDashboardHeader = { fg = palette.green },
+				-- Statusline transparent background
+				StatusLine = { bg = "NONE" },
+				StatusLineNC = { bg = "NONE" },
+				-- Lualine custom highlight groups
+				LualineNormalA = { bg = palette.green, fg = palette.dark2, bold = true },
+				LualineNormalB = { bg = "NONE", fg = palette.text },
+				LualineNormalC = { bg = "NONE", fg = palette.text },
+				LualineInsertA = { bg = palette.cyan, fg = palette.dark2, bold = true },
+				LualineVisualA = { bg = palette.magenta, fg = palette.dark2, bold = true },
+				LualineReplaceA = { bg = palette.red, fg = palette.dark2, bold = true },
+				LualineCommandA = { bg = palette.yellow, fg = palette.dark2, bold = true },
+				LualineInactiveA = { bg = "NONE", fg = palette.dimmed1 },
+				LualineInactiveB = { bg = "NONE", fg = palette.dimmed1 },
+				LualineInactiveC = { bg = "NONE", fg = palette.dimmed1 },
 				-- Snacks Picker
 				SnacksPicker = { bg = palette.background },
 				SnacksPickerBorder = { bg = palette.background, fg = palette.dimmed2 },
@@ -115,6 +129,20 @@ return {
 					Normal = { bg = "${none}" },
 					IndentActive = { fg = "${red}" },
 					IndentInactive = { fg = "${gray}" },
+					-- Statusline transparent background
+					StatusLine = { bg = "${none}" },
+					StatusLineNC = { bg = "${none}" },
+					-- Lualine custom highlight groups
+					LualineNormalA = { bg = "${green}", fg = "${bg}", bold = true },
+					LualineNormalB = { bg = "${none}", fg = "${fg}" },
+					LualineNormalC = { bg = "${none}", fg = "${fg}" },
+					LualineInsertA = { bg = "${blue}", fg = "${bg}", bold = true },
+					LualineVisualA = { bg = "${purple}", fg = "${bg}", bold = true },
+					LualineReplaceA = { bg = "${red}", fg = "${bg}", bold = true },
+					LualineCommandA = { bg = "${yellow}", fg = "${bg}", bold = true },
+					LualineInactiveA = { bg = "${none}", fg = "${gray}" },
+					LualineInactiveB = { bg = "${none}", fg = "${gray}" },
+					LualineInactiveC = { bg = "${none}", fg = "${gray}" },
 				},
 				styles = {
 					types = "italic",

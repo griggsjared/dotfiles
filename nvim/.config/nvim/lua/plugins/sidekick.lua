@@ -28,7 +28,7 @@ local keys = {
 	{
 		"<leader>cq",
 		function()
-			require("sidekick.cli").select_prompt()
+			require("sidekick.cli").prompt()
 		end,
 		desc = "Sidekick Prompts",
 		mode = { "n", "v" },
@@ -52,7 +52,7 @@ end
 table.insert(keys, {
 	"<leader>cc",
 	function()
-		require("sidekick.cli").toggle({ name = active_cli, focus = true, diagnostics = true })
+		require("sidekick.cli").show({ name = active_cli, focus = true })
 	end,
 	desc = "Sidekick Toggle CLI " .. active_cli,
 })

@@ -27,7 +27,7 @@ return {
 			local staged_files = vim.fn.systemlist("git diff --cached --name-only")
 
 			if #staged_files == 0 then
-				vim.notify("No changed files to transfer", vim.log.levels.INFO)
+				vim.notify("No staged files to transfer", vim.log.levels.INFO)
 				return
 			end
 

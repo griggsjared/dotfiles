@@ -1,4 +1,12 @@
 local keys = {
+				actions = {
+					transfer_up = function(_, item)
+						vim.cmd.TransferUpload(item.file)
+					end,
+					transfer_down = function(_, item)
+						vim.cmd.TransferDownload(item.file)
+					end,
+				},
 	{
 		"<leader>lg",
 		function()
@@ -119,6 +127,14 @@ local keys = {
 		function()
 			Snacks.picker.git_status({
 				title = "Tracked Git Changes",
+				win = {
+					input = {
+						keys = {
+							["tu"] = { "transfer_up", mode = { "n" } },
+							["td"] = { "transfer_down", mode = { "n" } },
+						},
+					},
+				},
 			})
 		end,
 		desc = "Git Status",

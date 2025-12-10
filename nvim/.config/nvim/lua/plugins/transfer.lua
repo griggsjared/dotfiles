@@ -36,8 +36,7 @@ return {
 			-- Upload each file
 			for _, file in ipairs(staged_files) do
 				local full_path = git_root .. "/" .. file
-				vim.cmd("edit " .. vim.fn.fnameescape(full_path))
-				vim.cmd("TransferUpload")
+				require("transfer.transfer").upload_file(full_path)
 			end
 
 			vim.notify("Finished transferring git-changed files", vim.log.levels.INFO)

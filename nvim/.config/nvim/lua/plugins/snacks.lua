@@ -51,7 +51,9 @@ local keys = {
 				win = {
 					input = {
 						keys = {
-							["dd"] = { "bufdelete", mode = { "n", "i" } },
+							["dd"] = { "bufdelete", mode = { "n" } },
+							["tu"] = { "transfer_up", mode = { "n" } },
+							["td"] = { "transfer_down", mode = { "n" } },
 						},
 					},
 				},
@@ -107,7 +109,7 @@ local keys = {
 		function()
 			Snacks.picker.files({
 				title = "Config Files",
-				cwd = vim.fn.stdpath("config")
+				cwd = vim.fn.stdpath("config"),
 			})
 		end,
 		desc = "Config Files",
@@ -158,11 +160,19 @@ return {
 						title_pos = "center",
 					},
 				},
+				actions = {
+					transfer_up = function(_, item)
+						vim.cmd.TransferUpload(item.file)
+					end,
+					transfer_down = function(_, item)
+						vim.cmd.TransferDownload(item.file)
+					end,
+				},
 				formatters = {
 					file = {
 						icon_width = 3,
-					}
-				}
+					},
+				},
 			},
 			dashboard = {
 				enabled = true,

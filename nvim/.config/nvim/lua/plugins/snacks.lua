@@ -1,12 +1,4 @@
 local keys = {
-				actions = {
-					transfer_up = function(_, item)
-						vim.cmd.TransferUpload(item.file)
-					end,
-					transfer_down = function(_, item)
-						vim.cmd.TransferDownload(item.file)
-					end,
-				},
 	{
 		"<leader>lg",
 		function()

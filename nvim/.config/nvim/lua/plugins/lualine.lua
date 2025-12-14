@@ -5,17 +5,7 @@ return {
 		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
 		local indent_info = require("lualine.indent-info")
 		local transparent_theme = require("lualine.transparent-theme")
-		local sidekick_status =  {
-      function()
-        return " "
-      end,
-      cond = function()
-        return #require("sidekick.status").cli() > 0
-      end,
-      color = function()
-        return "Special"
-      end,
-    }
+		local sidekick_status = require("lualine.sidekick-status")
 
 		require("lualine").setup({
 			sections = {
@@ -56,9 +46,22 @@ return {
 				{
 					filetypes = { "sidekick_terminal" },
 					sections = {
-						lualine_a = { sidekick_status },
+						lualine_a = {
+							{
+								function ()
+									return sidekick_status(true)
+								end
+							}
+						},
 					},
 					inactive_sections = {
+						lualine_a = {
+							{
+								function ()
+									return sidekick_status(false)
+								end
+							}
+						}
 					},
 				},
 				{

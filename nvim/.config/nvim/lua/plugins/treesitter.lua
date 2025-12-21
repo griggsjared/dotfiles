@@ -9,6 +9,7 @@ return {
 				highlight = { enable = true },
 				indent = { enable = true },
 				ensure_installed = {
+					"bash",
 					"php_only",
 					"php",
 					"html",

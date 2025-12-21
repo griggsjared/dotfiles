@@ -83,3 +83,13 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
 	command = "checktime",
 })
 
+-- Treat .env and .env.* files as shell-style env files
+vim.filetype.add({
+	filename = {
+		[".env"] = "sh",
+	},
+	pattern = {
+		["%.env%..+"] = "sh",
+	},
+})
+

@@ -11,7 +11,13 @@ return {
 		"TransferGitStaged",
 	},
 	config = function()
-		require("transfer").setup()
+		require("transfer").setup({
+			config_template = function()
+				local default_file = vim.fn.stdpath("config") .. "/lua/scp/default-config.lua"
+				return vim.fn.readfile(default_file)
+			end,
+		})
+
 		vim.keymap.set("n", "<leader>td", "<cmd>DiffRemote<cr>", { desc = "Diff with remote" })
 		vim.keymap.set("n", "<leader>tu", "<cmd>TransferUpload<cr>", { desc = "Upload file to remote" })
 		vim.keymap.set("n", "<leader>td", "<cmd>TransferDownload<cr>", { desc = "Download file from remote" })

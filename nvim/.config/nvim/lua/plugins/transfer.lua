@@ -13,7 +13,7 @@ return {
 	config = function()
 		require("transfer").setup({
 			config_template = function()
-				local default_file = vim.fn.stdpath("config") .. "/lua/scp/default-config.lua"
+				local default_file = vim.fn.stdpath("config") .. "/lua/transfer/default-config.lua"
 				return vim.fn.readfile(default_file)
 			end,
 		})

@@ -4,17 +4,6 @@ return {
 		dependencies = {
 			"rafamadriz/friendly-snippets",
 			"saghen/blink.compat",
-			-- SuperMaven
-			{
-				"supermaven-inc/supermaven-nvim",
-				opts = {
-					disable_inline_completion = true,
-					disable_keymaps = true,
-				},
-			},
-			{
-				"huijiro/blink-cmp-supermaven",
-			},
 			-- Copilot
 			"fang2hou/blink-copilot",
 			{
@@ -27,19 +16,6 @@ return {
 							auto_trigger = false,
 							accept_newline = true,
 						},
-					})
-				end,
-			},
-			-- Windsurf / Codeium
-			{
-				"Exafunction/windsurf.nvim",
-				dependencies = {
-					"nvim-lua/plenary.nvim",
-					"hrsh7th/nvim-cmp",
-				},
-				config = function()
-					require("codeium").setup({
-						enable_cmp_source = false,
 					})
 				end,
 			},

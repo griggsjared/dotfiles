@@ -83,22 +83,3 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
 	command = "checktime",
 })
 
--- copy the current file path relative the the cwd
-vim.keymap.set("n", "<leader>yp", function()
-	local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":.")
-	if path == "" then
-		return
-	end
-	vim.fn.setreg("+", path)
-	vim.notify("Copied: " .. path)
-end, { desc = "Copy relative file path" })
-
--- copy the current file name
-vim.keymap.set("n", "<leader>yf", function()
-	local name = vim.api.nvim_buf_get_name(0):match("[^/]*$")
-	if name == "" then
-		return
-	end
-	vim.fn.setreg("+", name)
-	vim.notify("Copied: " .. name)
-end, { desc = "Copy file name" })

@@ -37,7 +37,6 @@
   "promise-async": { "branch": "main", "commit": "119e8961014c9bfaf1487bf3c2a393d254f337e2" },
   "quicker.nvim": { "branch": "master", "commit": "9983d4b28881e1df626e3682167b45c284d4da8c" },
   "render-markdown.nvim": { "branch": "main", "commit": "07d088bf8bdadd159eb807b90eaee86a4778383f" },
-  "rsync.nvim": { "branch": "master", "commit": "70be22f23eee7879ebd1bc01de077eca77bdb680" },
   "sidekick.nvim": { "branch": "main", "commit": "c2bdf8cfcd87a6be5f8b84322c1b5052e78e302e" },
   "snacks.nvim": { "branch": "main", "commit": "fe7cfe9800a182274d0f868a74b7263b8c0c020b" },
   "tiny-glimmer.nvim": { "branch": "main", "commit": "e83bab26665c2dd4153b8a24e172e674e7c6dee7" },

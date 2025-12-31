@@ -11,8 +11,11 @@ return {
 				background = "#1a1a1a",
 				-- dark1 = "#090909",
 				-- dark2 = "#0a0a0a",
-				dark1 = "#141414",
-				dark2 = "#0e0e0e",
+				-- dark1 = "#141414",
+				-- dark2 = "#0e0e0e",
+				dark1 = "#171717",
+				dark2 = "#101010",
+
 				-- aliases
 				red = default_palette.accent1,
 				orange = default_palette.accent2,

@@ -23,6 +23,11 @@ bindkey '\eOB' down-line-or-history
 # Enable magic space for autocomplete
 bindkey ' ' magic-space  
 
+# Open bufferline with Ctrl+e in insert moda
+autoload -Uz edit-command-line
+zle -N edit-command-line
+bindkey '^E' edit-command-line
+
 # Source fzf
 source <(fzf --zsh)
 

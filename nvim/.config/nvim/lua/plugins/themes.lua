@@ -3,6 +3,7 @@ return {
 		"loctvl842/monokai-pro.nvim",
 		priority = 1000,
 		lazy = false,
+		commit = "8d43e7746754c2dc6e8b797cbcdd361b46086675",
 		config = function()
 			local default_palette = require("monokai-pro.colorscheme.palette.pro")
 			local color_helper = require("monokai-pro.color_helper")

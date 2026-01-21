@@ -35,6 +35,15 @@ vim.api.nvim_create_autocmd("FileType", {
 	end,
 })
 
+-- Enable line wrapping for markdown files
+vim.api.nvim_create_autocmd("FileType", {
+	group = augroup,
+	pattern = "markdown",
+	callback = function()
+		vim.opt_local.wrap = true
+	end,
+})
+
 -- Tabs Display options
 vim.opt.showtabline = 0 -- Never show tabline (0=never, 1=when multiple tabs, 2=always)
 

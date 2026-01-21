@@ -20,6 +20,9 @@ bindkey '\eOA' up-line-or-history
 bindkey '\e[B' down-line-or-history
 bindkey '\eOB' down-line-or-history
 
+# Enable magic space for autocomplete
+bindkey ' ' magic-space  
+
 # Source fzf
 source <(fzf --zsh)
 
@@ -73,6 +76,7 @@ vf() {
   fi
   nvim -- "$file"
 }
+
 # tmf (tmux find) function to find tmux sessions with fzf and connect to them
 tmf() {
   local initial_query="$1"
@@ -82,6 +86,11 @@ tmf() {
     return 0
   fi
   tm "${session%% *}"
+}
+
+# chpwd function automatically called when directory changes.
+chpwd() {
+  ls
 }
 
 #PATHS

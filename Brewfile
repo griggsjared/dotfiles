@@ -52,7 +52,8 @@ brew "php@8.4"
 brew "php@8.5"
 brew "composer"
 
-# Node.js Package Managers (Note: Node.js itself managed by NVM)
+# Typesctipt and Node.js Package Managers (Note: Node.js itself managed by NVM)
+brew "typescript"
 brew "pnpm"
 brew "yarn"
 

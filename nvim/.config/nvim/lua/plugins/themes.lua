@@ -1,13 +1,13 @@
 return {
 	{
-		"griggsjared/monokai-baked.nvim",
+		"griggsjared/baked.nvim",
 		priority = 1000,
 		lazy = false,
 		config = function()
-			require("monokai-baked").setup({
-				transparent_background = true,
+			require("baked").setup({
+				transparent_background = false,
 			})
-			vim.cmd([[colorscheme monokai-baked]])
+			vim.cmd([[colorscheme baked]])
 		end,
 	},
 }

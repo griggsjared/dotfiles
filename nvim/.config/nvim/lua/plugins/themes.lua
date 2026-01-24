@@ -1,6 +1,7 @@
 return {
 	{
-		"griggsjared/baked.nvim",
+		-- "griggsjared/baked.nvim",
+		dir = vim.fn.stdpath("config") .. "/lua/baked",
 		priority = 1000,
 		lazy = false,
 		config = function()

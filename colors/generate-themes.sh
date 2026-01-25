@@ -12,7 +12,7 @@ THEME="${BAKED_THEME:-monokai}"
 DOTFILES="${HOME}/.dotfiles"
 
 # Validate theme
-if [[ "$THEME" != "monokai" && "$THEME" != "onedark" && "$THEME" != "catppuccin" && "$THEME" != "tokyonight" && "$THEME" != "rosepine" && "$THEME" != "gruvbox" && "$THEME" != "ember" && "$THEME" != "rpg" && "$THEME" != "rpg-lite" ]]; then
+if [[ "$THEME" != "monokai" && "$THEME" != "onedark" && "$THEME" != "catppuccin" && "$THEME" != "tokyonight" && "$THEME" != "rosepine" && "$THEME" != "gruvbox" && "$THEME" != "ember" && "$THEME" != "rpg" && "$THEME" != "rpg-lite" && "$THEME" != "dracula" ]]; then
   echo "Warning: Invalid BAKED_THEME '$THEME'. Using 'monokai'." >&2
   THEME="monokai"
 fi

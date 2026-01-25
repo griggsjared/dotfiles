@@ -9,7 +9,7 @@ local palette = {
 	orange = "#ff9e64",
 	yellow = "#e0af68",
 	green = "#9ece6a",
-	cyan = "#7dcfff",
+	blue = "#7aa2f7",
 	magenta = "#bb9af7",
 
 	dimmed1 = "#c1c0c0",

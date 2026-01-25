@@ -25,7 +25,7 @@ function M.get(c, _)
 		PreCondit = { fg = c.base.red },
 		Type = { fg = c.base.white },
 		StorageClass = { fg = c.base.red, italic = true },
-		Structure = { fg = c.base.cyan, italic = true },
+		Structure = { fg = c.base.blue, italic = true },
 		Typedef = { fg = c.base.red },
 		Special = { fg = c.base.blue },
 		SpecialChar = { fg = c.base.blue },

@@ -141,20 +141,13 @@ baked() {
     "$HOME/.dotfiles/colors/generate-themes.sh"
   fi
   
-  # If running in Ghostty, reload its config
-  if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
-    if [[ "$(uname)" == "Darwin" ]]; then
-      osascript -e 'tell application "System Events" to keystroke "," using {command down, shift down}' 2>/dev/null
-      echo "✓ Switched to $selected theme (Ghostty config reloaded)"
-    else
-      if command -v xdotool &>/dev/null; then
-        xdotool key --clearmodifiers ctrl+shift+comma
-        echo "✓ Switched to $selected theme (Ghostty config reloaded)"
-      else
-        echo "✓ Switched to $selected theme (press ctrl+shift+, to reload Ghostty)"
-      fi
-    fi
+  # Show appropriate message based on environment
+  if [[ -n "$GHOSTTY_RESOURCES_DIR" ]]; then
+    # In Ghostty (whether in tmux or not) - show manual reload instruction
+    echo "✓ Switched to $selected theme"
+    echo "  → Press cmd+shift+, to reload Ghostty colors"
   else
+    # Not in Ghostty
     echo "✓ Switched to $selected theme (restart terminal to apply)"
   fi
   
@@ -197,7 +190,3 @@ export BAKED_THEME="${BAKED_THEME:-monokai}"
 
 # Generate theme configs on shell init
 [[ -x "$HOME/.dotfiles/colors/generate-themes.sh" ]] && "$HOME/.dotfiles/colors/generate-themes.sh"
-
-if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
-    export TERM=xterm-256color
-fi

@@ -57,7 +57,7 @@ function M.get(c, hp)
 		diffRemoved = { fg = c.base.red },
 		diffFile = { fg = c.base.yellow },
 		diffNewFile = { fg = c.base.yellow },
-		diffLine = { fg = c.base.cyan },
+		diffLine = { fg = c.base.blue },
 		SpellBad = { fg = c.base.red, sp = c.base.red, undercurl = true },
 		SpellCap = { fg = c.base.red, sp = c.base.red, undercurl = true },
 		SpellLocal = { fg = c.base.red, sp = c.base.red, undercurl = true },

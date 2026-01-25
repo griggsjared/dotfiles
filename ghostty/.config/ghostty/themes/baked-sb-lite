@@ -1,0 +1,27 @@
+# Starbase Lite (BisectHosting) theme for Ghostty
+# Balanced readability with brand colors
+# Colors from https://www.bisecthosting.com
+
+# Background/Foreground (standardized across themes)
+background = #1a1a1a
+foreground = #fbfcfa
+
+# ANSI Colors (theme-specific - readable + BisectHosting brand)
+palette = 0=#1a1a1a
+palette = 1=#ff5555
+palette = 2=#84cc16
+palette = 3=#ffd866
+palette = 4=#1b57c4
+palette = 5=#b739f2
+palette = 6=#fc9867
+palette = 7=#fbfcfa
+
+# Bright ANSI Colors
+palette = 8=#727072
+palette = 9=#ff5555
+palette = 10=#84cc16
+palette = 11=#ffd866
+palette = 12=#1b57c4
+palette = 13=#b739f2
+palette = 14=#fc9867
+palette = 15=#fbfcfa

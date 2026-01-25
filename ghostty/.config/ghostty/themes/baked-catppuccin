@@ -1,0 +1,20 @@
+foreground = #fcfcfa
+background = #1a1a1a
+
+palette = 0=#1a1a1a
+palette = 1=#f38ba8
+palette = 2=#a6e3a1
+palette = 3=#f9e2af
+palette = 4=#94e2d5
+palette = 5=#cba6f7
+palette = 6=#fab387
+palette = 7=#fcfcfa
+
+palette = 8=#727072
+palette = 9=#f38ba8
+palette = 10=#a6e3a1
+palette = 11=#f9e2af
+palette = 12=#94e2d5
+palette = 13=#cba6f7
+palette = 14=#fab387
+palette = 15=#fcfcfa

@@ -8,7 +8,7 @@ export BAKED_THEME="${BAKED_THEME:-monokai}"
 
 # baked function to switch themes interactively with fzf
 baked() {
-  local themes=("monokai" "onedark" "catppuccin" "tokyonight" "rosepine" "gruvbox" "ember" "rpg" "rpg-lite" "dracula")
+  local themes=("monokai" "onedark" "catppuccin" "tokyonight" "rosepine" "gruvbox" "ember" "rpg" "rpg-lite" "dracula" "sb" "sb-lite")
   local current_theme="${BAKED_THEME:-monokai}"
   local selected
   

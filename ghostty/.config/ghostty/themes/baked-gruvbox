@@ -1,4 +1,4 @@
-foreground = #fcfcfa
+foreground = #fbfcfa
 background = #1a1a1a
 
 palette = 0=#1a1a1a
@@ -8,7 +8,7 @@ palette = 3=#fabd2f
 palette = 4=#83a598
 palette = 5=#d3869b
 palette = 6=#fe8019
-palette = 7=#fcfcfa
+palette = 7=#fbfcfa
 
 palette = 8=#727072
 palette = 9=#fb4934
@@ -17,4 +17,4 @@ palette = 11=#fabd2f
 palette = 12=#83a598
 palette = 13=#d3869b
 palette = 14=#fe8019
-palette = 15=#fcfcfa
+palette = 15=#fbfcfa

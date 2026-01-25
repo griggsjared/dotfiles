@@ -4,15 +4,15 @@
 
 # Standard background/foreground (same across all baked themes)
 background = #1a1a1a
-foreground = #fcfcfa
-selection-background = #fcfcfa
+foreground = #fbfcfa
+selection-background = #fbfcfa
 selection-foreground = #1a1a1a
-cursor-color = #fcfcfa
+cursor-color = #fbfcfa
 cursor-text = #1a1a1a
 
 # ANSI colors - RPG-Lite palette (Softened WoW item rarities)
 # Position 0: black
-palette = 0=#101010
+palette = 0=#1a1a1a
 # Position 1: red - softened red
 palette = 1=#d9726c
 # Position 2: green - softened uncommon quality
@@ -26,7 +26,7 @@ palette = 5=#9d6ac4
 # Position 6: orange - softened legendary quality
 palette = 6=#e6975c
 # Position 7: white
-palette = 7=#c1c0c0
+palette = 7=#fbfcfa
 
 # Bright colors (positions 8-15)
 # Position 8: bright black (gray)
@@ -44,4 +44,4 @@ palette = 13=#9d6ac4
 # Position 14: bright orange
 palette = 14=#e6975c
 # Position 15: bright white
-palette = 15=#fcfcfa
+palette = 15=#fbfcfa

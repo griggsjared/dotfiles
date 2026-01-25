@@ -95,6 +95,8 @@ function M.get(c, _)
 		["@keyword.dockerfile"] = { fg = c.base.red },
 		["@lsp.type.class.dockerfile"] = { fg = c.base.blue },
 		["@parameter.bash"] = { fg = c.base.white },
+		["@keyword.function.php"] = { fg = c.base.magenta, bold = true, italic = true },
+		["@keyword.type.php"] = { fg = c.base.magenta, bold = true, italic = true },
 		["@keyword.function.go"] = { fg = c.base.red, bold = true, italic = false },
 		["@module.go"] = { fg = c.base.white },
 		["@string.escape.go"] = { fg = c.base.magenta },

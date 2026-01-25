@@ -57,7 +57,7 @@
       "light": "black"
     },
     "textMuted": {
-      "dark": "dimmed3",
+      "dark": "brightBlack",
       "light": "gray3"
     },
     "background": {
@@ -93,7 +93,7 @@
       "light": "red"
     },
     "diffContext": {
-      "dark": "dimmed3",
+      "dark": "brightBlack",
       "light": "gray3"
     },
     "diffHunkHeader": {
@@ -121,7 +121,7 @@
       "light": "brightWhite"
     },
     "diffLineNumber": {
-      "dark": "dimmed3",
+      "dark": "brightBlack",
       "light": "gray3"
     },
     "diffAddedLineNumberBg": {
@@ -141,8 +141,8 @@
       "light": "blue"
     },
     "markdownLink": {
-      "dark": "blue",
-      "light": "blue"
+      "dark": "purple",
+      "light": "purple"
     },
     "markdownLinkText": {
       "dark": "orange",
@@ -153,7 +153,7 @@
       "light": "yellow"
     },
     "markdownBlockQuote": {
-      "dark": "dimmed3",
+      "dark": "brightBlack",
       "light": "gray3"
     },
     "markdownEmph": {
@@ -189,7 +189,7 @@
       "light": "black"
     },
     "syntaxComment": {
-      "dark": "dimmed3",
+      "dark": "brightBlack",
       "light": "gray3"
     },
     "syntaxKeyword": {

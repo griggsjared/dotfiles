@@ -9,7 +9,7 @@
     "yellow": "#f9e2af",
     "orange": "#fab387",
     "purple": "#cba6f7",
-    "cyan": "#94e2d5",
+    "blue": "#94e2d5",
     "white": "#fbfcfa",
     "brightBlack": "#727072",
     "brightRed": "#f38ba8",
@@ -17,7 +17,7 @@
     "brightYellow": "#f9e2af",
     "brightOrange": "#fab387",
     "brightPurple": "#cba6f7",
-    "brightCyan": "#94e2d5",
+    "brightBlue": "#94e2d5",
     "brightWhite": "#fbfcfa",
     "gray1": "#2c2c2c",
     "gray2": "#3e3e3e",
@@ -25,8 +25,8 @@
   },
   "theme": {
     "primary": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "secondary": {
       "dark": "purple",
@@ -49,8 +49,8 @@
       "light": "green"
     },
     "info": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "text": {
       "dark": "foreground",
@@ -77,8 +77,8 @@
       "light": "gray2"
     },
     "borderActive": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "borderSubtle": {
       "dark": "gray1",
@@ -137,8 +137,8 @@
       "light": "black"
     },
     "markdownHeading": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "markdownLink": {
       "dark": "purple",
@@ -169,8 +169,8 @@
       "light": "gray2"
     },
     "markdownListItem": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "markdownListEnumeration": {
       "dark": "purple",
@@ -213,8 +213,8 @@
       "light": "purple"
     },
     "syntaxType": {
-      "dark": "cyan",
-      "light": "cyan"
+      "dark": "blue",
+      "light": "blue"
     },
     "syntaxOperator": {
       "dark": "red",

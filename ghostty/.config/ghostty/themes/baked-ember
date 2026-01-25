@@ -3,15 +3,15 @@
 
 # Standard background/foreground (same across all baked themes)
 background = #1a1a1a
-foreground = #fcfcfa
-selection-background = #fcfcfa
+foreground = #fbfcfa
+selection-background = #fbfcfa
 selection-foreground = #1a1a1a
-cursor-color = #fcfcfa
+cursor-color = #fbfcfa
 cursor-text = #1a1a1a
 
 # ANSI colors - Ember palette
 # Position 0: black
-palette = 0=#101010
+palette = 0=#1a1a1a
 # Position 1: red - warm coral red
 palette = 1=#ff6b5a
 # Position 2: green - fresh lime green
@@ -25,7 +25,7 @@ palette = 5=#d98fd4
 # Position 6: orange - bright amber
 palette = 6=#ff9b5a
 # Position 7: white
-palette = 7=#c1c0c0
+palette = 7=#fbfcfa
 
 # Bright colors (positions 8-15)
 # Position 8: bright black (gray)
@@ -43,4 +43,4 @@ palette = 13=#d98fd4
 # Position 14: bright orange
 palette = 14=#ff9b5a
 # Position 15: bright white
-palette = 15=#fcfcfa
+palette = 15=#fbfcfa

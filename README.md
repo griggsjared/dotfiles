@@ -60,6 +60,35 @@ Global PHP packages (like Laravel Valet):
 composer global install
 ```
 
+## Themes
+
+Consistent color themes across all terminal tools using the `BAKED_THEME` environment variable.
+
+### Available Themes
+- `monokai` (default) - Monokai-inspired color scheme
+- `onedark` - One Dark-inspired color scheme
+
+### Switching Themes
+
+Set the `BAKED_THEME` environment variable in `~/.zsh/private.zsh`:
+
+```bash
+export BAKED_THEME="onedark"  # or monokai
+```
+
+Theme configs are automatically generated on shell initialization. After changing the variable:
+1. Open a new terminal session, or
+2. Run `source ~/.zshrc` and restart affected applications
+
+### Theme Files
+
+Theme definitions are located in:
+- Ghostty: `ghostty/.config/ghostty/themes/baked-{theme}`
+- OpenCode: `opencode/.config/opencode/themes/baked-{theme}.json`
+- Neovim: `nvim/.config/nvim/lua/baked/palettes/{theme}.lua`
+- Tmux/Yazi: Use ANSI color names (automatically match terminal palette)
+
+
 ## Config Usage
 
 ### Install all configs

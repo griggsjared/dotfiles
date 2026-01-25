@@ -103,8 +103,8 @@ function M.build(palette, helpers)
     errorBorder = p.red,
     errorForeground = p.red,
     infoBackground = p.dimmed5,
-    infoBorder = p.cyan,
-    infoForeground = p.cyan,
+    infoBorder = p.blue,
+    infoForeground = p.blue,
     warningBackground = p.dimmed5,
     warningBorder = p.orange,
     warningForeground = p.orange,
@@ -115,10 +115,10 @@ function M.build(palette, helpers)
     errorForeground = p.red,
     warningBackground = hp.blend(p.orange, 0.1, p.background),
     warningForeground = p.orange,
-    infoBackground = hp.blend(p.cyan, 0.1, p.background),
-    infoForeground = p.cyan,
-    hintBackground = hp.blend(p.cyan, 0.1, p.background),
-    hintForeground = p.cyan,
+    infoBackground = hp.blend(p.blue, 0.1, p.background),
+    infoForeground = p.blue,
+    hintBackground = hp.blend(p.blue, 0.1, p.background),
+    hintForeground = p.blue,
   }
 
   c.terminal = {
@@ -176,7 +176,7 @@ function M.build(palette, helpers)
   }
 
   c.notificationsInfoIcon = {
-    foreground = p.cyan,
+    foreground = p.blue,
   }
 
   c.notificationsWarningIcon = {
@@ -189,9 +189,9 @@ function M.build(palette, helpers)
     red = p.red,
     green = p.green,
     yellow = p.yellow,
-    blue = p.orange,
+    blue = p.blue,
     magenta = p.magenta,
-    cyan = p.cyan,
+    orange = p.orange,
     white = p.white,
     dimmed1 = p.dimmed1,
     dimmed2 = p.dimmed2,

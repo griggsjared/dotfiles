@@ -14,7 +14,7 @@ function M.get(c, _)
 		SnacksPickerListCursorLine = { bg = c.base.dimmed5 },
 		SnacksPickerBoxCursorLine = { bg = c.base.dimmed5 },
 		SnacksPickerBufFlags = { fg = c.base.red },
-		SnacksPickerCol = { fg = c.base.cyan, bg = "none" },
+		SnacksPickerCol = { fg = c.base.blue, bg = "none" },
 		SnacksPickerPathIgnored = { fg = c.base.dimmed1 },
 		SnacksPickerUnselected = { fg = c.base.dimmed1 },
 		SnacksPickerPathHidden = { fg = c.base.dimmed1 },

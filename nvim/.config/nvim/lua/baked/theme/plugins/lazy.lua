@@ -26,11 +26,11 @@ function M.get(c, hp)
 			bg = lazy_bg,
 			fg = c.base.green,
 		},
-		LazyUrl = { fg = c.base.cyan },
+		LazyUrl = { fg = c.base.blue },
 		LazyDir = { link = "LazyUrl" },
 		LazySpecial = { fg = c.base.yellow, bold = true },
 		LazyReasonStart = { fg = c.base.green },
-		LazyReasonCmd = { fg = c.base.cyan },
+		LazyReasonCmd = { fg = c.base.blue },
 	}
 end
 

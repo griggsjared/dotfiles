@@ -2,8 +2,8 @@ local M = {}
 
 function M.get(c, _)
 	return {
-		OilDir = { fg = c.base.cyan, bold = true },
-		OilDirIcon = { fg = c.base.cyan },
+		OilDir = { fg = c.base.blue, bold = true },
+		OilDirIcon = { fg = c.base.blue },
 		OilLink = { fg = c.base.magenta },
 		OilLinkTarget = { fg = c.base.dimmed3 },
 		OilCopy = { fg = c.base.yellow, bold = true },
@@ -15,7 +15,7 @@ function M.get(c, _)
 		OilPermissionRead = { fg = c.base.yellow },
 		OilPermissionWrite = { fg = c.base.blue },
 		OilPermissionExecute = { fg = c.base.green },
-		OilTypeDir = { fg = c.base.cyan },
+		OilTypeDir = { fg = c.base.blue },
 		OilTypeFifo = { fg = c.base.magenta },
 		OilTypeFile = { fg = c.base.white },
 		OilTypeLink = { fg = c.base.magenta },

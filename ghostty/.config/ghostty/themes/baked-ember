@@ -1,0 +1,46 @@
+# Ember - A warm, energetic theme inspired by glowing coals and firelight
+# Part of the Baked theme collection
+
+# Standard background/foreground (same across all baked themes)
+background = #1a1a1a
+foreground = #fcfcfa
+selection-background = #fcfcfa
+selection-foreground = #1a1a1a
+cursor-color = #fcfcfa
+cursor-text = #1a1a1a
+
+# ANSI colors - Ember palette
+# Position 0: black
+palette = 0=#101010
+# Position 1: red - warm coral red
+palette = 1=#ff6b5a
+# Position 2: green - fresh lime green
+palette = 2=#8fd460
+# Position 3: yellow - golden ember glow
+palette = 3=#ffcf5a
+# Position 4: blue - sky blue
+palette = 4=#5fb4d4
+# Position 5: magenta - warm orchid purple
+palette = 5=#d98fd4
+# Position 6: orange - bright amber
+palette = 6=#ff9b5a
+# Position 7: white
+palette = 7=#c1c0c0
+
+# Bright colors (positions 8-15)
+# Position 8: bright black (gray)
+palette = 8=#727072
+# Position 9: bright red
+palette = 9=#ff6b5a
+# Position 10: bright green
+palette = 10=#8fd460
+# Position 11: bright yellow
+palette = 11=#ffcf5a
+# Position 12: bright blue
+palette = 12=#5fb4d4
+# Position 13: bright magenta
+palette = 13=#d98fd4
+# Position 14: bright orange
+palette = 14=#ff9b5a
+# Position 15: bright white
+palette = 15=#fcfcfa

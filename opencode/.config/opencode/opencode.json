@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "theme": "baked-monokai",
+  "theme": "baked-catppuccin",
   "autoshare": false,
   "autoupdate": true,
 }

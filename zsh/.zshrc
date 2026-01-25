@@ -106,7 +106,7 @@ tmf() {
 
 # baked function to switch themes interactively with fzf
 baked() {
-  local themes=("monokai" "onedark" "catppuccin" "tokyonight" "rosepine" "gruvbox" "ember")
+  local themes=("monokai" "onedark" "catppuccin" "tokyonight" "rosepine" "gruvbox" "ember" "rpg" "rpg-lite")
   local current_theme="${BAKED_THEME:-monokai}"
   local selected
   

@@ -1,0 +1,47 @@
+# Azeroth - Inspired by World of Warcraft Classic item rarity colors
+# Part of the Baked theme collection
+# Official WoW colors: Legendary orange, Epic purple, Rare blue, Uncommon green
+
+# Standard background/foreground (same across all baked themes)
+background = #1a1a1a
+foreground = #fcfcfa
+selection-background = #fcfcfa
+selection-foreground = #1a1a1a
+cursor-color = #fcfcfa
+cursor-text = #1a1a1a
+
+# ANSI colors - Azeroth palette (WoW Classic item rarities)
+# Position 0: black
+palette = 0=#101010
+# Position 1: red - vibrant red
+palette = 1=#ff4040
+# Position 2: green - Uncommon quality (official WoW green)
+palette = 2=#1eff00
+# Position 3: yellow - bright golden yellow
+palette = 3=#ffd100
+# Position 4: blue - Rare quality (official WoW blue)
+palette = 4=#0070dd
+# Position 5: magenta - Epic quality (official WoW purple)
+palette = 5=#a335ee
+# Position 6: orange - Legendary quality (official WoW orange)
+palette = 6=#ff8000
+# Position 7: white
+palette = 7=#c1c0c0
+
+# Bright colors (positions 8-15)
+# Position 8: bright black (gray)
+palette = 8=#727072
+# Position 9: bright red
+palette = 9=#ff4040
+# Position 10: bright green
+palette = 10=#1eff00
+# Position 11: bright yellow
+palette = 11=#ffd100
+# Position 12: bright blue
+palette = 12=#0070dd
+# Position 13: bright magenta
+palette = 13=#a335ee
+# Position 14: bright orange
+palette = 14=#ff8000
+# Position 15: bright white
+palette = 15=#fcfcfa

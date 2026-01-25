@@ -1,0 +1,26 @@
+# Dracula theme for Ghostty
+# Official colors from https://draculatheme.com/contribute
+
+# Background/Foreground (standardized across themes)
+background = #1a1a1a
+foreground = #fcfcfa
+
+# ANSI Colors (theme-specific - Dracula official palette)
+palette = 0=#403e41
+palette = 1=#ff5555
+palette = 2=#50fa7b
+palette = 3=#f1fa8c
+palette = 4=#8be9fd
+palette = 5=#bd93f9
+palette = 6=#ffb86c
+palette = 7=#c1c0c0
+
+# Bright ANSI Colors
+palette = 8=#727072
+palette = 9=#ff5555
+palette = 10=#50fa7b
+palette = 11=#f1fa8c
+palette = 12=#8be9fd
+palette = 13=#bd93f9
+palette = 14=#ffb86c
+palette = 15=#fcfcfa

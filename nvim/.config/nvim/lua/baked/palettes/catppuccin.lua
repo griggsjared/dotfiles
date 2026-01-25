@@ -5,12 +5,12 @@ local palette = {
 
 	white = "#fcfcfa",
 
-  red = "#e06c75",
-  orange = "#d19a66",
-  yellow = "#e5c07b",
-  green = "#98c379",
-  cyan = "#56b6c2",
-  magenta = "#c678dd",
+	red = "#f38ba8",
+	orange = "#fab387",
+	yellow = "#f9e2af",
+	green = "#a6e3a1",
+	cyan = "#94e2d5",
+	magenta = "#cba6f7",
 
 	dimmed1 = "#c1c0c0",
 	dimmed2 = "#939293",

@@ -65,15 +65,18 @@ composer global install
 Consistent color themes across all terminal tools using the `BAKED_THEME` environment variable.
 
 ### Available Themes
-- `monokai` (default) - Monokai-inspired color scheme
+- `monokai` (default) - Monokai-inspired color scheme  
 - `onedark` - One Dark-inspired color scheme
+- `catppuccin` - Catppuccin Mocha pastel theme
+- `tokyonight` - Tokyo Night Storm dark theme
+- `rosepine` - Rose Pine cozy theme
 
 ### Switching Themes
 
 Set the `BAKED_THEME` environment variable in `~/.zsh/private.zsh`:
 
 ```bash
-export BAKED_THEME="onedark"  # or monokai
+export BAKED_THEME="catppuccin"  # or monokai, onedark, tokyonight, rosepine
 ```
 
 Theme configs are automatically generated on shell initialization. After changing the variable:

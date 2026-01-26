@@ -2,7 +2,7 @@ local M = {}
 
 function M.get(c, _)
 	return {
-		OilDir = { fg = c.base.blue, bold = true },
+		OilDir = { fg = c.base.blue },
 		OilDirIcon = { fg = c.base.blue },
 		OilLink = { fg = c.base.magenta },
 		OilLinkTarget = { fg = c.base.dimmed3 },

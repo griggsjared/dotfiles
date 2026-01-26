@@ -64,13 +64,6 @@ composer global install
 
 Consistent color themes across all terminal tools using the `BAKED_THEME` environment variable.
 
-### Available Themes
-- `monokai` (default) - Monokai-inspired color scheme  
-- `onedark` - One Dark-inspired color scheme
-- `catppuccin` - Catppuccin Mocha pastel theme
-- `tokyonight` - Tokyo Night Storm dark theme
-- `rosepine` - Rose Pine cozy theme
-
 ### Switching Themes
 
 Set the `BAKED_THEME` environment variable in `~/.zsh/private.zsh`:
@@ -83,13 +76,10 @@ Theme configs are automatically generated on shell initialization. After changin
 1. Open a new terminal session, or
 2. Run `source ~/.zshrc` and restart affected applications
 
-### Theme Files
-
-Theme definitions are located in:
-- Ghostty: `ghostty/.config/ghostty/themes/baked-{theme}`
-- OpenCode: `opencode/.config/opencode/themes/baked-{theme}.json`
-- Neovim: `nvim/.config/nvim/lua/baked/palettes/{theme}.lua`
-- Tmux/Yazi: Use ANSI color names (automatically match terminal palette)
+To regenerate Ghostty and OpenCode themes from all Neovim palettes:
+```bash
+~/.dotfiles/generate-themes.sh
+```
 
 
 ## Config Usage

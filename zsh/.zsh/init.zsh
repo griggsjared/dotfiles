@@ -1,5 +1,8 @@
 # Core ZSH initialization - plugins, completions, and external sources
 
+# Set XDG config home
+export XDG_CONFIG_HOME="$HOME/.config"
+
 # Load Docker init if available
 [[ -f "$HOME/.docker/init-zsh.sh" ]] && source "$HOME/.docker/init-zsh.sh"
 

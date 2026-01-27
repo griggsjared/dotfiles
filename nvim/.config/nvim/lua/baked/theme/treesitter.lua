@@ -37,7 +37,7 @@ function M.get(c, _)
 		["@number.float"] = { fg = c.base.magenta },
 		["@operator"] = { fg = c.base.red },
 		["@variable"] = { fg = c.base.white },
-		["@variable.builtin"] = { fg = c.base.dimmed1, italic = true },
+		["@variable.builtin"] = { fg = c.base.blue, italic = true },
 		["@variable.member"] = { fg = c.base.white },
 		["@variable.parameter"] = { fg = c.base.orange, italic = true },
 		["@variable.parameter.builtin"] = { fg = c.base.orange, italic = true },

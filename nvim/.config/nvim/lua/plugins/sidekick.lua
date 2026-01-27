@@ -109,6 +109,9 @@ return {
 			prompts = {
 				commit = "Please review the staged changes and recommend a concise git commit message. Do not create the commit, just provide the message. Follow the style most recently used in the commit history.",
 			},
+			tools = {
+				cursor = { cmd = { "cursor-agent", "--mode", "ask" } }, -- start cursor-agent in ask mode
+			}
 		},
 	},
 	keys = keys,

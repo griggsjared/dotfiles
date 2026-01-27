@@ -1,0 +1,4 @@
+gui:
+  authorColors:
+    "Jared Griggs": "magenta"
+    "*": "yellow"

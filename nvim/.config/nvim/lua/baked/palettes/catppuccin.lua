@@ -6,7 +6,7 @@ local palette = {
 	white = "#fcfcfa",
 
 	red = "#f38ba8",
-	orange = "#fab387",
+	cyan = "#179299",
 	yellow = "#f9e2af",
 	green = "#a6e3a1",
 	blue = "#89b4fa",

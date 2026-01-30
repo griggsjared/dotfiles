@@ -50,7 +50,7 @@ for palette_file in "${NVIM_PALETTES}"/*.lua; do
   DARK1=$(extract_color "$palette_file" "dark1")
   WHITE=$(extract_color "$palette_file" "white")
   RED=$(extract_color "$palette_file" "red")
-  ORANGE=$(extract_color "$palette_file" "orange")
+  CYAN=$(extract_color "$palette_file" "cyan")
   YELLOW=$(extract_color "$palette_file" "yellow")
   GREEN=$(extract_color "$palette_file" "green")
   BLUE=$(extract_color "$palette_file" "blue")
@@ -58,7 +58,7 @@ for palette_file in "${NVIM_PALETTES}"/*.lua; do
   DIMMED3=$(extract_color "$palette_file" "dimmed3")
   
   BRIGHT_RED=$(lighten_color "$RED" 10)
-  BRIGHT_ORANGE=$(lighten_color "$ORANGE" 10)
+  BRIGHT_CYAN=$(lighten_color "$CYAN" 10)
   BRIGHT_YELLOW=$(lighten_color "$YELLOW" 10)
   BRIGHT_GREEN=$(lighten_color "$GREEN" 10)
   BRIGHT_BLUE=$(lighten_color "$BLUE" 10)
@@ -74,7 +74,7 @@ palette = 2=${GREEN}
 palette = 3=${YELLOW}
 palette = 4=${BLUE}
 palette = 5=${MAGENTA}
-palette = 6=${ORANGE}
+palette = 6=${CYAN}
 palette = 7=${WHITE}
 
 palette = 8=${DIMMED3}
@@ -83,7 +83,7 @@ palette = 10=${BRIGHT_GREEN}
 palette = 11=${BRIGHT_YELLOW}
 palette = 12=${BRIGHT_BLUE}
 palette = 13=${BRIGHT_MAGENTA}
-palette = 14=${BRIGHT_ORANGE}
+palette = 14=${BRIGHT_CYAN}
 palette = 15=${WHITE}
 EOF
 
@@ -97,7 +97,7 @@ EOF
     "red": "${RED}",
     "green": "${GREEN}",
     "yellow": "${YELLOW}",
-    "orange": "${ORANGE}",
+    "cyan": "${CYAN}",
     "purple": "${MAGENTA}",
     "blue": "${BLUE}",
     "white": "${WHITE}",
@@ -105,7 +105,7 @@ EOF
     "brightRed": "${BRIGHT_RED}",
     "brightGreen": "${BRIGHT_GREEN}",
     "brightYellow": "${BRIGHT_YELLOW}",
-    "brightOrange": "${BRIGHT_ORANGE}",
+    "brightCyan": "${BRIGHT_CYAN}",
     "brightPurple": "${BRIGHT_MAGENTA}",
     "brightBlue": "${BRIGHT_BLUE}",
     "brightWhite": "${WHITE}",
@@ -123,8 +123,8 @@ EOF
       "light": "purple"
     },
     "accent": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "error": {
       "dark": "red",
@@ -235,8 +235,8 @@ EOF
       "light": "purple"
     },
     "markdownLinkText": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownCode": {
       "dark": "yellow",
@@ -247,8 +247,8 @@ EOF
       "light": "gray3"
     },
     "markdownEmph": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownStrong": {
       "dark": "red",
@@ -271,8 +271,8 @@ EOF
       "light": "green"
     },
     "markdownImageText": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownCodeBlock": {
       "dark": "foreground",

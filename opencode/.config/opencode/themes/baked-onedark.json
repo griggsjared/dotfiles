@@ -7,7 +7,7 @@
     "red": "#e06c75",
     "green": "#98c379",
     "yellow": "#e5c07b",
-    "orange": "#d19a66",
+    "cyan": "#56b6c2",
     "purple": "#c678dd",
     "blue": "#61afef",
     "white": "#fcfcfa",
@@ -15,7 +15,7 @@
     "brightRed": "#e37a82",
     "brightGreen": "#a2c986",
     "brightYellow": "#e7c688",
-    "brightOrange": "#d5a475",
+    "brightCyan": "#66bdc8",
     "brightPurple": "#cb85e0",
     "brightBlue": "#70b7f0",
     "brightWhite": "#fcfcfa",
@@ -33,8 +33,8 @@
       "light": "purple"
     },
     "accent": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "error": {
       "dark": "red",
@@ -145,8 +145,8 @@
       "light": "purple"
     },
     "markdownLinkText": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownCode": {
       "dark": "yellow",
@@ -157,8 +157,8 @@
       "light": "gray3"
     },
     "markdownEmph": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownStrong": {
       "dark": "red",
@@ -181,8 +181,8 @@
       "light": "green"
     },
     "markdownImageText": {
-      "dark": "orange",
-      "light": "orange"
+      "dark": "cyan",
+      "light": "cyan"
     },
     "markdownCodeBlock": {
       "dark": "foreground",

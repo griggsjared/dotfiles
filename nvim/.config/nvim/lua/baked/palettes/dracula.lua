@@ -10,7 +10,7 @@ local palette = {
 
     -- Theme-specific ANSI colors (from official Dracula spec)
     red = "#ff5555",
-    orange = "#ffb86c",
+    cyan = "#8be9fd",
     yellow = "#f1fa8c",
     green = "#50fa7b",
     blue = "#8be9fd",      -- Dracula cyan mapped to blue

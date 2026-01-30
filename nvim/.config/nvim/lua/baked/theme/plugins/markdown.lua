@@ -5,7 +5,7 @@ function M.get(c, _)
     RenderMarkdownHeader1 = { fg = c.base.green },
     RenderMarkdownHeader2 = { fg = c.base.magenta },
     RenderMarkdownHeader3 = { fg = c.base.yellow },
-    RenderMarkdownHeader4 = { fg = c.base.orange },
+    RenderMarkdownHeader4 = { fg = c.base.cyan },
     RenderMarkdownHeader5 = { fg = c.base.red },
     RenderMarkdownHeader6 = { fg = c.base.blue },
     RenderMarkdownCode = { bg = c.base.black },

@@ -51,7 +51,7 @@ function M.build(palette, helpers)
   c.editorGutter = {
     addedBackground = p.green,
     deletedBackground = p.red,
-    modifiedBackground = p.orange,
+    modifiedBackground = p.cyan,
   }
 
   c.sideBar = {
@@ -89,7 +89,7 @@ function M.build(palette, helpers)
 
   c.gitDecoration = {
     addedResourceForeground = p.green,
-    conflictingResourceForeground = p.orange,
+    conflictingResourceForeground = p.cyan,
     deletedResourceForeground = p.red,
     ignoredResourceForeground = p.dimmed4,
     modifiedResourceForeground = p.yellow,
@@ -106,15 +106,15 @@ function M.build(palette, helpers)
     infoBorder = p.blue,
     infoForeground = p.blue,
     warningBackground = p.dimmed5,
-    warningBorder = p.orange,
-    warningForeground = p.orange,
+    warningBorder = p.cyan,
+    warningForeground = p.cyan,
   }
 
   c.errorLens = {
     errorBackground = hp.blend(p.red, 0.1, p.background),
     errorForeground = p.red,
-    warningBackground = hp.blend(p.orange, 0.1, p.background),
-    warningForeground = p.orange,
+    warningBackground = hp.blend(p.cyan, 0.1, p.background),
+    warningForeground = p.cyan,
     infoBackground = hp.blend(p.blue, 0.1, p.background),
     infoForeground = p.blue,
     hintBackground = hp.blend(p.blue, 0.1, p.background),
@@ -156,13 +156,13 @@ function M.build(palette, helpers)
   c.diffEditor = {
     insertedLineBackground = hp.blend(p.green, 0.1, p.dark1),
     removedLineBackground = hp.blend(p.red, 0.1, p.dark1),
-    modifiedLineBackground = hp.blend(p.orange, 0.1, p.dark1),
+    modifiedLineBackground = hp.blend(p.cyan, 0.1, p.dark1),
   }
 
   c.diffEditorOverview = {
     insertedForeground = hp.blend(p.green, 0.65, c.diffEditor.insertedLineBackground),
     removedForeground = hp.blend(p.red, 0.65, c.diffEditor.removedLineBackground),
-    modifiedForeground = hp.blend(p.orange, 0.65, c.diffEditor.modifiedLineBackground),
+    modifiedForeground = hp.blend(p.cyan, 0.65, c.diffEditor.modifiedLineBackground),
   }
 
   c.notifications = {
@@ -180,7 +180,7 @@ function M.build(palette, helpers)
   }
 
   c.notificationsWarningIcon = {
-    foreground = p.orange,
+    foreground = p.cyan,
   }
 
   c.base = {
@@ -191,7 +191,7 @@ function M.build(palette, helpers)
     yellow = p.yellow,
     blue = p.blue,
     magenta = p.magenta,
-    orange = p.orange,
+    cyan = p.cyan,
     white = p.white,
     dimmed1 = p.dimmed1,
     dimmed2 = p.dimmed2,

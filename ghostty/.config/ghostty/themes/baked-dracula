@@ -7,7 +7,7 @@ palette = 2=#50fa7b
 palette = 3=#f1fa8c
 palette = 4=#8be9fd
 palette = 5=#bd93f9
-palette = 6=#ffb86c
+palette = 6=#8be9fd
 palette = 7=#fcfcfa
 
 palette = 8=#727072
@@ -16,5 +16,5 @@ palette = 10=#61fa88
 palette = 11=#f2fa97
 palette = 12=#96ebfd
 palette = 13=#c39df9
-palette = 14=#ffbf7a
+palette = 14=#96ebfd
 palette = 15=#fcfcfa

@@ -1,5 +1,4 @@
 .DS_Store
 
-# Auto-generated theme configs (see colors/generate-themes.sh)
+# Auto-generated theme config (see generate-themes.sh)
 ghostty/.config/ghostty/active-theme.conf
-tmux/active-theme.conf

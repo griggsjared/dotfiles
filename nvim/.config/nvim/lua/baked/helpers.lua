@@ -44,6 +44,28 @@ function M.lighten(hex, amt)
   return rgb_to_hex(rgb)
 end
 
+---@param hex string Hex color
+---@param percent number Percentage to lighten (0-100)
+---@return string Lightened hex color
+function M.lighten_percent(hex, percent)
+  if hex == "NONE" then
+    return hex
+  end
+
+  local rgb = hex_to_rgb(hex)
+  -- Lighten by percentage of remaining distance to white (255)
+  -- Formula: new = old + (255 - old) * percent / 100
+  rgb.r = math.floor(rgb.r + (255 - rgb.r) * percent / 100)
+  rgb.g = math.floor(rgb.g + (255 - rgb.g) * percent / 100)
+  rgb.b = math.floor(rgb.b + (255 - rgb.b) * percent / 100)
+  -- Bound to upper limit
+  rgb.r = (rgb.r > 255) and 255 or rgb.r
+  rgb.g = (rgb.g > 255) and 255 or rgb.g
+  rgb.b = (rgb.b > 255) and 255 or rgb.b
+
+  return rgb_to_hex(rgb)
+end
+
 ---@param red number Red component (0-255)
 ---@param green number Green component (0-255)
 ---@param blue number Blue component (0-255)

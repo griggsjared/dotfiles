@@ -18,8 +18,4 @@ mkdir -p "${DOTFILES}/tmux"
 cat > "${DOTFILES}/tmux/active-theme.conf" << 'EOF'
 EOF
 
-opencode_template="${DOTFILES}/opencode/.config/opencode/opencode.json.template"
-if [[ -f "$opencode_template" ]]; then
-  mkdir -p "${DOTFILES}/opencode/.config/opencode"
-  sed "s/__THEME__/${THEME}/g" "$opencode_template" > "${DOTFILES}/opencode/.config/opencode/opencode.json"
-fi
+

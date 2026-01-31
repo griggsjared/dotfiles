@@ -14,8 +14,3 @@ cat > "${DOTFILES}/ghostty/.config/ghostty/active-theme.conf" << EOF
 theme = baked-${THEME}
 EOF
 
-mkdir -p "${DOTFILES}/tmux"
-cat > "${DOTFILES}/tmux/active-theme.conf" << 'EOF'
-EOF
-
-

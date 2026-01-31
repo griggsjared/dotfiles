@@ -2,6 +2,9 @@ export BAKED_THEME="${BAKED_THEME:-monokai}"
 
 [[ -x "$HOME/.dotfiles/sync-config.sh" ]] && "$HOME/.dotfiles/sync-config.sh"
 
+# Set OpenCode theme dynamically based on BAKED_THEME
+export OPENCODE_CONFIG_CONTENT="{\"theme\":\"baked-${BAKED_THEME}\"}"
+
 themes() {
   local themes=("monokai" "onedark" "catppuccin" "tokyonight" "rosepine" "gruvbox" "ember" "rpg" "dracula")
   local current_theme="${BAKED_THEME:-monokai}"

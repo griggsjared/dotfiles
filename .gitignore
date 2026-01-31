@@ -3,4 +3,3 @@
 # Auto-generated theme configs (see colors/generate-themes.sh)
 ghostty/.config/ghostty/active-theme.conf
 tmux/active-theme.conf
-opencode/.config/opencode/opencode.json

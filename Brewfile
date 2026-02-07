@@ -56,6 +56,8 @@ brew "composer"
 brew "typescript"
 brew "pnpm"
 brew "yarn"
+brew "oven-sh/bun/bun"
+
 
 # Database Tools
 brew "mysql-client"

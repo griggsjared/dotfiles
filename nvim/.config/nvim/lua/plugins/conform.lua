@@ -27,14 +27,6 @@ return {
 						}),
 						require_cwd = true,
 					},
-					php_cs_fixer = {
-						cwd = require("conform.util").root_file({
-							"vendor/bin/php-cs-fixer",
-							".php_cs_fixer.php",
-						}),
-						require_cwd = true,
-						prefer_local = true,
-					},
 					prettier = {
 						cwd = require("conform.util").root_file({
 							".prettierrc",

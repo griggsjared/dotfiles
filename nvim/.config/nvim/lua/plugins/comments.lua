@@ -14,7 +14,8 @@ return {
 			local ft = require("Comment.ft")
 			ft.php = { "//%s", "/*%s*/" }
 			ft.blade = { "{{--%s--}}", "{{!--%s--}}" }
-
+			ft.javascriptreact = { "//%s", "{/*%s*/}" }
+			ft.typescriptreact = { "//%s", "{/*%s*/}" }
 			require("Comment").setup()
 		end,
 	},

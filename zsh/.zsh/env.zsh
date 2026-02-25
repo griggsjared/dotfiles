@@ -24,7 +24,3 @@ fi
 if [ -d "/opt/homebrew/opt/mysql-client/bin" ]; then
   export PATH=/opt/homebrew/opt/mysql-client/bin:$PATH
 fi
-
-# Valet aliases (PHP development)
-alias php='valet php'
-alias composer='valet composer'

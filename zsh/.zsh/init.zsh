@@ -3,14 +3,18 @@
 # Set XDG config home
 export XDG_CONFIG_HOME="$HOME/.config"
 
-# ZSH autocomplete functions
+# ZSH autocomplete functions (must load BEFORE plugins)
 if type brew &>/dev/null; then
     FPATH=$(brew --prefix)/share/zsh-completions:$FPATH
 
     setopt completealiases
-    autoload -Uz compinit
     
-    compinit -i
+    # Fix homebrew share permissions to prevent "insecure directories" warning
+    # Homebrew sometimes sets group write (775) which ZSH considers insecure
+    [[ -d /opt/homebrew/share ]] && chmod 755 /opt/homebrew/share 2>/dev/null
+    
+    autoload -Uz compinit
+    compinit
 fi
 
 # Load Docker init if available
@@ -22,6 +26,8 @@ fi
 # ZSH plugins loading
 
 # Autosuggestions
+ZSH_AUTOSUGGEST_USE_ASYNC=1
+ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
 source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh || true
 
 # Autocomplete

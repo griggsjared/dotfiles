@@ -14,6 +14,7 @@ source "$HOME/.zsh/git.zsh"
 source "$HOME/.zsh/editor.zsh"
 source "$HOME/.zsh/navigation.zsh"
 source "$HOME/.zsh/theme.zsh"
+source "$HOME/.zsh/php.zsh"
 
 # Environment must load last (PATH additions, etc.)
 source "$HOME/.zsh/env.zsh"

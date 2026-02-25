@@ -119,6 +119,11 @@ local keys = {
 		function()
 			Snacks.picker.git_status({
 				title = "Tracked Git Changes",
+				layout = {
+					layout = {
+						height = 100,
+					},
+				},
 				win = {
 					input = {
 						keys = {

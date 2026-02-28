@@ -34,6 +34,7 @@ return {
 							".php-cs-fixer.dist.php",
 						}),
 						require_cwd = true,
+						prepend_args = { "--rules", '{"no_unused_imports": true}' },
 					},
 					prettier = {
 						cwd = require("conform.util").root_file({

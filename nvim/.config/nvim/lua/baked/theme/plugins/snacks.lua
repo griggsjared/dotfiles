@@ -2,6 +2,8 @@ local M = {}
 
 function M.get(c, _)
 	return {
+		SnacksIndent = { fg = c.base.dimmed5 },
+		SnacksIndentScope = { fg = c.base.green },
 		SnacksDashboardNormal = { bg = c.editor.background, fg = c.editor.foreground },
 		SnacksDashboardDesc = { fg = c.base.dimmed1 },
 		SnacksDashboardIcon = { fg = c.base.blue },

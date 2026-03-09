@@ -36,6 +36,7 @@ brew "btop"
 
 # Media Tools
 brew "webp"
+brew "imagemagick"
 
 # Programming Languages & Runtimes
 brew "go"

@@ -156,6 +156,7 @@ return {
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
 			statuscolumn = { enabled = true },
+			image = { enabled = true },
 			lazygit = {
 				enabled = true,
 				win = {

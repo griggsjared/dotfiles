@@ -1,9 +1,9 @@
 local M = {}
 
-function M.get(c, _)
+function M.get(c, hp)
 	return {
 		SnacksIndent = { fg = c.base.dimmed5 },
-		SnacksIndentScope = { fg = c.base.green },
+		SnacksIndentScope = { fg = hp.blend(c.base.green, 0.6, c.editor.background) },
 		SnacksDashboardNormal = { bg = c.editor.background, fg = c.editor.foreground },
 		SnacksDashboardDesc = { fg = c.base.dimmed1 },
 		SnacksDashboardIcon = { fg = c.base.blue },

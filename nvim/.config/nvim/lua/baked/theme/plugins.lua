@@ -6,7 +6,6 @@ function M.get(c, hp)
 	local plugins = {
 		"blink", -- Blink.cmp completion
 		"gitsigns", -- Git decorations
-		"indent-blankline", -- Indent guides
 		"lazy", -- Lazy.nvim plugin manager
 		"lualine", -- Statusline
 		"markdown", -- Render Markdown

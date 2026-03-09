@@ -156,6 +156,14 @@ return {
 			bigfile = { enabled = true },
 			quickfile = { enabled = true },
 			statuscolumn = { enabled = true },
+			indent = {
+				enabled = true,
+				char = "┊",
+				scope = {
+					enabled = true,
+					char = "┊",
+				},
+			},
 			image = { enabled = true },
 			lazygit = {
 				enabled = true,

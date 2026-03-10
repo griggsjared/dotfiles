@@ -1,5 +1,10 @@
 # Core ZSH initialization - plugins, completions, and external sources
 
+# If running in Ghostty, set a compatible terminal type
+if [[ "$TERM_PROGRAM" == "ghostty" ]]; then
+    export TERM=xterm-256color
+fi
+
 # Set XDG config home
 export XDG_CONFIG_HOME="$HOME/.config"
 

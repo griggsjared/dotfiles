@@ -14,33 +14,36 @@ return {
 					typescriptreact = { "prettier", "eslint_d" },
 					vue = { "prettier", "eslint_d" },
 					blade = { "blade-formatter" },
-					php = { "pint", "php_cs_fixer", stop_after_first = true }, 
+					php = { "pint", "php_cs_fixer", stop_after_first = true },
 					go = { "goimports", "gofmt" },
 					c = { "clang-format" },
 					cpp = { "clang-format" },
 				},
 				formatters = {
-					pint = {                                                               
-						inherit = true,                                                      
-						cwd = util.root_file({ "composer.json", ".git" }),                   
-						require_cwd = true,                                                  
-						condition = function(_, ctx)                                         
-							local root = vim.fs.root(ctx.dirname, { "composer.json", ".git" }  )                                                                          
-							if not root then return false end                                  
-							return vim.fn.executable(root .. "/vendor/bin/pint") == 1          
-								or #vim.fs.find({ "pint.json", "pint.json.dist" }, { path = ctx.dirname, upward = true, stop = root }) > 0                             
-						end,                                                                 
-					},                                                                     
-					php_cs_fixer = {                                                       
-						inherit = true,                                                      
-						cwd = util.root_file({ "composer.json", ".git" }),                   
-						require_cwd = true,                                                  
-						condition = function(_, ctx)                                         
-							local root = vim.fs.root(ctx.dirname, { "composer.json", ".git" })                                                                          
-							if not root then return false end                                  
-							return vim.fn.executable(root .. "/vendor/bin/php-cs-fixer") == 1  
-								or #vim.fs.find({ ".php-cs-fixer.php", ".php-cs-fixer.dist.php", "php-cs-fixer.php" }, { path = ctx.dirname, upward = true, stop = root }) > 0                                                                
-						end,                                                                 
+					pint = {
+						inherit = true,
+						cwd = util.root_file({ "composer.json", ".git" }),
+						require_cwd = true,
+						condition = function(_, ctx)
+							local root = vim.fs.root(ctx.dirname, { "composer.json", ".git" })
+							if not root then return false end
+							return vim.fn.executable(root .. "/vendor/bin/pint") == 1
+									or #vim.fs.find({ "pint.json", "pint.json.dist" }, { path = ctx.dirname, upward = true, stop = root }) >
+									0
+						end,
+					},
+					php_cs_fixer = {
+						inherit = true,
+						cwd = util.root_file({ "composer.json", ".git" }),
+						require_cwd = true,
+						condition = function(_, ctx)
+							local root = vim.fs.root(ctx.dirname, { "composer.json", ".git" })
+							if not root then return false end
+							return vim.fn.executable(root .. "/vendor/bin/php-cs-fixer") == 1
+									or
+									#vim.fs.find({ ".php-cs-fixer.php", ".php-cs-fixer.dist.php", "php-cs-fixer.php" },
+										{ path = ctx.dirname, upward = true, stop = root }) > 0
+						end,
 					},
 					prettier = {
 						cwd = require("conform.util").root_file({

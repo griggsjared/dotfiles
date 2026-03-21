@@ -120,8 +120,12 @@ local keys = {
 			Snacks.picker.git_status({
 				title = "Tracked Git Changes",
 				layout = {
+					preset = "ivy",
 					layout = {
-						height = 100,
+						height = .99,
+						row = 0, -- Position at top
+						col = 0,
+						relative = "editor",
 					},
 				},
 				win = {

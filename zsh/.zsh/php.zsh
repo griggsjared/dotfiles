@@ -1,5 +1,10 @@
 # PHP development - Valet aliases and artisan completions
 
+# Composer global bin
+if [ -d $HOME/.composer/vendor/bin ]; then
+  export PATH=$HOME/.composer/vendor/bin:$PATH
+fi
+
 # Valet aliases
 alias php='valet php'
 alias composer='valet composer'

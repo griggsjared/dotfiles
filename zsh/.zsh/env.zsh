@@ -3,11 +3,6 @@
 # Local bin
 export PATH=$HOME/.local/bin:$PATH
 
-# Composer
-if [ -d $HOME/.composer/vendor/bin ]; then
-  export PATH=$HOME/.composer/vendor/bin:$PATH
-fi
-
 # Go
 if [ -d $HOME/go/bin ]; then
   export GOPATH=$HOME/go

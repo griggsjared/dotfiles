@@ -1,5 +1,3 @@
-local augroup = vim.api.nvim_create_augroup("UserConfig", {})
-
 -- General options
 vim.opt.number = true -- Line numbers
 vim.opt.relativenumber = true -- Relative line numbers
@@ -24,25 +22,6 @@ vim.opt.softtabstop = 2 -- Soft tab stop
 vim.opt.expandtab = true -- Use spaces instead of tabs
 vim.opt.smartindent = true -- Smart auto-indenting
 vim.opt.autoindent = true -- Copy indent from current line
-
--- Set 4 space indentation for specific file types
-vim.api.nvim_create_autocmd("FileType", {
-	group = augroup,
-	pattern = { "php", "python" },
-	callback = function()
-		vim.opt_local.tabstop = 4
-		vim.opt_local.shiftwidth = 4
-	end,
-})
-
--- Enable line wrapping for markdown files
-vim.api.nvim_create_autocmd("FileType", {
-	group = augroup,
-	pattern = "markdown",
-	callback = function()
-		vim.opt_local.wrap = true
-	end,
-})
 
 -- Tabs Display options
 vim.opt.showtabline = 0 -- Never show tabline (0=never, 1=when multiple tabs, 2=always)

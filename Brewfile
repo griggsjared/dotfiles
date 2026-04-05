@@ -66,3 +66,4 @@ brew "mysql-client"
 # AI Cli Tools
 brew "sst/tap/opencode"
 brew "codex"
+brew "tree-sitter-cli"

@@ -7,7 +7,7 @@ return {
 		lazy = false,
 		config = function()
 			require("mason").setup()
-			-- use mason-tool-installer to install linters, formatters, and dsps that are not avilable as lsp servers
+			-- use mason-tool-installer to install linters, formatters, and daps that are not available as lsp servers
 			require("mason-tool-installer").setup({
 				ensure_installed = {
 					--linters
@@ -50,6 +50,8 @@ return {
 					"marksman",
 					"jsonls",
 				},
+				-- disable automatic server enabling; ftplugin files call vim.lsp.enable() explicitly
+				handlers = {},
 			})
 		end,
 	},
@@ -57,208 +59,12 @@ return {
 		"neovim/nvim-lspconfig",
 		lazy = false,
 		config = function()
-			vim.lsp.config("lua_ls", {
-				settings = {
-					Lua = {
-						diagnostics = {
-							globals = { "vim" },
-						},
-						workspace = {
-							library = vim.api.nvim_get_runtime_file("", true),
-							checkThirdParty = false,
-						},
-						telemetry = {
-							enable = false,
-						},
-					},
-				},
-			})
-
-			vim.lsp.config("html", {
-				filetypes = { "html", "templ", "blade" },
-			})
-
-			vim.lsp.config("cssls", {
-				settings = {
-					css = {
-						validate = true,
-						lint = {
-							unknownAtRules = "ignore",
-						},
-					},
-					less = {
-						validate = true,
-						lint = {
-							unknownAtRules = "ignore",
-						},
-					},
-					scss = {
-						validate = true,
-						lint = {
-							unknownAtRules = "ignore",
-						},
-					},
-				},
-			})
-
-			vim.lsp.config("tailwindcss", {
-				filetypes = {
-					"html",
-					"css",
-					"scss",
-					"less",
-					"vue",
-					"javascript",
-					"typescript",
-					"javascriptreact",
-					"typescriptreact",
-					"templ",
-					"astro",
-					"blade",
-				},
-			})
-
-			vim.lsp.config("intelephense", {
-				settings = {
-					intelephense = {
-						stubs = {
-							"apache",
-							"bcmath",
-							"bz2",
-							"calendar",
-							"com_dotnet",
-							"Core",
-							"ctype",
-							"curl",
-							"date",
-							"dba",
-							"dom",
-							"enchant",
-							"exif",
-							"FFI",
-							"fileinfo",
-							"filter",
-							"fpm",
-							"ftp",
-							"gd",
-							"gettext",
-							"gmp",
-							"hash",
-							"iconv",
-							"imap",
-							"intl",
-							"json",
-							"ldap",
-							"libxml",
-							"mbstring",
-							"meta",
-							"mysqli",
-							"oci8",
-							"odbc",
-							"openssl",
-							"pcntl",
-							"pcre",
-							"PDO",
-							"pdo_ibm",
-							"pdo_mysql",
-							"pdo_pgsql",
-							"pdo_sqlite",
-							"pgsql",
-							"Phar",
-							"posix",
-							"pspell",
-							"random",
-							"readline",
-							"Reflection",
-							"session",
-							"shmop",
-							"SimpleXML",
-							"snmp",
-							"soap",
-							"sockets",
-							"sodium",
-							"SPL",
-							"sqlite3",
-							"standard",
-							"superglobals",
-							"sysvmsg",
-							"sysvsem",
-							"sysvshm",
-							"tidy",
-							"tokenizer",
-							"xml",
-							"xmlreader",
-							"xmlrpc",
-							"xmlwriter",
-							"xsl",
-							"Zend OPcache",
-							"zip",
-							"zlib",
-							"wordpress",
-						},
-					},
-				},
-			})
-
-			vim.lsp.config("vtsls", {
-				settings = {
-					vtsls = {
-						tsserver = {
-							globalPlugins = {
-								{
-									name = "@vue/typescript-plugin",
-									location = vim.fn.stdpath("data")
-										.. "/mason/packages/vue-language-server/node_modules/@vue/language-server",
-									languages = { "vue" },
-									configNamespace = "typescript",
-								},
-							},
-						},
-					},
-				},
-				filetypes = { "typescript", "javascript", "javascriptreact", "typescriptreact", "vue" },
-			})
-
-			vim.lsp.config("gopls", {
-				settings = {
-					gopls = {
-						completeUnimported = true,
-						usePlaceholders = true,
-						analyses = {
-							unusedparams = true,
-						},
-						hints = {
-							parameterNames = true,
-						},
-					},
-				},
-			})
-
-			vim.lsp.config("golangci_lint_ls", {
-				root_markers = {
-					".golangci.yml",
-					".golangci.yaml",
-					".golangci.toml",
-					".golangci.json",
-				},
-			})
-
-			-- laravel_ls doesnt seem top work when installing from mason, Installed manually...
-			-- go install github.com/laravel-ls/laravel-ls/cmd/laravel-ls@latest
-			-- manually enabled
-			vim.lsp.config("laravel_ls", {
-				cmd = { "laravel-ls" },
-				filetypes = { "php", "blade" },
-				root_markers = { "artisan" },
-			})
-			vim.lsp.enable("laravel_ls")
-
 			vim.diagnostic.config({
 				virtual_text = true,
 				signs = {
 					text = {
 						[vim.diagnostic.severity.ERROR] = "󰅙",
-						[vim.diagnostic.severity.WARN] = "",
+						[vim.diagnostic.severity.WARN] = "",
 						[vim.diagnostic.severity.INFO] = "󰋼",
 						[vim.diagnostic.severity.HINT] = "󰌵",
 					},

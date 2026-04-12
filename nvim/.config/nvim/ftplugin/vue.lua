@@ -1,7 +1,6 @@
 require("nvim-treesitter").install({ "vue" })
 vim.treesitter.start()
 vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
 
 -- Inject @vue/typescript-plugin so vtsls attaches to .vue buffers,
 -- which vue_ls (hybrid mode) requires. vim.lsp.config() overrides the

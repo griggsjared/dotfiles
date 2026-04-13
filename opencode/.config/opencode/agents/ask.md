@@ -1,7 +1,7 @@
 ---
 description: Conversational agent for asking questions and exploring code without making changes
 mode: primary
-color: "#4a8cbd"
+color: "#e6975c"
 temperature: 0.3
 tools:
   write: false

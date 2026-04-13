@@ -20,6 +20,4 @@ config-file = active-theme.conf
 
 macos-titlebar-style = "tabs"
 
-window-save-state = always
-
 #custom-shader = shaders/cursor_smear.glsl

@@ -1,1 +1,1 @@
-vim.opt_local.autoindent = true
+vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"

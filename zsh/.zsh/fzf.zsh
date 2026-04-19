@@ -11,6 +11,7 @@ export FZF_DEFAULT_OPTS="
   --color=marker:green,spinner:yellow,header:cyan
   --color=border:white,label:white,query:white
   --color=gutter:black
+  --reverse
 "
 
 # vf (vim find) function to find files with fzf and open in neovim

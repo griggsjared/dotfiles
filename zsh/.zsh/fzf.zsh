@@ -5,13 +5,15 @@ source <(fzf --zsh)
 
 # FZF color scheme using terminal ANSI colors
 export FZF_DEFAULT_OPTS="
-  --color=fg:white,bg:black,hl:yellow
-  --color=fg+:white,bg+:black,hl+:yellow
+  --color=bg:-1,bg+:-1,preview-bg:-1,input-bg:-1,header-bg:-1
+  --color=fg:white,hl:yellow
+  --color=fg+:white,hl+:yellow
   --color=info:cyan,prompt:magenta,pointer:red
   --color=marker:green,spinner:yellow,header:cyan
   --color=border:white,label:white,query:white
-  --color=gutter:black
+  --gutter=' '
   --reverse
+  --height=~100%
 "
 
 # vf (vim find) function to find files with fzf and open in neovim

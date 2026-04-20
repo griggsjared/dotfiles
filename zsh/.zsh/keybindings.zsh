@@ -13,3 +13,10 @@ bindkey ' ' magic-space
 autoload -Uz edit-command-line
 zle -N edit-command-line
 bindkey '^E' edit-command-line
+
+# Open tm with Ctrl+P
+_run_tm() {
+  tm
+}
+zle -N _run_tm
+bindkey '^O' _run_tm

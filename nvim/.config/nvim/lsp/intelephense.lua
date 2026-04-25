@@ -1,4 +1,5 @@
 return {
+	root_markers = { "composer.json", "artisan", ".git" },
 	settings = {
 		intelephense = {
 			stubs = {

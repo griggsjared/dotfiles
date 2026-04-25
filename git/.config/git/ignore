@@ -1,3 +1,5 @@
 _notes/
 .nvim
 .DS_Store
+
+**/.claude/settings.local.json

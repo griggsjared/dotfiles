@@ -25,6 +25,17 @@ return {
 							"copilot",
 						},
 					},
+					{
+						function()
+							local ok, conform = pcall(require, "conform")
+							if not ok then return "" end
+							local formatters = conform.list_formatters(0)
+							local available = vim.tbl_filter(function(f) return f.available end, formatters)
+							if #available == 0 then return "" end
+							return table.concat(vim.tbl_map(function(f) return f.name end, available), " ")
+						end,
+						icon = "",
+					},
 					blink_ai_manager_status,
 					indent_info,
 					"fileformat",

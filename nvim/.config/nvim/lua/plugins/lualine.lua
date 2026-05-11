@@ -6,6 +6,11 @@ return {
 		local indent_info = require("lualine.indent-info")
 		local transparent_theme = require("lualine.transparent-theme")
 		local sidekick_status = require("lualine.sidekick-status")
+		local tooling_status = require("lualine.tooling-status")
+
+		tooling_status.setup_progress_tracking()
+
+		vim.keymap.set("n", "<leader>lp", tooling_status.show_popup, { desc = "Show active tooling sources popup" })
 
 		require("lualine").setup({
 			sections = {
@@ -18,24 +23,7 @@ return {
 					},
 				},
 				lualine_x = {
-					{
-						"lsp_status",
-						icon = "",
-						ignore_lsp = {
-							"copilot",
-						},
-					},
-					{
-						function()
-							local ok, conform = pcall(require, "conform")
-							if not ok then return "" end
-							local formatters = conform.list_formatters(0)
-							local available = vim.tbl_filter(function(f) return f.available end, formatters)
-							if #available == 0 then return "" end
-							return table.concat(vim.tbl_map(function(f) return f.name end, available), " ")
-						end,
-						icon = "",
-					},
+					{ tooling_status.component, on_click = tooling_status.show_popup },
 					blink_ai_manager_status,
 					indent_info,
 					"fileformat",

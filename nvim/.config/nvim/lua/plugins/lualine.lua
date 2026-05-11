@@ -15,7 +15,20 @@ return {
 		require("lualine").setup({
 			sections = {
 				lualine_a = { "mode" },
-				lualine_b = { "branch", "diff", "diagnostics" },
+				lualine_b = {
+					{
+						"branch",
+						fmt = function(str)
+							local max = 40
+							if vim.fn.strchars(str) > max then
+								return vim.fn.strcharpart(str, 0, max - 1) .. "…"
+							end
+							return str
+						end,
+					},
+					"diff",
+					"diagnostics",
+				},
 				lualine_c = {
 					{
 						"filename",

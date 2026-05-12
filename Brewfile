@@ -27,6 +27,7 @@ brew "lazygit"
 brew "ripgrep"
 brew "fd"
 brew "jq"
+brew "just"
 
 # System Tools
 brew "lsd"

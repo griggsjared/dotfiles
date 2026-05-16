@@ -63,6 +63,7 @@ brew "oven-sh/bun/bun"
 
 # Database Tools
 brew "mysql-client"
+brew "sqlx-cli"
 
 # AI Cli Tools
 brew "sst/tap/opencode"

@@ -9,6 +9,7 @@ cask "alt-tab"
 cask "jordanbaird-ice"
 cask "ghostty"
 cask "raycast"
+cask "shottr"
 
 # Packages (CLI Tools & Languages)
 # Shell & Terminal Tools

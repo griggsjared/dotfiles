@@ -38,8 +38,10 @@ fmt_remaining() {
     secs=$(( $1 - $(date +%s) ))
     if [ "$secs" -le 0 ]; then
         printf "now"
+    elif [ "$secs" -lt 60 ]; then
+        printf "0h1m"
     elif [ "$secs" -ge 86400 ]; then
-        printf "%dd" "$((secs / 86400))"
+        printf "%dd%dh%dm" "$((secs / 86400))" "$(((secs % 86400) / 3600))" "$(((secs % 3600) / 60))"
     else
         printf "%dh%dm" "$((secs / 3600))" "$(((secs % 3600) / 60))"
     fi

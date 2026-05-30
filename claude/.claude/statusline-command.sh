@@ -11,7 +11,7 @@ five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 week_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
-out=$(printf "\033[33m%s\033[0m" "$model")
+out=$(printf "\033[32m%s\033[0m" "$model")
 
 abbrev() {
     n=$1
@@ -23,7 +23,7 @@ abbrev() {
 }
 
 if [ -n "$used" ] && [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
-    out="$out $(printf "\033[36m%s/%s (%.0f%%)\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")" "$used")"
+    out="$out $(printf "\033[34m%s/%s (%.0f%%)\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")" "$used")"
 fi
 
 if [ -n "$mode" ] && [ "$mode" != "null" ] && [ "$mode" != "default" ]; then
@@ -34,25 +34,31 @@ if [ "$tasks" -gt 0 ]; then
     out="$out $(printf "\033[31mtasks: %s\033[0m" "$tasks")"
 fi
 
+fmt_remaining() {
+    secs=$(( $1 - $(date +%s) ))
+    if [ "$secs" -le 0 ]; then
+        printf "now"
+    elif [ "$secs" -ge 86400 ]; then
+        printf "%dd" "$((secs / 86400))"
+    else
+        printf "%dh%dm" "$((secs / 3600))" "$(((secs % 3600) / 60))"
+    fi
+}
+
 # Rate limits (only shown when present — Claude.ai subscribers after first API response)
-limits=""
 if [ -n "$five_pct" ]; then
     five_str="5h:$(printf '%.0f' "$five_pct")%"
     if [ -n "$five_reset" ]; then
-        five_str="$five_str>$(date -r "$five_reset" +%H:%M)"
+        five_str="$five_str ($(fmt_remaining "$five_reset"))"
     fi
-    limits="$five_str"
+    out="$out $(printf "\033[36m%s\033[0m" "$five_str")"
 fi
 if [ -n "$week_pct" ]; then
     week_str="7d:$(printf '%.0f' "$week_pct")%"
     if [ -n "$week_reset" ]; then
-        week_str="$week_str>$(date -r "$week_reset" +%a%H:%M)"
+        week_str="$week_str ($(fmt_remaining "$week_reset"))"
     fi
-    [ -n "$limits" ] && limits="$limits "
-    limits="${limits}${week_str}"
-fi
-if [ -n "$limits" ]; then
-    out="$out $(printf "\033[91m%s\033[0m" "$limits")"
+    out="$out $(printf "\033[91m%s\033[0m" "$week_str")"
 fi
 
 printf "%s" "$out"

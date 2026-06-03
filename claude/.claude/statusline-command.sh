@@ -15,7 +15,9 @@ out=$(printf "\033[32m%s\033[0m" "$model")
 
 abbrev() {
     n=$1
-    if [ "$n" -ge 1000 ]; then
+    if [ "$n" -ge 1000000 ]; then
+        awk -v n="$n" 'BEGIN { v=n/1000000; printf "%.0fm", v }'
+    elif [ "$n" -ge 1000 ]; then
         awk -v n="$n" 'BEGIN { v=n/1000; printf (v>=10 ? "%.0fk" : "%.1fk"), v }'
     else
         printf "%s" "$n"

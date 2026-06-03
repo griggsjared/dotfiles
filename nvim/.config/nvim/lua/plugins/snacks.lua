@@ -212,29 +212,16 @@ return {
 ▓▓  ▓▓ ▓▓ ▓▓      ▓▓    ▓▓  ▓▓  ▓▓  ▓▓ ▓▓  ▓▓  ▓▓
 ██   ████ ███████  ██████    ████   ██ ██      ██
 ]],
-						padding = 1,
-						gap = 1,
+						-- padding = 1,
 					},
 					function()
 						local v = vim.version()
 						local version = ("v%d.%d.%d%s"):format(v.major, v.minor, v.patch, v.prerelease and "-dev" or "")
-						local stats = require("lazy.stats").stats()
-						local ms = math.floor(stats.startuptime * 100 + 0.5) / 100
 						return {
 							align = "center",
-							padding = 1,
 							{
 								text = {
-									{ " Neovim ", hl = "footer" },
-									{ version,    hl = "special" },
-								},
-							},
-							{
-								text = {
-									{ "⚡ Loaded ", hl = "footer" },
-									{ stats.loaded .. "/" .. stats.count, hl = "special" },
-									{ " plugins in ", hl = "footer" },
-									{ ms .. "ms", hl = "special" },
+									{ version, hl = "special" },
 								},
 							},
 						}

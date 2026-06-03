@@ -9,6 +9,7 @@ return {
 						return utils.root_has_file({
 							"phpstan.neon",
 							"phpstan.neon.dist",
+							"phpstan.dist.neon"
 						})
 					end,
 				}),

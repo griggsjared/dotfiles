@@ -7,3 +7,5 @@
 3. **Update tests** - Always check for corresponding tests when editing code. Update tests to maintain appropriate coverage and follow existing test patterns and conventions.
 
 4. **Follow project conventions** - Check for linters, formatters, and configuration files (eslint, prettier, etc.). Follow the project's established conventions and formatting rules.
+
+5. **Delegate broad exploration** - For broad codebase exploration or fan-out searches across many files, delegate to a read-only exploration subagent instead of searching directly. Keep only the conclusions in the main context.

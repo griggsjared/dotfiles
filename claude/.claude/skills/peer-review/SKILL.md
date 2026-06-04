@@ -1,6 +1,9 @@
 ---
 name: peer-review
 description: Use when asked for peer review, code review, PR review, branch review, or reviewing a diff for correctness, design quality, production readiness, risks, and missing tests.
+model: opus
+effort: high
+context: fork
 ---
 
 # Peer Review

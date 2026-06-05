@@ -7,6 +7,7 @@ return {
 		local transparent_theme = require("lualine.transparent-theme")
 		local sidekick_status = require("lualine.sidekick-status")
 		local tooling_status = require("lualine.tooling-status")
+		local gh_pr_status = require("lualine.gh-pr-status")
 
 		tooling_status.setup_progress_tracking()
 
@@ -26,6 +27,7 @@ return {
 							return str
 						end,
 					},
+					gh_pr_status,
 					"diff",
 					"diagnostics",
 				},

@@ -2,9 +2,6 @@ local M = {}
 
 M.default_config = {
 	transparent_background = false,
-	palette_overrides = {},
-	highlight_overrides = {},
-	palette = "monokai",
 }
 
 M.did_setup = false
@@ -28,19 +25,7 @@ function M.setup(opts)
 	local helpers = require("baked.helpers")
 	local colorscheme = require("baked.colorscheme")
 
-	if not pcall(require, "baked.palettes." .. M.config.palette) then
-		vim.notify(
-			"[baked] Palette '" .. M.config.palette .. "' not found. Falling back to default palette.",
-			vim.log.levels.WARN
-		)
-		M.config.palette = M.default_config.palette
-	end
-
-	local palette = require("baked.palettes." .. M.config.palette)
-
-	if M.config.palette_overrides and next(M.config.palette_overrides) then
-		palette = vim.tbl_deep_extend("force", palette, M.config.palette_overrides)
-	end
+	local palette = require("baked.palettes.rpg")
 
 	local c = colorscheme.build(palette, helpers)
 
@@ -94,10 +79,6 @@ function M.setup(opts)
 				highlights[group] = vim.tbl_extend("force", highlights[group], { bg = "NONE" })
 			end
 		end
-	end
-
-	if M.config.highlight_overrides and next(M.config.highlight_overrides) then
-		highlights = vim.tbl_deep_extend("force", highlights, M.config.highlight_overrides)
 	end
 
 	for group, settings in pairs(highlights) do

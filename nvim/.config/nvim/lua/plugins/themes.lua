@@ -6,7 +6,6 @@ return {
 		config = function()
 			require("baked").setup({
 				transparent_background = false,
-				palette = os.getenv("BAKED_THEME") or "monokai",
 			})
 			vim.cmd([[colorscheme baked]])
 		end,

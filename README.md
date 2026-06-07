@@ -60,27 +60,6 @@ Global PHP packages (like Laravel Valet):
 composer global install
 ```
 
-## Themes
-
-Consistent color themes across all terminal tools using the `BAKED_THEME` environment variable.
-
-### Switching Themes
-
-Set the `BAKED_THEME` environment variable in `~/.zsh/private.zsh`:
-
-```bash
-export BAKED_THEME="catppuccin"  # or monokai, onedark, tokyonight, rosepine
-```
-
-Theme configs are automatically generated on shell initialization. After changing the variable:
-1. Open a new terminal session, or
-2. Run `source ~/.zshrc` and restart affected applications
-
-To regenerate Ghostty and OpenCode themes from all Neovim palettes:
-```bash
-~/.dotfiles/generate-themes.sh
-```
-
 
 ## Config Usage
 

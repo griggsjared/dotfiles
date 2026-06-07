@@ -19,50 +19,11 @@ return {
 					})
 				end,
 			},
-			-- Minuet / Ollama
-			{
-				"milanglacier/minuet-ai.nvim",
-				config = function()
-					require("minuet").setup({
-						provider = "openai_compatible",
-						n_completions = 1,
-						request_timeout = 2.5,
-						throttle = 1500,
-						debounce = 600,
-						provider_options = {
-							openai_compatible = {
-								api_key = "OPENCODE_GO_API_KEY",
-								name = "Opencode",
-								end_point = "https://opencode.ai/zen/go/v1/chat/completions",
-								model = "deepseek-v4-flash",
-								optional = {
-									max_tokens = 56,
-									top_p = 0.9,
-									thinking = { type = "disabled" },
-								},
-							},
-						},
-					})
-				end,
-			},
 		},
 		version = "*",
 		build = "cargo build --release",
 		opts_extend = { "sources.default" },
 		config = function()
-			local ai_manager = require("blink.ai-manager")
-
-			-- must have a default provider set in env to use ai sources
-			local default_provider = vim.env.NVIM_BLINK_AI_PROVIDER
-			if default_provider then
-				ai_manager.init(default_provider, {
-					"copilot",
-					"codeium",
-					"supermaven",
-					"minuet",
-				})
-			end
-
 			require("blink.cmp").setup({
 				keymap = { preset = "enter" },
 				appearance = {
@@ -100,56 +61,12 @@ return {
 					enabled = true,
 				},
 				sources = {
-					default = function()
-						return ai_manager.filter_sources({
-							"lsp",
-							"path",
-							"snippets",
-							"buffer",
-						})
-					end,
+					default = { "lsp", "path", "snippets", "buffer" },
 					providers = {
 						copilot = {
 							name = "copilot",
 							module = "blink-copilot",
 							score_offset = 100,
-							async = true,
-							transform_items = function(_, items)
-								for _, item in ipairs(items) do
-									item.kind_name = "Super"
-								end
-								return items
-							end,
-						},
-						codeium = {
-							name = "codeium",
-							module = "codeium.blink",
-							score_offset = 100,
-							async = true,
-							transform_items = function(_, items)
-								for _, item in ipairs(items) do
-									item.kind_name = "Super"
-								end
-								return items
-							end,
-						},
-						supermaven = {
-							name = "supermaven",
-							module = "blink-cmp-supermaven",
-							score_offset = 100,
-							async = true,
-							transform_items = function(_, items)
-								for _, item in ipairs(items) do
-									item.kind_name = "Super"
-								end
-								return items
-							end,
-						},
-						minuet = {
-							name = "minuet",
-							module = "minuet.blink",
-							score_offset = 100,
-							timeout_ms = 3000,
 							async = true,
 							transform_items = function(_, items)
 								for _, item in ipairs(items) do

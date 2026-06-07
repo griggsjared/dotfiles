@@ -2,7 +2,6 @@ return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	config = function()
-		local blink_ai_manager_status = require("blink.ai-manager").lualine_status
 		local indent_info = require("lualine.indent-info")
 		local transparent_theme = require("lualine.transparent-theme")
 		local sidekick_status = require("lualine.sidekick-status")
@@ -39,7 +38,6 @@ return {
 				},
 				lualine_x = {
 					{ tooling_status.component, on_click = tooling_status.show_popup },
-					blink_ai_manager_status,
 					indent_info,
 					"fileformat",
 					"filetype",

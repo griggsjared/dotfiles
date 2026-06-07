@@ -24,6 +24,23 @@ return {
 		build = "cargo build --release",
 		opts_extend = { "sources.default" },
 		config = function()
+			if vim.g.copilot_enabled == nil then
+				vim.g.copilot_enabled = vim.fn.filereadable(vim.fn.expand("~/.config/github-copilot/apps.json")) == 1
+			end
+
+			vim.keymap.set("n", "<leader>ac", function()
+				if vim.g.copilot_enabled then
+					vim.g.copilot_enabled = false
+				elseif vim.fn.filereadable(vim.fn.expand("~/.config/github-copilot/apps.json")) == 1 then
+					vim.g.copilot_enabled = true
+				else
+					vim.notify("Copilot: no credentials found")
+					return
+				end
+				require("blink.cmp").reload()
+				vim.notify("Copilot: " .. (vim.g.copilot_enabled and "on" or "off"))
+			end, { desc = "Toggle copilot" })
+
 			require("blink.cmp").setup({
 				keymap = { preset = "enter" },
 				appearance = {
@@ -61,13 +78,16 @@ return {
 					enabled = true,
 				},
 				sources = {
-					default = { "lsp", "path", "snippets", "buffer" },
+					default = { "lsp", "path", "snippets", "buffer", "copilot" },
 					providers = {
 						copilot = {
 							name = "copilot",
 							module = "blink-copilot",
 							score_offset = 100,
 							async = true,
+							enabled = function()
+								return vim.g.copilot_enabled
+							end,
 							transform_items = function(_, items)
 								for _, item in ipairs(items) do
 									item.kind_name = "Super"

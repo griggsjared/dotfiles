@@ -15,12 +15,33 @@ end
 -- the active cli will be used for CC. Any cli selected with <leader>c1..9 becomes the active one
 local active_cli = clis[1]
 
+-- Open a local session directly, skipping the picker for externally-detected sessions
+local function open_local(name, opts)
+	local State = require("sidekick.cli.state")
+	local states = State.get({ name = name })
+	for _, s in ipairs(states) do
+		if not s.external then
+			State.attach(s, opts or { show = true, focus = true })
+			return
+		end
+	end
+end
+
 -- Dynamically generate key mappings for each CLI
 local keys = {
 	{
 		"<c-\\>",
 		function()
-			require("sidekick.cli").focus({ name = active_cli })
+			-- If already attached to a local session, use normal focus toggle (can blur back to code)
+			local State = require("sidekick.cli.state")
+			local attached = vim.tbl_filter(function(s)
+				return s.attached and not s.external
+			end, State.get({ name = active_cli }))
+			if #attached > 0 then
+				require("sidekick.cli").focus({ name = active_cli })
+			else
+				open_local(active_cli)
+			end
 		end,
 		mode = { "n", "x", "i", "t" },
 		desc = "Sidekick Switch Focus",
@@ -39,7 +60,7 @@ for i, cli in ipairs(clis) do
 	table.insert(keys, {
 		"<leader>c" .. i,
 		function()
-			require("sidekick.cli").toggle({ name = cli, focus = true, diagnostics = true })
+			open_local(cli)
 			-- the selected cli becomes the active one
 			active_cli = cli
 		end,
@@ -52,9 +73,38 @@ end
 table.insert(keys, {
 	"<leader>cc",
 	function()
-		require("sidekick.cli").show({ name = active_cli, focus = true })
+		open_local(active_cli)
 	end,
 	desc = "Sidekick Toggle CLI " .. active_cli,
+})
+
+table.insert(keys, {
+	"<leader>cs",
+	function()
+		local State = require("sidekick.cli.state")
+		local sk_select = require("sidekick.cli.ui.select")
+		-- Only show installed local sessions/tools (exclude externals and not-installed)
+		local states = vim.tbl_filter(function(s)
+			return s.installed and not s.external
+		end, State.get())
+		if #states == 0 then return end
+		if #states == 1 then
+			open_local(states[1].tool.name)
+			return
+		end
+		vim.ui.select(states, {
+			prompt = "Select CLI tool:",
+			kind = "sidekick_cli",
+			format_item = function(s)
+				local parts = sk_select.format(s)
+				return table.concat(vim.tbl_map(function(p) return p[1] end, parts))
+			end,
+			snacks = { format = sk_select.format },
+		}, function(state)
+			if state then open_local(state.tool.name) end
+		end)
+	end,
+	desc = "Sidekick Show All CLIs",
 })
 
 -- send this to active cli

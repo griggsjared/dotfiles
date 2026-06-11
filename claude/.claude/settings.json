@@ -1,0 +1,8 @@
+{
+  "theme": "dark-ansi",
+  "effortLevel": "medium",
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline-command.sh"
+  }
+}

@@ -68,5 +68,5 @@ brew "sqlx-cli"
 
 # AI Cli Tools
 brew "sst/tap/opencode"
-brew "codex"
+cask "codex"
 brew "tree-sitter-cli"

@@ -56,6 +56,29 @@ else
 fi
 
 echo ""
+echo "Installing Claude Code..."
+echo "========================="
+
+# Function to ensure user-local binaries are in PATH
+ensure_local_bin_path() {
+    if [ -d "$HOME/.local/bin" ] && [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+        echo "Adding user-local bin to PATH..."
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+}
+
+# Claude Code's native installer places the binary in ~/.local/bin.
+ensure_local_bin_path
+
+if command -v claude &> /dev/null; then
+    echo "Claude Code already installed"
+else
+    echo "Installing Claude Code with native installer..."
+    curl -fsSL https://claude.ai/install.sh | bash
+    ensure_local_bin_path
+fi
+
+echo ""
 echo "Installing Go Tools..."
 echo "========================="
 
@@ -290,6 +313,7 @@ echo "- brew --version"
 echo "- go version"
 echo "- rustc --version"
 echo "- nvm --version"
+echo "- claude --version"
 echo "- composer --version"
 echo "- valet --version (if applicable)"
 echo ""

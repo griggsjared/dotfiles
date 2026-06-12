@@ -1,6 +1,6 @@
 {
-    "require-dev": {
-        "laravel/valet": "^5.1"
+    "require": {
+        "laravel/valet": "~4.9"
     },
     "config": {
         "preferred-install": "dist",

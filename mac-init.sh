@@ -263,13 +263,21 @@ ensure_valet_path() {
 # Ensure Composer is in PATH
 ensure_composer_path
 
+# Resolve the dotfiles directory (where this script lives)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Check if Composer is available and composer.json exists
 if ! command -v composer &> /dev/null; then
     echo "WARNING: Composer not found. Skipping Composer packages installation."
     echo "Please run this script again after Composer is properly installed and in PATH."
-elif [ -f "composer.json" ]; then
-    echo "Installing Composer packages from composer.json..."
-    
+elif [ -f "$SCRIPT_DIR/composer.json" ]; then
+    echo "Installing Composer packages from dotfiles composer.json..."
+
+    # Sync the dotfiles composer.json into the global Composer home
+    COMPOSER_HOME_DIR="${COMPOSER_HOME:-$HOME/.composer}"
+    mkdir -p "$COMPOSER_HOME_DIR"
+    cp "$SCRIPT_DIR/composer.json" "$COMPOSER_HOME_DIR/composer.json"
+
     # Install global packages
     composer global install --no-dev --optimize-autoloader
     
@@ -292,7 +300,7 @@ elif [ -f "composer.json" ]; then
     
     echo "Composer packages installation complete"
 else
-    echo "WARNING: composer.json not found. Skipping Composer packages installation."
+    echo "WARNING: composer.json not found in dotfiles. Skipping Composer packages installation."
 fi
 
 echo ""

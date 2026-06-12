@@ -2,14 +2,14 @@ local cache = { cwd = nil, result = nil, at = 0 }
 local TTL = 30000
 
 local hls = {
-	OPEN   = { name = "LualineGhOpen",   fg = "#3fb950" },
-	DRAFT  = { name = "LualineGhDraft",  fg = "#8b949e" },
-	MERGED = { name = "LualineGhMerged", fg = "#a371f7" },
-	CLOSED = { name = "LualineGhClosed", fg = "#f85149" },
+	OPEN   = { name = "LualineGhOpen",   link = "diffAdded" },
+	DRAFT  = { name = "LualineGhDraft",  link = "Comment" },
+	MERGED = { name = "LualineGhMerged", link = "Keyword" },
+	CLOSED = { name = "LualineGhClosed", link = "DiagnosticError" },
 }
 
 for _, h in pairs(hls) do
-	vim.api.nvim_set_hl(0, h.name, { fg = h.fg })
+	vim.api.nvim_set_hl(0, h.name, { link = h.link })
 end
 
 vim.api.nvim_create_autocmd("DirChanged", {

@@ -1,11 +1,5 @@
 local nes_enabled = vim.env.NVIM_SIDEKUCK_NES_ENABLED or false
 
--- Primary CLI focused by <c-\>; <leader>cc opens any local CLI via picker
-local active_cli = vim.env.NVIM_SIDEKICK_CLI_1
-if not active_cli or active_cli == "" then
-	active_cli = "opencode" -- fallback default
-end
-
 -- Optional allowlist: NVIM_SIDEKICK_CLIS="opencode,claude" restricts the CLIs we
 -- offer to this set. It only ever narrows the list — it never adds a CLI that
 -- wouldn't have shown otherwise. Empty/unset means allow all.
@@ -94,24 +88,90 @@ local function send_local(msg)
 	end
 end
 
+-- Open a local CLI: directly if there's only one installed, via picker otherwise.
+-- Excludes externals, not-installed, and anything outside the allowlist.
+local function open_cli()
+	local State = require("sidekick.cli.state")
+	local sk_select = require("sidekick.cli.ui.select")
+	local states = vim.tbl_filter(function(s)
+		return s.installed and is_allowed_local(s)
+	end, State.get())
+	if #states == 0 then
+		return
+	end
+	if #states == 1 then
+		open_local(states[1].tool.name)
+		return
+	end
+	vim.ui.select(states, {
+		prompt = "Select CLI tool:",
+		kind = "sidekick_cli",
+		format_item = function(s)
+			local parts = sk_select.format(s)
+			return table.concat(vim.tbl_map(function(p) return p[1] end, parts))
+		end,
+		snacks = { format = sk_select.format },
+	}, function(state)
+		if state then open_local(state.tool.name) end
+	end)
+end
+
+-- Cycle focus through the open (attached, in-process) CLIs and back to the buffer.
+-- Never starts a new CLI; if none are open, falls back to the open_cli picker.
+local function cycle_clis()
+	local State = require("sidekick.cli.state")
+	local clis = vim.tbl_filter(function(s)
+		return s.attached and not s.external and s.terminal
+	end, State.get())
+	if #clis == 0 then
+		open_cli()
+		return
+	end
+	-- stable order so cycling is deterministic across calls
+	table.sort(clis, function(a, b)
+		return a.session.id < b.session.id
+	end)
+
+	local current ---@type integer?
+	for i, s in ipairs(clis) do
+		if s.terminal:is_focused() then
+			current = i
+			break
+		end
+	end
+
+	if not current then
+		clis[1].terminal:focus() -- from a buffer: jump to the first CLI
+	elseif current < #clis then
+		clis[current + 1].terminal:focus() -- next CLI
+	else
+		-- past the last CLI: return to the editor. blur()'s wincmd-p would land on
+		-- the previous CLI when cycling through several, so target an editor window.
+		local editor ---@type integer?
+		for _, w in ipairs(vim.api.nvim_list_wins()) do
+			if not vim.w[w].sidekick_session_id and vim.api.nvim_win_get_config(w).relative == "" then
+				editor = w
+				break
+			end
+		end
+		if editor then
+			vim.api.nvim_set_current_win(editor)
+			vim.cmd.stopinsert()
+		else
+			clis[current].terminal:blur()
+		end
+	end
+end
+
 -- Dynamically generate key mappings for each CLI
 local keys = {
 	{
 		"<c-\\>",
 		function()
-			-- If already attached to a local session, use normal focus toggle (can blur back to code)
-			local State = require("sidekick.cli.state")
-			local attached = vim.tbl_filter(function(s)
-				return s.attached and not s.external
-			end, State.get({ name = active_cli }))
-			if #attached > 0 then
-				require("sidekick.cli").focus({ name = active_cli })
-			else
-				open_local(active_cli)
-			end
+			cycle_clis()
 		end,
 		mode = { "n", "x", "i", "t" },
-		desc = "Sidekick Switch Focus",
+		desc = "Sidekick Cycle CLIs",
 	},
 	{
 		"<leader>cq",
@@ -127,28 +187,7 @@ local keys = {
 table.insert(keys, {
 	"<leader>cc",
 	function()
-		local State = require("sidekick.cli.state")
-		local sk_select = require("sidekick.cli.ui.select")
-		-- Only show installed local sessions/tools (exclude externals, not-installed, and disallowed)
-		local states = vim.tbl_filter(function(s)
-			return s.installed and is_allowed_local(s)
-		end, State.get())
-		if #states == 0 then return end
-		if #states == 1 then
-			open_local(states[1].tool.name)
-			return
-		end
-		vim.ui.select(states, {
-			prompt = "Select CLI tool:",
-			kind = "sidekick_cli",
-			format_item = function(s)
-				local parts = sk_select.format(s)
-				return table.concat(vim.tbl_map(function(p) return p[1] end, parts))
-			end,
-			snacks = { format = sk_select.format },
-		}, function(state)
-			if state then open_local(state.tool.name) end
-		end)
+		open_cli()
 	end,
 	desc = "Sidekick Open CLI",
 })

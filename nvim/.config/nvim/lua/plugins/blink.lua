@@ -1,6 +1,12 @@
 return {
 	{
 		"saghen/blink.cmp",
+		init = function()
+			local copilot_default_on = vim.env.NVIM_COPILOT_ENABLED == "1"
+			if vim.g.copilot_enabled == nil then
+				vim.g.copilot_enabled = copilot_default_on
+			end
+		end,
 		dependencies = {
 			"rafamadriz/friendly-snippets",
 			"saghen/blink.compat",
@@ -17,6 +23,9 @@ return {
 							accept_newline = true,
 						},
 					})
+					if not vim.g.copilot_enabled then
+						vim.cmd("Copilot disable")
+					end
 				end,
 			},
 		},
@@ -24,20 +33,21 @@ return {
 		build = "cargo build --release",
 		opts_extend = { "sources.default" },
 		config = function()
-			if vim.g.copilot_enabled == nil then
-				vim.g.copilot_enabled = vim.fn.filereadable(vim.fn.expand("~/.config/github-copilot/apps.json")) == 1
+			local function set_copilot_enabled(enabled)
+				vim.g.copilot_enabled = enabled
+				require("blink.cmp").reload()
+				vim.cmd("Copilot " .. (enabled and "enable" or "disable"))
 			end
 
 			vim.keymap.set("n", "<leader>ac", function()
 				if vim.g.copilot_enabled then
-					vim.g.copilot_enabled = false
+					set_copilot_enabled(false)
 				elseif vim.fn.filereadable(vim.fn.expand("~/.config/github-copilot/apps.json")) == 1 then
-					vim.g.copilot_enabled = true
+					set_copilot_enabled(true)
 				else
 					vim.notify("Copilot: no credentials found")
 					return
 				end
-				require("blink.cmp").reload()
 				vim.notify("Copilot: " .. (vim.g.copilot_enabled and "on" or "off"))
 			end, { desc = "Toggle copilot" })
 

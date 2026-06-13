@@ -6,6 +6,25 @@ if not active_cli or active_cli == "" then
 	active_cli = "opencode" -- fallback default
 end
 
+-- Optional allowlist: NVIM_SIDEKICK_CLIS="opencode,claude" restricts the CLIs we
+-- offer to this set. It only ever narrows the list — it never adds a CLI that
+-- wouldn't have shown otherwise. Empty/unset means allow all.
+local allowed_clis ---@type table<string, boolean>?
+if vim.env.NVIM_SIDEKICK_CLIS and vim.env.NVIM_SIDEKICK_CLIS ~= "" then
+	allowed_clis = {}
+	for name in vim.gsplit(vim.env.NVIM_SIDEKICK_CLIS, ",", { trimempty = true }) do
+		name = vim.trim(name)
+		if name ~= "" then
+			allowed_clis[name] = true
+		end
+	end
+end
+
+-- A local (non-external) state that passes the optional allowlist
+local function is_allowed_local(s)
+	return not s.external and (not allowed_clis or allowed_clis[s.tool.name])
+end
+
 -- Open a local session directly, skipping the picker for externally-detected sessions
 local function open_local(name, opts)
 	local State = require("sidekick.cli.state")
@@ -52,7 +71,7 @@ local function send_local(msg)
 
 	-- Sessions actively running in this neovim instance
 	local running = vim.tbl_filter(function(s)
-		return s.attached and not s.external
+		return s.attached and is_allowed_local(s)
 	end, all)
 	if #running == 1 then
 		dispatch(running[1])
@@ -64,7 +83,7 @@ local function send_local(msg)
 
 	-- Nothing running — offer installed local tools (mirrors <leader>cc)
 	local installed = vim.tbl_filter(function(s)
-		return s.installed and not s.external
+		return s.installed and is_allowed_local(s)
 	end, all)
 	if #installed == 0 then
 		return
@@ -110,9 +129,9 @@ table.insert(keys, {
 	function()
 		local State = require("sidekick.cli.state")
 		local sk_select = require("sidekick.cli.ui.select")
-		-- Only show installed local sessions/tools (exclude externals and not-installed)
+		-- Only show installed local sessions/tools (exclude externals, not-installed, and disallowed)
 		local states = vim.tbl_filter(function(s)
-			return s.installed and not s.external
+			return s.installed and is_allowed_local(s)
 		end, State.get())
 		if #states == 0 then return end
 		if #states == 1 then

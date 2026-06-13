@@ -27,6 +27,63 @@ local function open_local(name, opts)
 	end
 end
 
+-- Send to a local session only, never surfacing external/tmux sessions.
+-- We resolve a single target ourselves and dispatch with a session-id filter so
+-- sidekick.send() never opens its own (all-sessions) picker on top of ours.
+local function send_local(msg)
+	local State = require("sidekick.cli.state")
+	local sk_select = require("sidekick.cli.ui.select")
+
+	-- Send to one concrete state without triggering sidekick's picker.
+	-- Filtering by session id always matches exactly one attached session.
+	local function dispatch(state)
+		if not state then return end
+		if not state.session then
+			-- Not running yet: attach (start) it so we get a session to target
+			state = State.attach(state, { show = true, focus = false })
+		end
+		require("sidekick.cli").send({ msg = msg, filter = { session = state.session.id } })
+	end
+
+	local function pick(items)
+		vim.ui.select(items, {
+			prompt = "Select CLI tool:",
+			kind = "sidekick_cli",
+			snacks = { format = sk_select.format },
+			format_item = function(s)
+				local parts = sk_select.format(s)
+				return table.concat(vim.tbl_map(function(p) return p[1] end, parts))
+			end,
+		}, dispatch)
+	end
+
+	local all = State.get()
+
+	-- Sessions actively running in this neovim instance
+	local running = vim.tbl_filter(function(s)
+		return s.attached and not s.external
+	end, all)
+	if #running == 1 then
+		dispatch(running[1])
+		return
+	elseif #running > 1 then
+		pick(running)
+		return
+	end
+
+	-- Nothing running — offer installed local tools (mirrors <leader>cs)
+	local installed = vim.tbl_filter(function(s)
+		return s.installed and not s.external
+	end, all)
+	if #installed == 0 then
+		return
+	elseif #installed == 1 then
+		dispatch(installed[1])
+	else
+		pick(installed)
+	end
+end
+
 -- Dynamically generate key mappings for each CLI
 local keys = {
 	{
@@ -111,7 +168,7 @@ table.insert(keys, {
 table.insert(keys, {
 	"<leader>ct",
 	function()
-		require("sidekick.cli").send({ msg = "{this}", name = active_cli })
+		send_local("{this}")
 	end,
 	desc = "Sidekick Send File to CLI " .. active_cli,
 	mode = { "x", "n" },
@@ -121,7 +178,7 @@ table.insert(keys, {
 table.insert(keys, {
 	"<leader>cf",
 	function()
-		require("sidekick.cli").send({ msg = "{file}", name = active_cli })
+		send_local("{file}")
 	end,
 	desc = "Sidekick Send File to CLI " .. active_cli,
 })
@@ -130,7 +187,7 @@ table.insert(keys, {
 table.insert(keys, {
 	"<leader>cv",
 	function()
-		require("sidekick.cli").send({ msg = "{selection}", name = active_cli })
+		send_local("{selection}")
 	end,
 	desc = "Send Selection to CLI " .. active_cli,
 	mode = { "x" },
@@ -157,7 +214,8 @@ return {
 		},
 		cli = {
 			prompts = {
-				commit = "Please review the staged changes and recommend a concise git commit message. Do not create the commit, just provide the message. Follow the style most recently used in the commit history.",
+				commit =
+				"Please review the staged changes and recommend a concise git commit message. Do not create the commit, just provide the message. Follow the style most recently used in the commit history.",
 			},
 			tools = {
 				cursor = { cmd = { "cursor-agent", "--mode", "ask" } }, -- start cursor-agent in ask mode

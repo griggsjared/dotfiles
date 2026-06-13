@@ -1,19 +1,10 @@
 local nes_enabled = vim.env.NVIM_SIDEKUCK_NES_ENABLED or false
 
--- Dynamically read up to 10 CLI env vars
-local clis = {}
-for i = 1, 10 do
-	local cli = vim.env["NVIM_SIDEKICK_CLI_" .. i]
-	if cli and cli ~= "" then
-		table.insert(clis, cli)
-	end
+-- Primary CLI focused by <c-\>; <leader>cc opens any local CLI via picker
+local active_cli = vim.env.NVIM_SIDEKICK_CLI_1
+if not active_cli or active_cli == "" then
+	active_cli = "opencode" -- fallback default
 end
-if #clis == 0 then
-	clis[1] = "opencode" -- fallback default
-end
-
--- the active cli will be used for CC. Any cli selected with <leader>c1..9 becomes the active one
-local active_cli = clis[1]
 
 -- Open a local session directly, skipping the picker for externally-detected sessions
 local function open_local(name, opts)
@@ -71,7 +62,7 @@ local function send_local(msg)
 		return
 	end
 
-	-- Nothing running — offer installed local tools (mirrors <leader>cs)
+	-- Nothing running — offer installed local tools (mirrors <leader>cc)
 	local installed = vim.tbl_filter(function(s)
 		return s.installed and not s.external
 	end, all)
@@ -113,30 +104,9 @@ local keys = {
 	},
 }
 
-for i, cli in ipairs(clis) do
-	table.insert(keys, {
-		"<leader>c" .. i,
-		function()
-			open_local(cli)
-			-- the selected cli becomes the active one
-			active_cli = cli
-		end,
-		desc = "Sidekick Toggle " .. cli,
-		mode = { "n", "v" },
-	})
-end
-
--- <leader>cc always toggles the first CLI
+-- <leader>cc opens a local CLI: directly if there's one, via picker if there are several
 table.insert(keys, {
 	"<leader>cc",
-	function()
-		open_local(active_cli)
-	end,
-	desc = "Sidekick Toggle CLI " .. active_cli,
-})
-
-table.insert(keys, {
-	"<leader>cs",
 	function()
 		local State = require("sidekick.cli.state")
 		local sk_select = require("sidekick.cli.ui.select")
@@ -161,35 +131,35 @@ table.insert(keys, {
 			if state then open_local(state.tool.name) end
 		end)
 	end,
-	desc = "Sidekick Show All CLIs",
+	desc = "Sidekick Open CLI",
 })
 
--- send this to active cli
+-- send this to a local cli
 table.insert(keys, {
 	"<leader>ct",
 	function()
 		send_local("{this}")
 	end,
-	desc = "Sidekick Send File to CLI " .. active_cli,
+	desc = "Sidekick Send This to CLI",
 	mode = { "x", "n" },
 })
 
--- send file to active cli
+-- send file to a local cli
 table.insert(keys, {
 	"<leader>cf",
 	function()
 		send_local("{file}")
 	end,
-	desc = "Sidekick Send File to CLI " .. active_cli,
+	desc = "Sidekick Send File to CLI",
 })
 
--- send selection to active cli
+-- send selection to a local cli
 table.insert(keys, {
 	"<leader>cv",
 	function()
 		send_local("{selection}")
 	end,
-	desc = "Send Selection to CLI " .. active_cli,
+	desc = "Sidekick Send Selection to CLI",
 	mode = { "x" },
 })
 

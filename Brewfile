@@ -33,7 +33,6 @@ brew "just"
 # System Tools
 brew "eza"
 brew "bat"
-brew "yazi"
 brew "btop"
 
 # Media Tools

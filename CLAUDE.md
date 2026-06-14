@@ -46,5 +46,5 @@ Each top-level directory is a stow package mirroring the XDG/home structure:
 - `tmux/` — `.tmux.conf`
 - `ghostty/` — terminal emulator config + shaders/themes
 - `claude/` — Claude Code config, skills, commands, agents
-- `lazygit/`, `yazi/`, `neovide/`, `git/`, `ideavim/` — tool configs
+- `lazygit/`, `neovide/`, `git/`, `ideovim/` — tool configs
 - `opencode/` — AI CLI tool config (has its own node_modules)

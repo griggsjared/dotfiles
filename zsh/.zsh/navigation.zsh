@@ -1,7 +1,7 @@
 # File and directory navigation
 
 # Aliases
-alias ls='lsd -A'
+alias ls='eza -A --icons --group-directories-first --git'
 alias y='yazi'
 
 # Kill process listening on a port

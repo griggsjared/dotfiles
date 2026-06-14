@@ -31,7 +31,7 @@ brew "jq"
 brew "just"
 
 # System Tools
-brew "lsd"
+brew "eza"
 brew "bat"
 brew "yazi"
 brew "btop"

@@ -89,6 +89,11 @@ return {
 				})
 			end, { desc = "Toggle inlay hints" })
 
+			vim.keymap.set("n", "<leader>xv", function()
+				local enabled = vim.diagnostic.is_enabled()
+				vim.diagnostic.enable(not enabled)
+			end, { desc = "Toggle diagnostics visibility" })
+
 			vim.keymap.set("n", "<leader>ih", function()
 				vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled())
 			end, { desc = "Toggle inlay hints" })

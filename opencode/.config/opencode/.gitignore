@@ -1,5 +1,8 @@
-node_modules
-package.json
-package-lock.json
-bun.lock
-opencode.local.json
+# whitelist: only track listed paths
+*
+!*/
+!.gitignore
+!opencode.json
+!agents/**
+!commands/**
+!themes/**

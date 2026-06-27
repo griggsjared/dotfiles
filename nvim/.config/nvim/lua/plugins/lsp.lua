@@ -50,8 +50,8 @@ return {
 					"marksman",
 					"jsonls",
 				},
-				-- disable automatic server enabling; ftplugin files call vim.lsp.enable() explicitly
-				handlers = {},
+				-- never auto-enable; every server is enabled explicitly in its ftplugin
+				automatic_enable = false,
 			})
 		end,
 	},

@@ -1,4 +1,4 @@
-require("nvim-treesitter").install({ "blade" })
+require("nvim-treesitter").install({ "blade", "html", "php", "php_only" })
 vim.treesitter.start()
 vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 vim.lsp.enable({ "html", "laravel_ls" })

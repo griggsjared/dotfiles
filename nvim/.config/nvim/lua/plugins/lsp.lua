@@ -36,6 +36,7 @@ return {
 					"cssls",
 					"tailwindcss",
 					"intelephense",
+					"phpantom_lsp",
 					"lua_ls",
 					"vtsls",
 					"vue_ls",

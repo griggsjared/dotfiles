@@ -12,10 +12,10 @@ window-padding-y = 4
 keybind = global:alt+right=unbind
 keybind = global:alt+left=unbind
 
-background-opacity = 0.95
+background-opacity = 0.99
 cursor-invert-fg-bg = true
 theme = baked-rpg
 
 macos-titlebar-style = "tabs"
 
-#custom-shader = shaders/cursor_smear.glsl
+custom-shader = shaders/cursor_smear.glsl

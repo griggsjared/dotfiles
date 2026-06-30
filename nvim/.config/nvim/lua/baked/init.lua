@@ -72,6 +72,11 @@ function M.setup(opts)
 			"BlinkCmpMenu",
 			"BlinkCmpMenuBorder",
 			"BlinkCmpDocBorder",
+			-- Snacks
+			"SnacksDashboardNormal",
+			"SnacksPicker",
+			"SnacksPickerBorder",
+			"SnacksPickerPreview",
 		}
 
 		for _, group in ipairs(transparent_groups) do

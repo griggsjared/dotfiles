@@ -20,7 +20,7 @@ function M.get(c, hp)
 	}
 
 	for _, plugin in ipairs(plugins) do
-		local ok, module = pcall(require, "baked.theme.plugins." .. plugin)
+		local ok, module = pcall(require, "rpg.theme.plugins." .. plugin)
 		if ok then
 			local plugin_highlights = module.get(c, hp)
 			highlights = vim.tbl_deep_extend("force", highlights, plugin_highlights)

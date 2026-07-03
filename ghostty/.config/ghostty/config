@@ -14,7 +14,7 @@ keybind = global:alt+left=unbind
 
 background-opacity = 0.99
 cursor-invert-fg-bg = true
-theme = baked-rpg
+theme = rpg
 
 macos-titlebar-style = "tabs"
 

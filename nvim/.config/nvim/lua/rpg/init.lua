@@ -19,21 +19,21 @@ function M.setup(opts)
 		vim.cmd("syntax reset")
 	end
 
-	vim.g.colors_name = "baked"
+	vim.g.colors_name = "rpg"
 	vim.o.termguicolors = true
 
-	local helpers = require("baked.helpers")
-	local colorscheme = require("baked.colorscheme")
+	local helpers = require("rpg.helpers")
+	local colorscheme = require("rpg.colorscheme")
 
-	local palette = require("baked.palettes.rpg")
+	local palette = require("rpg.palettes.default")
 
 	local c = colorscheme.build(palette, helpers)
 
-	local editor = require("baked.theme.editor")
-	local syntax = require("baked.theme.syntax")
-	local treesitter = require("baked.theme.treesitter")
-	local lsp = require("baked.theme.lsp")
-	local plugins = require("baked.theme.plugins")
+	local editor = require("rpg.theme.editor")
+	local syntax = require("rpg.theme.syntax")
+	local treesitter = require("rpg.theme.treesitter")
+	local lsp = require("rpg.theme.lsp")
+	local plugins = require("rpg.theme.plugins")
 
 	local highlights = {}
 	highlights = vim.tbl_deep_extend("force", highlights, editor.get(c, helpers))
@@ -94,7 +94,7 @@ function M.setup(opts)
 end
 
 function M.set_terminal_colors(palette)
-	local helpers = require("baked.helpers")
+	local helpers = require("rpg.helpers")
 
 	vim.g.terminal_color_0 = palette.background -- black
 	vim.g.terminal_color_1 = palette.red -- red

@@ -93,22 +93,22 @@ function M.setup(opts)
 end
 
 function M.set_terminal_colors(palette)
-	vim.g.terminal_color_0 = palette.background -- black
+	vim.g.terminal_color_0 = palette.black -- black
 	vim.g.terminal_color_1 = palette.red -- red
 	vim.g.terminal_color_2 = palette.green -- green
 	vim.g.terminal_color_3 = palette.yellow -- yellow
 	vim.g.terminal_color_4 = palette.blue -- blue
 	vim.g.terminal_color_5 = palette.magenta -- magenta
 	vim.g.terminal_color_6 = palette.cyan -- cyan
-	vim.g.terminal_color_7 = palette.foreground -- white
-	vim.g.terminal_color_8 = palette.dimmed3 -- bright black
+	vim.g.terminal_color_7 = palette.white -- white
+	vim.g.terminal_color_8 = palette.black -- bright black
 	vim.g.terminal_color_9 = palette.red -- bright red
 	vim.g.terminal_color_10 = palette.green -- bright green
 	vim.g.terminal_color_11 = palette.yellow -- bright yellow
 	vim.g.terminal_color_12 = palette.blue -- bright blue
 	vim.g.terminal_color_13 = palette.magenta -- bright magenta
 	vim.g.terminal_color_14 = palette.cyan -- bright cyan
-	vim.g.terminal_color_15 = palette.foreground -- bright white
+	vim.g.terminal_color_15 = palette.white -- bright white
 end
 
 return M

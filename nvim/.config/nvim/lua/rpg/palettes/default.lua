@@ -1,6 +1,6 @@
 local palette = {
-	background = "#1a1a1a",
-	foreground = "#fcfcfa",
+	black = "#1a1a1a",
+	white = "#fcfcfa",
 
 	red = "#d9726c",
 	cyan = "#e6975c",
@@ -8,12 +8,6 @@ local palette = {
 	green = "#7acc5c",
 	blue = "#4a8cbd",
 	magenta = "#9d6ac4",
-
-	dimmed1 = "#c1c0c0",
-	dimmed2 = "#939293",
-	dimmed3 = "#727072",
-	dimmed4 = "#5b595c",
-	dimmed5 = "#403e41",
 }
 
 return palette

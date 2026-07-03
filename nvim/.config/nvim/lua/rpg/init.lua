@@ -23,9 +23,8 @@ function M.setup(opts)
 	vim.o.termguicolors = true
 
 	local helpers = require("rpg.helpers")
-	local colorscheme = require("rpg.colorscheme")
-
 	local palette = require("rpg.palettes.default")
+	local colorscheme = require("rpg.colorscheme")
 
 	local c = colorscheme.build(palette, helpers)
 
@@ -42,54 +41,55 @@ function M.setup(opts)
 	highlights = vim.tbl_deep_extend("force", highlights, lsp.get(c, helpers))
 	highlights = vim.tbl_deep_extend("force", highlights, plugins.get(c, helpers))
 
-	if M.config.transparent_background then
-		local transparent_groups = {
-			-- Core editor
-			"Normal",
-			"NormalNC",
-			"SignColumn",
-			"LineNr",
-			"CursorLineNr",
-			"FoldColumn",
-			"Folded",
-			"VertSplit",
-			"WinSeparator",
-			"EndOfBuffer",
-			"NonText",
-			"Conceal",
-			"CursorLineFold",
-			"ErrorMsg",
-			"DiffText",
-			-- Floats
-			"NormalFloat",
-			"FloatBorder",
-			-- Plugins
-			"TroubleNormal",
-			"TroubleNormalNC",
-			"TreesitterContext",
-			"TreesitterContextBottom",
-			"TreesitterContextLineNumber",
-			"BlinkCmpMenu",
-			"BlinkCmpMenuBorder",
-			"BlinkCmpDocBorder",
-			"SnacksDashboardNormal",
-			"SnacksPicker",
-			"SnacksPickerBorder",
-			"SnacksPickerPreview",
-		}
-
-		for _, group in ipairs(transparent_groups) do
-			if highlights[group] then
-				highlights[group] = vim.tbl_extend("force", highlights[group], { bg = "NONE" })
-			end
-		end
-	end
+	M.apply_transparency(highlights)
 
 	for group, settings in pairs(highlights) do
 		vim.api.nvim_set_hl(0, group, settings)
 	end
 
 	M.set_terminal_colors(c)
+end
+
+function M.apply_transparency(highlights)
+	if not M.config.transparent_background then return end
+
+	local transparent_groups = {
+		"Normal",
+		"NormalNC",
+		"SignColumn",
+		"LineNr",
+		"CursorLineNr",
+		"FoldColumn",
+		"Folded",
+		"VertSplit",
+		"WinSeparator",
+		"EndOfBuffer",
+		"NonText",
+		"Conceal",
+		"CursorLineFold",
+		"ErrorMsg",
+		"DiffText",
+		"NormalFloat",
+		"FloatBorder",
+		"TroubleNormal",
+		"TroubleNormalNC",
+		"TreesitterContext",
+		"TreesitterContextBottom",
+		"TreesitterContextLineNumber",
+		"BlinkCmpMenu",
+		"BlinkCmpMenuBorder",
+		"BlinkCmpDocBorder",
+		"SnacksDashboardNormal",
+		"SnacksPicker",
+		"SnacksPickerBorder",
+		"SnacksPickerPreview",
+	}
+
+	for _, group in ipairs(transparent_groups) do
+		if highlights[group] then
+			highlights[group] = vim.tbl_extend("force", highlights[group], { bg = "NONE" })
+		end
+	end
 end
 
 function M.set_terminal_colors(c)

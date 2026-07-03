@@ -10,7 +10,7 @@ function M.get(c, _)
 			bold = true,
 		},
 		MasonHighlight = { fg = c.base.blue },
-		MasonHighlightBlock = { bg = c.base.yellow, fg = "#222222" },
+		MasonHighlightBlock = { bg = c.base.yellow, fg = c.base.black },
 		MasonHighlightBlockBold = { link = "LazyH1" },
 		MasonHighlightSecondary = { fg = c.base.blue },
 		MasonHighlightBlockSecondary = {

@@ -72,7 +72,6 @@ function M.setup(opts)
 			"BlinkCmpMenu",
 			"BlinkCmpMenuBorder",
 			"BlinkCmpDocBorder",
-			-- Snacks
 			"SnacksDashboardNormal",
 			"SnacksPicker",
 			"SnacksPickerBorder",
@@ -103,7 +102,7 @@ function M.set_terminal_colors(palette)
 	vim.g.terminal_color_4 = palette.blue -- blue
 	vim.g.terminal_color_5 = palette.magenta -- magenta
 	vim.g.terminal_color_6 = palette.cyan -- cyan
-	vim.g.terminal_color_7 = palette.white -- white
+	vim.g.terminal_color_7 = palette.foreground -- white
 	vim.g.terminal_color_8 = palette.dimmed3 -- bright black
 	vim.g.terminal_color_9 = helpers.lighten_percent(palette.red, 10) -- bright red
 	vim.g.terminal_color_10 = helpers.lighten_percent(palette.green, 10) -- bright green
@@ -111,7 +110,7 @@ function M.set_terminal_colors(palette)
 	vim.g.terminal_color_12 = helpers.lighten_percent(palette.blue, 10) -- bright blue
 	vim.g.terminal_color_13 = helpers.lighten_percent(palette.magenta, 10) -- bright magenta
 	vim.g.terminal_color_14 = helpers.lighten_percent(palette.cyan, 10) -- bright cyan
-	vim.g.terminal_color_15 = palette.white -- bright white
+	vim.g.terminal_color_15 = palette.foreground -- bright white
 end
 
 return M

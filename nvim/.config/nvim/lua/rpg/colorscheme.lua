@@ -8,16 +8,16 @@ function M.build(palette, helpers)
 
   c.editor = {
     background = p.background,
-    foreground = p.white,
-    lineHighlightBackground = hp.blend(p.white, 0.05, p.background),
+    foreground = p.foreground,
+    lineHighlightBackground = hp.blend(p.foreground, 0.05, p.background),
     selectionBackground = hp.blend(p.dimmed1, 0.15, p.background),
-    findMatchBackground = hp.blend(p.white, 0.15, p.background),
+    findMatchBackground = hp.blend(p.foreground, 0.15, p.background),
     findMatchBorder = p.yellow,
-    findMatchHighlightBackground = hp.blend(p.white, 0.15, p.background),
-    foldBackground = hp.blend(p.white, 0.1, p.background),
-    wordHighlightBackground = hp.blend(p.white, 0.15, p.background),
-    selectionHighlightBackground = hp.blend(p.white, 0.15, p.background),
-    wordHighlightStrongBackground = hp.blend(p.white, 0.15, p.background),
+    findMatchHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    foldBackground = hp.blend(p.foreground, 0.1, p.background),
+    wordHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    selectionHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    wordHighlightStrongBackground = hp.blend(p.foreground, 0.15, p.background),
   }
 
   c.editorLineNumber = {
@@ -34,7 +34,7 @@ function M.build(palette, helpers)
     background = p.dimmed5,
     border = p.dimmed5,
     foreground = p.dimmed1,
-    highlightForeground = p.white,
+    highlightForeground = p.foreground,
     selectedBackground = p.dimmed3,
   }
 
@@ -64,7 +64,7 @@ function M.build(palette, helpers)
   }
 
   c.list = {
-    activeSelectionBackground = hp.blend(p.white, 0.11, p.dark1),
+    activeSelectionBackground = hp.blend(p.foreground, 0.11, p.dark1),
   }
 
   c.sideBarSectionHeader = {
@@ -123,12 +123,12 @@ function M.build(palette, helpers)
 
   c.terminal = {
     background = p.dimmed5,
-    foreground = p.white,
+    foreground = p.foreground,
   }
 
   c.terminalCursor = {
-    background = "#ffffff",
-    foreground = p.white,
+    background = p.foreground,
+    foreground = p.foreground,
   }
 
   c.editorGroupHeader = {
@@ -192,7 +192,7 @@ function M.build(palette, helpers)
     blue = p.blue,
     magenta = p.magenta,
     cyan = p.cyan,
-    white = p.white,
+    white = p.foreground,
     dimmed1 = p.dimmed1,
     dimmed2 = p.dimmed2,
     dimmed3 = p.dimmed3,

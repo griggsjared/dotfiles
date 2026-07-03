@@ -1,9 +1,9 @@
 local palette = {
 	background = "#1a1a1a",
+	foreground = "#fcfcfa",
+
 	dark1 = "#171717",
 	dark2 = "#101010",
-
-	white = "#fcfcfa",
 
 	red = "#d9726c",
 	cyan = "#e6975c",

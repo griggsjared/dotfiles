@@ -89,26 +89,26 @@ function M.setup(opts)
 		vim.api.nvim_set_hl(0, group, settings)
 	end
 
-	M.set_terminal_colors(palette)
+	M.set_terminal_colors(c)
 end
 
-function M.set_terminal_colors(palette)
-	vim.g.terminal_color_0 = palette.black -- black
-	vim.g.terminal_color_1 = palette.red -- red
-	vim.g.terminal_color_2 = palette.green -- green
-	vim.g.terminal_color_3 = palette.yellow -- yellow
-	vim.g.terminal_color_4 = palette.blue -- blue
-	vim.g.terminal_color_5 = palette.magenta -- magenta
-	vim.g.terminal_color_6 = palette.cyan -- cyan
-	vim.g.terminal_color_7 = palette.white -- white
-	vim.g.terminal_color_8 = palette.black -- bright black
-	vim.g.terminal_color_9 = palette.red -- bright red
-	vim.g.terminal_color_10 = palette.green -- bright green
-	vim.g.terminal_color_11 = palette.yellow -- bright yellow
-	vim.g.terminal_color_12 = palette.blue -- bright blue
-	vim.g.terminal_color_13 = palette.magenta -- bright magenta
-	vim.g.terminal_color_14 = palette.cyan -- bright cyan
-	vim.g.terminal_color_15 = palette.white -- bright white
+function M.set_terminal_colors(c)
+	vim.g.terminal_color_0 = c.base.background -- black
+	vim.g.terminal_color_1 = c.base.red -- red
+	vim.g.terminal_color_2 = c.base.green -- green
+	vim.g.terminal_color_3 = c.base.yellow -- yellow
+	vim.g.terminal_color_4 = c.base.blue -- blue
+	vim.g.terminal_color_5 = c.base.magenta -- magenta
+	vim.g.terminal_color_6 = c.base.cyan -- cyan
+	vim.g.terminal_color_7 = c.base.foreground -- white
+	vim.g.terminal_color_8 = c.base.background -- bright black
+	vim.g.terminal_color_9 = c.base.red -- bright red
+	vim.g.terminal_color_10 = c.base.green -- bright green
+	vim.g.terminal_color_11 = c.base.yellow -- bright yellow
+	vim.g.terminal_color_12 = c.base.blue -- bright blue
+	vim.g.terminal_color_13 = c.base.magenta -- bright magenta
+	vim.g.terminal_color_14 = c.base.cyan -- bright cyan
+	vim.g.terminal_color_15 = c.base.foreground -- bright white
 end
 
 return M

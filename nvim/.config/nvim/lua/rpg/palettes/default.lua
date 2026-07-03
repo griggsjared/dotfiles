@@ -1,6 +1,6 @@
 local palette = {
-	black = "#1a1a1a",
-	white = "#fcfcfa",
+	background = "#1a1a1a",
+	foreground = "#fcfcfa",
 
 	red = "#d9726c",
 	cyan = "#e6975c",

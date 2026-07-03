@@ -4,28 +4,28 @@ function M.build(palette, helpers)
   local hp = helpers
   local p = palette
 
-  local dimmed1 = hp.blend(p.white, 0.74, p.black)
-  local dimmed2 = hp.blend(p.white, 0.54, p.black)
-  local dimmed3 = hp.blend(p.white, 0.39, p.black)
-  local dimmed4 = hp.blend(p.white, 0.29, p.black)
-  local dimmed5 = hp.blend(p.white, 0.17, p.black)
-  local surface = hp.darken(p.black, 3)
-  local panel = hp.darken(p.black, 10)
+  local dimmed1 = hp.blend(p.foreground, 0.74, p.background)
+  local dimmed2 = hp.blend(p.foreground, 0.54, p.background)
+  local dimmed3 = hp.blend(p.foreground, 0.39, p.background)
+  local dimmed4 = hp.blend(p.foreground, 0.29, p.background)
+  local dimmed5 = hp.blend(p.foreground, 0.17, p.background)
+  local surface = hp.darken(p.background, 3)
+  local panel = hp.darken(p.background, 10)
 
   local c = {}
 
   c.editor = {
-    background = p.black,
-    foreground = p.white,
-    lineHighlightBackground = hp.blend(p.white, 0.05, p.black),
-    selectionBackground = hp.blend(dimmed1, 0.15, p.black),
-    findMatchBackground = hp.blend(p.white, 0.15, p.black),
+    background = p.background,
+    foreground = p.foreground,
+    lineHighlightBackground = hp.blend(p.foreground, 0.05, p.background),
+    selectionBackground = hp.blend(dimmed1, 0.15, p.background),
+    findMatchBackground = hp.blend(p.foreground, 0.15, p.background),
     findMatchBorder = p.yellow,
-    findMatchHighlightBackground = hp.blend(p.white, 0.15, p.black),
-    foldBackground = hp.blend(p.white, 0.1, p.black),
-    wordHighlightBackground = hp.blend(p.white, 0.15, p.black),
-    selectionHighlightBackground = hp.blend(p.white, 0.15, p.black),
-    wordHighlightStrongBackground = hp.blend(p.white, 0.15, p.black),
+    findMatchHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    foldBackground = hp.blend(p.foreground, 0.1, p.background),
+    wordHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    selectionHighlightBackground = hp.blend(p.foreground, 0.15, p.background),
+    wordHighlightStrongBackground = hp.blend(p.foreground, 0.15, p.background),
   }
 
   c.editorLineNumber = {
@@ -35,14 +35,14 @@ function M.build(palette, helpers)
 
   c.editorHoverWidget = {
     background = dimmed5,
-    border = p.black,
+    border = p.background,
   }
 
   c.editorSuggestWidget = {
     background = dimmed5,
     border = dimmed5,
     foreground = dimmed1,
-    highlightForeground = p.white,
+    highlightForeground = p.foreground,
     selectedBackground = dimmed3,
   }
 
@@ -63,7 +63,7 @@ function M.build(palette, helpers)
   }
 
   c.sideBar = {
-    background = p.black,
+    background = p.background,
     foreground = dimmed2,
   }
 
@@ -72,11 +72,11 @@ function M.build(palette, helpers)
   }
 
   c.list = {
-    activeSelectionBackground = hp.blend(p.white, 0.11, p.black),
+    activeSelectionBackground = hp.blend(p.foreground, 0.11, p.background),
   }
 
   c.sideBarSectionHeader = {
-    background = p.black,
+    background = p.background,
     foreground = dimmed1,
   }
 
@@ -88,11 +88,11 @@ function M.build(palette, helpers)
     background = dimmed5,
     foreground = dimmed1,
     hoverBackground = dimmed4,
-    separator = p.black,
+    separator = p.background,
   }
 
   c.scrollbarSlider = {
-    hoverBackground = hp.blend(dimmed1, 0.15, p.black),
+    hoverBackground = hp.blend(dimmed1, 0.15, p.background),
   }
 
   c.gitDecoration = {
@@ -119,38 +119,38 @@ function M.build(palette, helpers)
   }
 
   c.errorLens = {
-    errorBackground = hp.blend(p.red, 0.1, p.black),
+    errorBackground = hp.blend(p.red, 0.1, p.background),
     errorForeground = p.red,
-    warningBackground = hp.blend(p.cyan, 0.1, p.black),
+    warningBackground = hp.blend(p.cyan, 0.1, p.background),
     warningForeground = p.cyan,
-    infoBackground = hp.blend(p.blue, 0.1, p.black),
+    infoBackground = hp.blend(p.blue, 0.1, p.background),
     infoForeground = p.blue,
-    hintBackground = hp.blend(p.blue, 0.1, p.black),
+    hintBackground = hp.blend(p.blue, 0.1, p.background),
     hintForeground = p.blue,
   }
 
   c.terminal = {
     background = dimmed5,
-    foreground = p.white,
+    foreground = p.foreground,
   }
 
   c.terminalCursor = {
-    background = p.white,
-    foreground = p.white,
+    background = p.foreground,
+    foreground = p.foreground,
   }
 
   c.editorGroupHeader = {
-    tabsBackground = p.black,
-    tabsBorder = p.black,
+    tabsBackground = p.background,
+    tabsBorder = p.background,
   }
 
   c.tab = {
-    activeBackground = p.black,
+    activeBackground = p.background,
     activeBorder = p.yellow,
     activeForeground = p.yellow,
-    inactiveBackground = hp.lighten(p.black, 15),
+    inactiveBackground = hp.lighten(p.background, 15),
     inactiveForeground = dimmed2,
-    unfocusedActiveBackground = p.black,
+    unfocusedActiveBackground = p.background,
     unfocusedActiveBorder = dimmed2,
     unfocusedActiveForeground = dimmed1,
   }
@@ -162,9 +162,9 @@ function M.build(palette, helpers)
   }
 
   c.diffEditor = {
-    insertedLineBackground = hp.blend(p.green, 0.1, p.black),
-    removedLineBackground = hp.blend(p.red, 0.1, p.black),
-    modifiedLineBackground = hp.blend(p.cyan, 0.1, p.black),
+    insertedLineBackground = hp.blend(p.green, 0.1, p.background),
+    removedLineBackground = hp.blend(p.red, 0.1, p.background),
+    modifiedLineBackground = hp.blend(p.cyan, 0.1, p.background),
   }
 
   c.diffEditorOverview = {
@@ -192,8 +192,8 @@ function M.build(palette, helpers)
   }
 
   c.base = {
-    background = p.black,
-    foreground = p.white,
+    background = p.background,
+    foreground = p.foreground,
     surface = surface,
     panel = panel,
     red = p.red,

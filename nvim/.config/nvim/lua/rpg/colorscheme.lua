@@ -184,15 +184,16 @@ function M.build(palette, helpers)
   }
 
   c.base = {
-    dark = p.dark2,
-    black = p.dark1,
+    dark2 = p.dark2,
+    dark1 = p.dark1,
+    background = p.background,
+    foreground = p.foreground,
     red = p.red,
     green = p.green,
     yellow = p.yellow,
     blue = p.blue,
     magenta = p.magenta,
     cyan = p.cyan,
-    white = p.foreground,
     dimmed1 = p.dimmed1,
     dimmed2 = p.dimmed2,
     dimmed3 = p.dimmed3,

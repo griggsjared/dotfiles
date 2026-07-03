@@ -3,8 +3,8 @@ local M = {}
 function M.get(c, _)
 	return {
 		LualineNormalA = { bg = "NONE", fg = c.base.green },
-		LualineNormalB = { bg = "NONE", fg = c.base.white },
-		LualineNormalC = { bg = "NONE", fg = c.base.white },
+		LualineNormalB = { bg = "NONE", fg = c.base.foreground },
+		LualineNormalC = { bg = "NONE", fg = c.base.foreground },
 		LualineInsertA = { bg = "NONE", fg = c.base.blue },
 		LualineVisualA = { bg = "NONE", fg = c.base.magenta },
 		LualineReplaceA = { bg = "NONE", fg = c.base.red },

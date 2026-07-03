@@ -17,11 +17,11 @@ function M.get(c, _)
 		OilPermissionExecute = { fg = c.base.green },
 		OilTypeDir = { fg = c.base.blue },
 		OilTypeFifo = { fg = c.base.magenta },
-		OilTypeFile = { fg = c.base.white },
+		OilTypeFile = { fg = c.base.foreground },
 		OilTypeLink = { fg = c.base.magenta },
 		OilTypeSocket = { fg = c.base.red },
-		OilWinbar = { bg = c.base.black, fg = c.base.dimmed1 },
-		OilWinbarNC = { bg = c.base.black, fg = c.base.dimmed3 },
+		OilWinbar = { bg = c.base.dark1, fg = c.base.dimmed1 },
+		OilWinbarNC = { bg = c.base.dark1, fg = c.base.dimmed3 },
 	}
 end
 

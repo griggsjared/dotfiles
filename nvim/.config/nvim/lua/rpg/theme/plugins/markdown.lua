@@ -8,8 +8,8 @@ function M.get(c, _)
     RenderMarkdownHeader4 = { fg = c.base.cyan },
     RenderMarkdownHeader5 = { fg = c.base.red },
     RenderMarkdownHeader6 = { fg = c.base.blue },
-    RenderMarkdownCode = { bg = c.base.black },
-    RenderMarkdownCodeInline = { bg = c.base.black },
+    RenderMarkdownCode = { bg = c.base.dark1 },
+    RenderMarkdownCodeInline = { bg = c.base.dark1 },
   }
 end
 

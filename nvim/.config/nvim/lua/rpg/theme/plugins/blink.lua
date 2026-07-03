@@ -2,9 +2,9 @@ local M = {}
 
 function M.get(c, hp)
 	return {
-		BlinkCmpMenu = { bg = c.base.black, fg = c.base.white },
-		BlinkCmpMenuBorder = { bg = c.base.black, fg = c.base.dimmed2 },
-		BlinkCmpDocBorder = { bg = c.base.black, fg = c.base.dimmed2 },
+		BlinkCmpMenu = { bg = c.base.dark1, fg = c.base.foreground },
+		BlinkCmpMenuBorder = { bg = c.base.dark1, fg = c.base.dimmed2 },
+		BlinkCmpDocBorder = { bg = c.base.dark1, fg = c.base.dimmed2 },
 		BlinkCmpMenuSelection = { bg = c.base.dimmed5 },
 		BlinkCmpLabelDescription = { fg = hp.lighten(c.base.dimmed1, 3) },
 		BlinkCmpLabelDeprecated = { fg = nil, bg = nil, strikethrough = true },

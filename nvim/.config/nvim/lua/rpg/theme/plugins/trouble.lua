@@ -2,9 +2,9 @@ local M = {}
 
 function M.get(c, _)
 	return {
-		TroubleNormal = { bg = c.base.black, fg = c.base.white },
-		TroubleNormalNC = { bg = c.base.black, fg = c.base.dimmed1 },
-		TroubleText = { fg = c.base.white },
+		TroubleNormal = { bg = c.base.dark1, fg = c.base.foreground },
+		TroubleNormalNC = { bg = c.base.dark1, fg = c.base.dimmed1 },
+		TroubleText = { fg = c.base.foreground },
 		TroubleTextInformation = { fg = c.base.blue },
 		TroubleTextWarning = { fg = c.base.yellow },
 		TroubleTextError = { fg = c.base.red },
@@ -52,7 +52,7 @@ function M.get(c, _)
 		TroubleIconString = { fg = c.base.yellow },
 		TroubleIconStruct = { fg = c.base.blue },
 		TroubleIconTypeParameter = { fg = c.base.blue },
-		TroubleIconVariable = { fg = c.base.white },
+		TroubleIconVariable = { fg = c.base.foreground },
 	}
 end
 

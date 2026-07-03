@@ -6,7 +6,7 @@ function M.get(c, hp)
 	return {
 		LazyButton = { bg = c.button.background, fg = c.button.foreground },
 		LazyComment = { fg = c.base.yellow },
-		LazyH1 = { bg = c.base.yellow, fg = c.base.black, bold = true },
+		LazyH1 = { bg = c.base.yellow, fg = c.base.dark1, bold = true },
 		LazyH2 = { fg = c.base.green, bold = true },
 		LazyButtonActive = {
 			bg = c.button.hoverBackground,

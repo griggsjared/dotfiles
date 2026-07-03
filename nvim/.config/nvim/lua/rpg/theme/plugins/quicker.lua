@@ -2,11 +2,11 @@ local M = {}
 
 function M.get(c, _)
 	return {
-		QuickFixLine = { bg = c.base.dimmed5, fg = c.base.white },
+		QuickFixLine = { bg = c.base.dimmed5, fg = c.base.foreground },
 		QuickerHeader = { fg = c.base.green, bold = true },
 		QuickerFilename = { fg = c.base.blue, bold = true },
 		QuickerLineNr = { fg = c.base.dimmed2 },
-		QuickerText = { fg = c.base.white },
+		QuickerText = { fg = c.base.foreground },
 		QuickerType = { fg = c.base.yellow },
 		QuickerError = { fg = c.base.red },
 		QuickerWarning = { fg = c.base.yellow },

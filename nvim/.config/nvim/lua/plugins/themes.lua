@@ -1,6 +1,6 @@
 return {
 	{
-		dir = vim.fn.stdpath("config") .. "/lua/rpg",
+		dir = vim.fn.stdpath("config") .. "/rpg.nvim",
 		priority = 1000,
 		lazy = false,
 		config = function()

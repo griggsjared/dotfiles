@@ -1,9 +1,9 @@
 local M = {}
 
-function M.get(c, _)
+function M.get(c, hp)
 	return {
-		TroubleNormal = { bg = c.base.dark1, fg = c.base.foreground },
-		TroubleNormalNC = { bg = c.base.dark1, fg = c.base.dimmed1 },
+		TroubleNormal = { bg = c.base.surface, fg = c.base.foreground },
+		TroubleNormalNC = { bg = c.base.surface, fg = c.base.dimmed1 },
 		TroubleText = { fg = c.base.foreground },
 		TroubleTextInformation = { fg = c.base.blue },
 		TroubleTextWarning = { fg = c.base.yellow },

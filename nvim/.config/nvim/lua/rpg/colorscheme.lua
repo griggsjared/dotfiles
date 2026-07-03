@@ -55,7 +55,7 @@ function M.build(palette, helpers)
   }
 
   c.sideBar = {
-    background = p.dark1,
+    background = p.background,
     foreground = p.dimmed2,
   }
 
@@ -64,11 +64,11 @@ function M.build(palette, helpers)
   }
 
   c.list = {
-    activeSelectionBackground = hp.blend(p.foreground, 0.11, p.dark1),
+    activeSelectionBackground = hp.blend(p.foreground, 0.11, p.background),
   }
 
   c.sideBarSectionHeader = {
-    background = p.dark1,
+    background = p.background,
     foreground = p.dimmed1,
   }
 
@@ -132,8 +132,8 @@ function M.build(palette, helpers)
   }
 
   c.editorGroupHeader = {
-    tabsBackground = p.dark1,
-    tabsBorder = p.dark1,
+    tabsBackground = p.background,
+    tabsBorder = p.background,
   }
 
   c.tab = {
@@ -148,15 +148,15 @@ function M.build(palette, helpers)
   }
 
   c.statusBar = {
-    background = p.dark2,
+    background = c.base.panel,
     foreground = p.dimmed3,
     activeForeground = p.dimmed1,
   }
 
   c.diffEditor = {
-    insertedLineBackground = hp.blend(p.green, 0.1, p.dark1),
-    removedLineBackground = hp.blend(p.red, 0.1, p.dark1),
-    modifiedLineBackground = hp.blend(p.cyan, 0.1, p.dark1),
+    insertedLineBackground = hp.blend(p.green, 0.1, p.background),
+    removedLineBackground = hp.blend(p.red, 0.1, p.background),
+    modifiedLineBackground = hp.blend(p.cyan, 0.1, p.background),
   }
 
   c.diffEditorOverview = {
@@ -184,10 +184,10 @@ function M.build(palette, helpers)
   }
 
   c.base = {
-    dark2 = p.dark2,
-    dark1 = p.dark1,
     background = p.background,
     foreground = p.foreground,
+    surface = hp.darken(p.background, 3),
+    panel = hp.darken(p.background, 10),
     red = p.red,
     green = p.green,
     yellow = p.yellow,

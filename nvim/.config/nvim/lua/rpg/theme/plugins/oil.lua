@@ -1,6 +1,6 @@
 local M = {}
 
-function M.get(c, _)
+function M.get(c, hp)
 	return {
 		OilDir = { fg = c.base.blue },
 		OilDirIcon = { fg = c.base.blue },
@@ -20,8 +20,8 @@ function M.get(c, _)
 		OilTypeFile = { fg = c.base.foreground },
 		OilTypeLink = { fg = c.base.magenta },
 		OilTypeSocket = { fg = c.base.red },
-		OilWinbar = { bg = c.base.dark1, fg = c.base.dimmed1 },
-		OilWinbarNC = { bg = c.base.dark1, fg = c.base.dimmed3 },
+		OilWinbar = { bg = c.base.surface, fg = c.base.dimmed1 },
+		OilWinbarNC = { bg = c.base.surface, fg = c.base.dimmed3 },
 	}
 end
 

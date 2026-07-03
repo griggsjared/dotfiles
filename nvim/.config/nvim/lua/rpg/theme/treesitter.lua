@@ -1,6 +1,6 @@
 local M = {}
 
-function M.get(c, _)
+function M.get(c, hp)
 	local spec = {
 		["@annotation"] = { fg = c.base.blue, italic = false },
 		["@attribute"] = { fg = c.base.green },
@@ -105,14 +105,14 @@ function M.get(c, _)
 		["@text.environment.name.latex"] = { fg = c.base.blue, italic = true },
 		["@text.math.latex"] = { fg = c.base.magenta },
 		["@text.strong.latex"] = { bold = true },
-		["@conceal.markdown"] = { bg = c.base.dark1 },
+		["@conceal.markdown"] = { bg = c.base.background },
 		["@markup.italic.markdown_inline"] = { italic = true },
 		["@markup.link.label.markdown_inline"] = { fg = c.base.red },
 		["@markup.link.url.markdown_inline"] = { fg = c.base.green, underline = true },
-		["@markup.raw.block.markdown"] = { bg = c.base.dark1 },
-		["@markup.raw.delimiter.markdown"] = { bg = c.base.dark1, fg = c.base.dimmed2 },
+		["@markup.raw.block.markdown"] = { bg = c.base.background },
+		["@markup.raw.delimiter.markdown"] = { bg = c.base.background, fg = c.base.dimmed2 },
 		["@markup.strong.markdown_inline"] = { bold = true },
-		["@none.markdown"] = { bg = c.base.dark1 },
+		["@none.markdown"] = { bg = c.base.background },
 		["@punctuation.special.markdown"] = { fg = c.base.dimmed2 },
 		["@text.emphasis.markdown_inline"] = { fg = c.base.foreground, italic = true },
 		["@text.literal.block.markdown"] = { bg = c.editor.background },

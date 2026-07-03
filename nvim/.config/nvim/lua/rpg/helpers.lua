@@ -45,6 +45,22 @@ function M.lighten(hex, amt)
 end
 
 ---@param hex string Hex color
+---@param amt number Amount to darken (0-255)
+---@return string Darkened hex color
+function M.darken(hex, amt)
+  if hex == "NONE" then
+    return hex
+  end
+
+  local rgb = hex_to_rgb(hex)
+  rgb.r = (rgb.r - amt < 0) and 0 or (rgb.r - amt)
+  rgb.g = (rgb.g - amt < 0) and 0 or (rgb.g - amt)
+  rgb.b = (rgb.b - amt < 0) and 0 or (rgb.b - amt)
+
+  return rgb_to_hex(rgb)
+end
+
+---@param hex string Hex color
 ---@param percent number Percentage to lighten (0-100)
 ---@return string Lightened hex color
 function M.lighten_percent(hex, percent)

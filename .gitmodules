@@ -1,3 +1,0 @@
-[submodule "nvim/.config/nvim/rpg.nvim"]
-	path = nvim/.config/nvim/rpg.nvim
-	url = git@github.com:griggsjared/rpg.nvim.git

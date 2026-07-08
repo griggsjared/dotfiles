@@ -2,5 +2,14 @@
 return {
 	cmd = { "laravel-ls" },
 	filetypes = { "php", "blade" },
-	root_markers = { "artisan" },
+	root_dir = function(bufnr, on_dir)
+		local artisan = vim.fs.find("artisan", {
+			path = vim.api.nvim_buf_get_name(bufnr),
+			upward = true,
+		})[1]
+
+		if artisan then
+			on_dir(vim.fs.dirname(artisan))
+		end
+	end,
 }

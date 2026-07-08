@@ -149,7 +149,12 @@ local function cycle_clis()
 		-- the previous CLI when cycling through several, so target an editor window.
 		local editor ---@type integer?
 		for _, w in ipairs(vim.api.nvim_list_wins()) do
-			if not vim.w[w].sidekick_session_id and vim.api.nvim_win_get_config(w).relative == "" then
+			local buf = vim.api.nvim_win_get_buf(w)
+			if
+				not vim.w[w].sidekick_session_id
+				and vim.api.nvim_win_get_config(w).relative == ""
+				and vim.bo[buf].buftype == ""
+			then
 				editor = w
 				break
 			end

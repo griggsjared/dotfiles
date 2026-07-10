@@ -207,6 +207,7 @@ return {
 			},
 			picker = {
 				enabled = true,
+				main = { file = false },
 				layout = {
 					preset = "ivy",
 					layout = {

@@ -30,6 +30,7 @@ local keys = {
 	{
 		"<leader>lg",
 		function()
+			vim.g.snacks_lazygit_main_win = vim.api.nvim_get_current_win()
 			Snacks.lazygit()
 		end,
 		desc = "Show lazygit floating window",
@@ -199,6 +200,13 @@ return {
 			image = { enabled = true },
 			lazygit = {
 				enabled = true,
+				config = {
+					os = {
+						edit = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}}]],
+						editAtLine = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}} && nvim --server "$NVIM" --remote-send ":{{line}}<CR>"]],
+						openDirInEditor = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{dir}}]],
+					},
+				},
 				win = {
 					style = {
 						border = "rounded",

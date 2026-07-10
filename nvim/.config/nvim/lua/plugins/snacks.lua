@@ -1,5 +1,33 @@
 local keys = {
 	{
+		"<leader>bc",
+		function()
+			local buf = vim.api.nvim_get_current_buf()
+			local is_last = #vim.fn.getbufinfo({ buflisted = 1 }) == 1
+			Snacks.bufdelete()
+			if is_last and not vim.bo[buf].buflisted then
+				Snacks.dashboard.open({ buf = 0, win = 0 })
+			end
+		end,
+		desc = "Close current buffer",
+	},
+	{
+		"<leader>ba",
+		function()
+			local bufs = vim.tbl_map(function(info)
+				return info.bufnr
+			end, vim.fn.getbufinfo({ buflisted = 1 }))
+			Snacks.bufdelete.all()
+			local deleted_all = vim.iter(bufs):all(function(buf)
+				return not vim.api.nvim_buf_is_valid(buf) or not vim.bo[buf].buflisted
+			end)
+			if deleted_all then
+				Snacks.dashboard.open({ buf = 0, win = 0 })
+			end
+		end,
+		desc = "Close all buffers",
+	},
+	{
 		"<leader>lg",
 		function()
 			Snacks.lazygit()

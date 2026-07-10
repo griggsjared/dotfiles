@@ -46,13 +46,6 @@ vim.api.nvim_set_keymap("n", "<leader>sa", "zg", { noremap = true, desc = "Add c
 vim.keymap.set({ "n", "x", "v" }, "d", '"_d', { noremap = true, silent = true, desc = "Delete without yanking" })
 vim.keymap.set("n", "D", '"_D', { noremap = true, silent = true, desc = "Delete to EOL without yanking" })
 
-vim.api.nvim_set_keymap(
-	"n",
-	"<leader>bc",
-	":bp<bar>sp<bar>bn<bar>bd<CR>",
-	{ noremap = true, desc = "Close current buffer" }
-)
-vim.api.nvim_set_keymap("n", "<leader>ba", ":bufdo bd<CR>", { noremap = true, desc = "Close all buffers" })
 vim.api.nvim_set_keymap("n", "<leader><leader>", ":b#<CR>", { noremap = true, desc = "Go to last buffer" })
 vim.api.nvim_set_keymap("n", "<leader>bn", ":bn<CR>", { noremap = true, desc = "Go to next buffer" })
 vim.api.nvim_set_keymap("n", "<leader>bp", ":bp<CR>", { noremap = true, desc = "Go to previous buffer" })
@@ -80,4 +73,3 @@ vim.filetype.add({
 		["%.env%..+"] = "sh",
 	},
 })
-

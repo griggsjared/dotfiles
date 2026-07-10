@@ -17,5 +17,6 @@ cursor-invert-fg-bg = true
 theme = rpg
 
 macos-titlebar-style = "tabs"
+macos-icon = "retro"
 
 custom-shader = shaders/cursor_smear.glsl

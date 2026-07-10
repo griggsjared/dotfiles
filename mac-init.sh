@@ -38,6 +38,20 @@ echo ""
 echo "Installing/Updating Homebrew Packages and Casks..."
 echo "==================================================="
 
+# Capture the currently linked PHP version so we can restore it after brew
+# bundle, which may upgrade the unversioned `php` formula and re-link the CLI
+# default to a newer build. If nothing was linked before, leave the new latest
+# linked (i.e. behave like a fresh install).
+SAVED_PHP_LINKED=""
+if command -v brew &> /dev/null && brew info php &> /dev/null; then
+    SAVED_PHP_LINKED=$(brew info php 2>/dev/null | grep '\[Linked\]')
+fi
+SAVED_PHP_VERSION=""
+if [ -n "$SAVED_PHP_LINKED" ]; then
+    SAVED_PHP_VERSION=$(echo "$SAVED_PHP_LINKED" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+    echo "Current default PHP: $SAVED_PHP_VERSION"
+fi
+
 # Check if Brewfile exists
 if [ -f "Brewfile" ]; then
     echo "Using Brewfile for package management..."
@@ -53,6 +67,22 @@ if [ -f "Brewfile" ]; then
 else
     echo "WARNING: Brewfile not found in current directory."
     echo "Skipping Homebrew package installation."
+fi
+
+# Restore the previously linked PHP version if brew upgraded and re-linked the
+# unversioned `php` formula to a newer build. If nothing was linked before,
+# leave the new latest linked (fresh-install behavior).
+if [ -n "$SAVED_PHP_VERSION" ] && command -v brew &> /dev/null; then
+    CURRENT_PHP_LINKED=$(brew info php 2>/dev/null | grep '\[Linked\]')
+    CURRENT_PHP_VERSION=""
+    if [ -n "$CURRENT_PHP_LINKED" ]; then
+        CURRENT_PHP_VERSION=$(echo "$CURRENT_PHP_LINKED" | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+    fi
+    if [ -n "$CURRENT_PHP_VERSION" ] && [ "$CURRENT_PHP_VERSION" != "$SAVED_PHP_VERSION" ]; then
+        echo "Restoring default PHP to $SAVED_PHP_VERSION (brew upgraded it to $CURRENT_PHP_VERSION)..."
+        brew unlink php
+        brew link --force --overwrite "php@$SAVED_PHP_VERSION"
+    fi
 fi
 
 echo ""

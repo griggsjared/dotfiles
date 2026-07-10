@@ -9,7 +9,6 @@ cask "alt-tab"
 cask "jordanbaird-ice"
 cask "ghostty"
 cask "raycast"
-cask "shottr"
 
 # Packages (CLI Tools & Languages)
 # Shell & Terminal Tools
@@ -29,6 +28,7 @@ brew "ripgrep"
 brew "fd"
 brew "jq"
 brew "just"
+brew "tree-sitter-cli"
 
 # System Tools
 brew "eza"
@@ -60,12 +60,9 @@ brew "pnpm"
 brew "yarn"
 brew "oven-sh/bun/bun"
 
-
 # Database Tools
 brew "mysql-client"
 brew "sqlx-cli"
 
 # AI Cli Tools
 brew "sst/tap/opencode"
-cask "codex"
-brew "tree-sitter-cli"

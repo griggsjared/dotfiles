@@ -1,0 +1,11 @@
+set hidden true
+
+set rulerfmt "%i/%t"
+
+cmd q quit
+
+cmd on-select &{{
+    lf -remote "send $id set statfmt \"$(eza -ld --color=always "$f" | sed 's/\\/\\\\/g;s/"/\\"/g')\""
+}}
+
+cmd on-init :on-select

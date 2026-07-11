@@ -19,6 +19,7 @@ brew "zsh-completions"
 brew "stow"
 brew "tmux"
 brew "fzf"
+brew "lf"
 
 # Development Tools
 brew "neovim"

@@ -17,6 +17,11 @@ This repo uses GNU `stow` to manage symlinks. Every config file here is symlinke
 | `tmux/.tmux.conf` | `~/.tmux.conf` |
 | `ghostty/.config/ghostty/` | `~/.config/ghostty/` |
 | `claude/.claude/` | `~/.claude/` |
+| `opencode/.config/opencode/` | `~/.config/opencode/` |
+| `agents/.codex/` | `~/.codex/` |
+| `agents/.agents/` | `~/.agents/` |
+
+`agents/.claude/CLAUDE.md` and `agents/.claude/skills/` are also symlinked into `~/.claude/`, and `agents/.config/opencode/AGENTS.md` and `agents/.config/opencode/skills/` into `~/.config/opencode/`.
 
 If you open a file via its system path (e.g. `~/.config/nvim/init.lua`), you are editing the symlink target — which resolves back to this repo — but prefer to use the repo path explicitly so the source of truth is obvious.
 
@@ -47,6 +52,7 @@ Each top-level directory is a stow package mirroring the XDG/home structure:
 - `zsh/` — `.zshrc`, `.zprofile`, modular configs in `.zsh/`
 - `tmux/` — `.tmux.conf`
 - `ghostty/` — terminal emulator config + shaders/themes
-- `claude/` — Claude Code config, skills, commands, agents
+- `agents/` — cross-tool agent config: AGENTS.md and skills, symlinked into `~/.codex/`, `~/.claude/`, `~/.config/opencode/`, and `~/.agents/`
+- `claude/` — Claude Code-specific config: commands, agents, statusline
+- `opencode/` — opencode-specific config: commands, agents, themes, opencode.json
 - `lazygit/`, `neovide/`, `git/`, `ideovim/` — tool configs
-- `opencode/` — AI CLI tool config (has its own node_modules)

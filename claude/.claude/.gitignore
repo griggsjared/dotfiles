@@ -1,10 +1,7 @@
 *
 !.gitignore
-!CLAUDE.md
 !statusline-command.sh
 !agents/
 !agents/**
 !commands/
 !commands/**
-!skills/
-!skills/**

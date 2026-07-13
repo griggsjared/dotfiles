@@ -20,6 +20,7 @@ This repo uses GNU `stow` to manage symlinks. Every config file here is symlinke
 | `opencode/.config/opencode/` | `~/.config/opencode/` |
 | `agents/.codex/` | `~/.codex/` |
 | `agents/.agents/` | `~/.agents/` |
+| `yazi/.config/yazi/` | `~/.config/yazi/` |
 
 `agents/.claude/CLAUDE.md` and `agents/.claude/skills/` are also symlinked into `~/.claude/`, and `agents/.config/opencode/AGENTS.md` and `agents/.config/opencode/skills/` into `~/.config/opencode/`.
 
@@ -55,4 +56,5 @@ Each top-level directory is a stow package mirroring the XDG/home structure:
 - `agents/` — cross-tool agent config: AGENTS.md and skills, symlinked into `~/.codex/`, `~/.claude/`, `~/.config/opencode/`, and `~/.agents/`
 - `claude/` — Claude Code-specific config: commands, agents, statusline
 - `opencode/` — opencode-specific config: commands, agents, themes, opencode.json
+- `yazi/` — file manager theme/config
 - `lazygit/`, `neovide/`, `git/`, `ideovim/` — tool configs

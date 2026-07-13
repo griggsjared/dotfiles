@@ -20,6 +20,7 @@ brew "stow"
 brew "tmux"
 brew "fzf"
 brew "lf"
+brew "yazi"
 
 # Development Tools
 brew "neovim"

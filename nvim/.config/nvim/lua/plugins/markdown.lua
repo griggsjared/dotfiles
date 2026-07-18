@@ -7,22 +7,6 @@ return {
 			require("render-markdown").setup({
 				heading = {
 					position = "inline",
-					backgrounds = {
-						"RenderMarkdownHeader1",
-						"RenderMarkdownHeader2",
-						"RenderMarkdownHeader3",
-						"RenderMarkdownHeader4",
-						"RenderMarkdownHeader5",
-						"RenderMarkdownHeader6",
-					},
-					foregrounds = {
-						"RenderMarkdownHeader1",
-						"RenderMarkdownHeader2",
-						"RenderMarkdownHeader3",
-						"RenderMarkdownHeader4",
-						"RenderMarkdownHeader5",
-						"RenderMarkdownHeader6",
-					},
 				},
 			})
 		end,

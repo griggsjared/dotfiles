@@ -3,7 +3,6 @@ return {
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	config = function()
 		local indent_info = require("lualine.indent-info")
-		local transparent_theme = require("lualine.transparent-theme")
 		local sidekick_status = require("lualine.sidekick-status")
 		local tooling_status = require("lualine.tooling-status")
 		local gh_pr_status = require("lualine.gh-pr-status")
@@ -52,7 +51,7 @@ return {
 				lualine_z = { "location" },
 			},
 			options = {
-				theme = transparent_theme,
+				-- 			theme = "rpg",
 				section_separators = "",
 				component_separators = "",
 			},

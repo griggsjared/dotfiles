@@ -170,6 +170,28 @@ local keys = {
 		desc = "Git Status",
 	},
 	{
+		"<leader>fP",
+		function()
+			vim.system({ "gh", "pr", "view", "--json", "number,baseRefName" }, { text = true, cwd = vim.fn.getcwd() },
+				vim.schedule_wrap(function(out)
+					if out.code ~= 0 then
+						vim.notify("No open PR found for the current branch", vim.log.levels.ERROR)
+						return
+					end
+					local ok, d = pcall(vim.json.decode, out.stdout)
+					if not ok or not d or not d.baseRefName then
+						vim.notify("Failed to parse `gh pr view` output", vim.log.levels.ERROR)
+						return
+					end
+					Snacks.picker.git_diff({
+						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")",
+						base = d.baseRefName,
+					})
+				end))
+		end,
+		desc = "GitHub PR Diff",
+	},
+	{
 		"<leader>fr",
 		function()
 			Snacks.picker.resume({

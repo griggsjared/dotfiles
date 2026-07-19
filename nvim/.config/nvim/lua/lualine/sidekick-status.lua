@@ -1,5 +1,5 @@
 local function sidekick_status(active)
-	local cli = vim.b.sidekick_cli.name
+	local cli = vim.b.sidekick_cli and vim.b.sidekick_cli.name
 	if not cli then
 		return ""
 	end

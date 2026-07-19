@@ -14,6 +14,7 @@ return {
 			end
 
 			local detail = false
+			local hidden_prefixes = { ".git/", ".DS_Store", ".null-ls" }
 
 			require("oil").setup({
 				icons = require("mini.icons"),
@@ -26,13 +27,8 @@ return {
 				view_options = {
 					show_hidden = true,
 					is_always_hidden = function(name)
-						local black_list = {
-							".git/",
-							".DS_Store",
-							".null-ls*",
-						}
-						for _, v in ipairs(black_list) do
-							if name:match(v) then
+						for _, prefix in ipairs(hidden_prefixes) do
+							if vim.startswith(name, prefix) then
 								return true
 							end
 						end

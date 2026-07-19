@@ -1,6 +1,6 @@
+---@type LazySpec
 return {
 	"coffebar/transfer.nvim",
-	lazy = true,
 	cmd = {
 		"TransferInit",
 		"DiffRemote",
@@ -10,6 +10,12 @@ return {
 		"TransferRepeat",
 		"TransferGitStaged",
 	},
+	keys = {
+		{ "<leader>tu", "<cmd>TransferUpload<cr>", desc = "Transfer upload" },
+		{ "<leader>td", "<cmd>TransferDownload<cr>", desc = "Transfer download" },
+		{ "<leader>tD", "<cmd>DiffRemote<cr>", desc = "Transfer diff remote" },
+		{ "<leader>tg", "<cmd>TransferGitStaged<cr>", desc = "Transfer upload git staged" },
+	},
 	config = function()
 		require("transfer").setup({
 			config_template = function()
@@ -17,10 +23,6 @@ return {
 				return vim.fn.readfile(default_file)
 			end,
 		})
-
-		vim.keymap.set("n", "<leader>td", "<cmd>DiffRemote<cr>", { desc = "Diff with remote" })
-		vim.keymap.set("n", "<leader>tu", "<cmd>TransferUpload<cr>", { desc = "Upload file to remote" })
-		vim.keymap.set("n", "<leader>td", "<cmd>TransferDownload<cr>", { desc = "Download file from remote" })
 
 		-- Custom command to upload all git-changed files
 		vim.api.nvim_create_user_command("TransferGitStaged", function()
@@ -47,7 +49,5 @@ return {
 
 			vim.notify("Finished transferring git-changed files", vim.log.levels.INFO)
 		end, { desc = "Upload all git-staged files to remote" })
-
-		vim.keymap.set("n", "<leader>tg", "<cmd>TransferGitStaged<cr>", { desc = "Upload git-staged files to remote" })
 	end,
 }

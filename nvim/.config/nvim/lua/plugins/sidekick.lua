@@ -1,4 +1,4 @@
-local nes_enabled = vim.env.NVIM_SIDEKUCK_NES_ENABLED or false
+local nes_enabled = vim.env.NVIM_SIDEKICK_NES_ENABLED == "1"
 
 -- Optional allowlist: NVIM_SIDEKICK_CLIS="opencode,claude" restricts the CLIs we
 -- offer to this set. It only ever narrows the list — it never adds a CLI that

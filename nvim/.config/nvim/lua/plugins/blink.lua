@@ -52,7 +52,8 @@ return {
 		},
 	},
 	config = function()
-				keymap = { preset = "enter" },
+		require("blink.cmp").setup({
+			keymap = { preset = "enter" },
 				appearance = {
 					nerd_font_variant = "mono",
 				},

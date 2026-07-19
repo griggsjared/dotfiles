@@ -1,6 +1,5 @@
 require("nvim-treesitter").install({ "php", "php_only" })
 vim.treesitter.start()
-vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
 vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 vim.opt_local.tabstop = 4
 vim.opt_local.shiftwidth = 4

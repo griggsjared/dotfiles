@@ -80,16 +80,17 @@ return {
 			vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Show code actions" })
 			vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
 
+			local line_diagnostics_group = vim.api.nvim_create_augroup("line-diagnostics", { clear = true })
 			vim.keymap.set("n", "<leader>xx", function()
 				vim.diagnostic.config({ virtual_lines = { current_line = true }, virtual_text = false })
 				vim.api.nvim_create_autocmd("CursorMoved", {
-					group = vim.api.nvim_create_augroup("line-diagnostics", { clear = true }),
+					group = line_diagnostics_group,
 					callback = function()
 						vim.diagnostic.config({ virtual_lines = false, virtual_text = true })
 						return true
 					end,
 				})
-			end, { desc = "Toggle inlay hints" })
+			end, { desc = "Show line diagnostics" })
 
 			vim.keymap.set("n", "<leader>xv", function()
 				local enabled = vim.diagnostic.is_enabled()

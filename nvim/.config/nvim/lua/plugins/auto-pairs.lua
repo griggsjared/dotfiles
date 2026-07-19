@@ -1,9 +1,6 @@
+---@type LazySpec
 return {
-	{
-		"windwp/nvim-autopairs",
-		event = "InsertEnter",
-		config = function()
-			require("nvim-autopairs").setup()
-		end,
-	},
+	"windwp/nvim-autopairs",
+	event = "InsertEnter",
+	opts = {},
 }

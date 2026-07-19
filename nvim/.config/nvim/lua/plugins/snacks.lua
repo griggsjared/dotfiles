@@ -55,7 +55,7 @@ local keys = {
 				filter = { cwd = true },
 			})
 		end,
-		desc = "Grep Files",
+		desc = "Grep files",
 		mode = { "n", "v" },
 	},
 	{
@@ -88,7 +88,7 @@ local keys = {
 				},
 			})
 		end,
-		desc = "Find Buffers",
+		desc = "Find buffers",
 	},
 	{
 		"<leader>fo",
@@ -98,7 +98,7 @@ local keys = {
 				filter = { cwd = true },
 			})
 		end,
-		desc = "Recent Files",
+		desc = "Recent files",
 	},
 	{
 		"<leader>fO",
@@ -107,7 +107,7 @@ local keys = {
 				title = "Recent Files (All)",
 			})
 		end,
-		desc = "Recent Files (All)",
+		desc = "Recent files (all)",
 	},
 	{
 		"<leader>fk",
@@ -131,7 +131,7 @@ local keys = {
 				layout = "select",
 			})
 		end,
-		desc = "Spell Suggest",
+		desc = "Spell suggest",
 	},
 	{
 		"<leader>fc",
@@ -141,7 +141,7 @@ local keys = {
 				cwd = vim.fn.stdpath("config"),
 			})
 		end,
-		desc = "Config Files",
+		desc = "Config files",
 	},
 	{
 		"<leader>fp",
@@ -151,7 +151,7 @@ local keys = {
 				layout = {
 					preset = "ivy",
 					layout = {
-						height = .99,
+						height = 0.99,
 						row = 0, -- Position at top
 						col = 0,
 						relative = "editor",
@@ -167,7 +167,7 @@ local keys = {
 				},
 			})
 		end,
-		desc = "Git Status",
+		desc = "Git status",
 	},
 	{
 		"<leader>fP",
@@ -189,7 +189,7 @@ local keys = {
 					})
 				end))
 		end,
-		desc = "GitHub PR Diff",
+		desc = "GitHub PR diff",
 	},
 	{
 		"<leader>fr",
@@ -198,13 +198,13 @@ local keys = {
 				title = "Resume Last Search",
 			})
 		end,
-		desc = "Resume Last Search",
+		desc = "Resume last search",
 	},
 }
 
+---@type LazySpec
 return {
-	{
-		"folke/snacks.nvim",
+	"folke/snacks.nvim",
 		priority = 1000,
 		lazy = false,
 		opts = {
@@ -288,5 +288,4 @@ return {
 			},
 		},
 		keys = keys,
-	},
 }

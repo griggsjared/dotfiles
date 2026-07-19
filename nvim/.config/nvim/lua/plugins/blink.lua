@@ -1,43 +1,43 @@
+---@type LazySpec
 return {
-	{
-		"saghen/blink.cmp",
-		init = function()
-			local copilot_default_on = vim.env.NVIM_COPILOT_ENABLED == "1"
-			if vim.g.copilot_enabled == nil then
-				vim.g.copilot_enabled = copilot_default_on
-			end
-		end,
-		dependencies = {
-			"rafamadriz/friendly-snippets",
-			"saghen/blink.compat",
-			-- Copilot
-			"fang2hou/blink-copilot",
-			{
-				"zbirenbaum/copilot.lua",
-				cmd = "Copilot",
-				event = "InsertEnter",
-				config = function()
-					require("copilot").setup({
-						suggestion = {
-							auto_trigger = false,
-							accept_newline = true,
-						},
-					})
-					if not vim.g.copilot_enabled then
-						vim.cmd("Copilot disable")
-					end
-				end,
-			},
+	"saghen/blink.cmp",
+	init = function()
+		local copilot_default_on = vim.env.NVIM_COPILOT_ENABLED == "1"
+		if vim.g.copilot_enabled == nil then
+			vim.g.copilot_enabled = copilot_default_on
+		end
+	end,
+	dependencies = {
+		"rafamadriz/friendly-snippets",
+		"saghen/blink.compat",
+		"fang2hou/blink-copilot",
+		{
+			"zbirenbaum/copilot.lua",
+			cmd = "Copilot",
+			event = "InsertEnter",
+			config = function()
+				require("copilot").setup({
+					suggestion = {
+						auto_trigger = false,
+						accept_newline = true,
+					},
+				})
+				if not vim.g.copilot_enabled then
+					vim.cmd.Copilot.disable()
+				end
+			end,
 		},
-		version = "*",
-		config = function()
-			local function set_copilot_enabled(enabled)
-				vim.g.copilot_enabled = enabled
-				require("blink.cmp").reload()
-				vim.cmd("Copilot " .. (enabled and "enable" or "disable"))
-			end
-
-			vim.keymap.set("n", "<leader>ac", function()
+	},
+	version = "*",
+	keys = {
+		{
+			"<leader>ac",
+			function()
+				local function set_copilot_enabled(enabled)
+					vim.g.copilot_enabled = enabled
+					require("blink.cmp").reload()
+					vim.cmd.Copilot(enabled and "enable" or "disable")
+				end
 				if vim.g.copilot_enabled then
 					set_copilot_enabled(false)
 				elseif vim.fn.filereadable(vim.fn.expand("~/.config/github-copilot/apps.json")) == 1 then
@@ -47,9 +47,11 @@ return {
 					return
 				end
 				vim.notify("Copilot: " .. (vim.g.copilot_enabled and "on" or "off"))
-			end, { desc = "Toggle copilot" })
-
-			require("blink.cmp").setup({
+			end,
+			desc = "Toggle copilot",
+		},
+	},
+	config = function()
 				keymap = { preset = "enter" },
 				appearance = {
 					nerd_font_variant = "mono",
@@ -106,7 +108,6 @@ return {
 					},
 				},
 				fuzzy = { implementation = "prefer_rust_with_warning" },
-			})
-		end,
-	},
+		})
+	end,
 }

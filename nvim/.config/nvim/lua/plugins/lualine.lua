@@ -1,15 +1,18 @@
+local tooling_status = require("lualine.tooling-status")
+
+---@type LazySpec
 return {
 	"nvim-lualine/lualine.nvim",
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
+	keys = {
+		{ "<leader>lp", tooling_status.show_popup, desc = "Show active tooling sources popup" },
+	},
 	config = function()
 		local indent_info = require("lualine.indent-info")
 		local sidekick_status = require("lualine.sidekick-status")
-		local tooling_status = require("lualine.tooling-status")
 		local gh_pr_status = require("lualine.gh-pr-status")
 
 		tooling_status.setup_progress_tracking()
-
-		vim.keymap.set("n", "<leader>lp", tooling_status.show_popup, { desc = "Show active tooling sources popup" })
 
 		require("lualine").setup({
 			sections = {
@@ -64,20 +67,20 @@ return {
 					sections = {
 						lualine_a = {
 							{
-								function ()
+								function()
 									return sidekick_status(true)
-								end
-							}
+								end,
+							},
 						},
 					},
 					inactive_sections = {
 						lualine_a = {
 							{
-								function ()
+								function()
 									return sidekick_status(false)
-								end
-							}
-						}
+								end,
+							},
+						},
 					},
 				},
 				{

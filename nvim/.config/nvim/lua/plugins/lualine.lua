@@ -3,6 +3,7 @@ local tooling_status = require("lualine.tooling-status")
 ---@type LazySpec
 return {
 	"nvim-lualine/lualine.nvim",
+	lazy = false,
 	dependencies = { "nvim-tree/nvim-web-devicons", "saghen/blink.cmp" },
 	keys = {
 		{ "<leader>lp", tooling_status.show_popup, desc = "Show active tooling sources popup" },

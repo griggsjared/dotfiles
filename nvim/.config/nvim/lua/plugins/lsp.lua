@@ -10,17 +10,18 @@ return {
 			-- use mason-tool-installer to install linters, formatters, and daps that are not available as lsp servers
 			require("mason-tool-installer").setup({
 				ensure_installed = {
-					--linters
+					-- linters
 					"phpcs",
 					"phpstan",
 					"eslint_d",
 					"golangci-lint",
-					--formatters
+					-- formatters
 					"blade-formatter",
 					"clang-format",
 					"goimports",
 					"php-cs-fixer",
 					"pint",
+					"stylua",
 				},
 			})
 		end,

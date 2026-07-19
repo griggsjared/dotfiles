@@ -1,3 +1,5 @@
+vim.g.mapleader = " "
+
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.uv.fs_stat(lazypath) then
 	vim.fn.system({
@@ -11,10 +13,10 @@ if not vim.uv.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
-require("vim-options")
-if vim.g.neovide then
-	require("neovide-config")
-end
+require("config.options")
+require("config.keymaps")
+require("config.autocmds")
+
 require("lazy").setup("plugins", {
 	ui = {
 		border = "rounded",

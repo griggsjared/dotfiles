@@ -1,7 +1,7 @@
 local M = {}
 
 local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-local hrtime = (vim.uv or vim.loop).hrtime
+local hrtime = vim.uv.hrtime
 
 local ignore_lsps = { ["null-ls"] = true, ["none-ls"] = true }
 

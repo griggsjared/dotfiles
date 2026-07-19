@@ -1,7 +1,6 @@
 return {
 	{
 		"stevearc/oil.nvim",
-		opts = {},
 		dependencies = { { "echasnovski/mini.icons", opts = {} } },
 		config = function()
 			function _G.get_oil_winbar()
@@ -17,7 +16,6 @@ return {
 			local hidden_prefixes = { ".git/", ".DS_Store", ".null-ls" }
 
 			require("oil").setup({
-				icons = require("mini.icons"),
 				default_file_explorer = true,
 				delete_to_trash = true,
 				skip_confirm_for_simple_edits = true,

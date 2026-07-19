@@ -30,8 +30,6 @@ return {
 			},
 		},
 		version = "*",
-		build = "cargo build --release",
-		opts_extend = { "sources.default" },
 		config = function()
 			local function set_copilot_enabled(enabled)
 				vim.g.copilot_enabled = enabled

@@ -51,7 +51,6 @@ return {
 				lualine_z = { "location" },
 			},
 			options = {
-				-- 			theme = "rpg",
 				section_separators = "",
 				component_separators = "",
 			},

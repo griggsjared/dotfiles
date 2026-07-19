@@ -1,8 +1,8 @@
+---@type LazySpec
 return {
-	{
-		dir = vim.fn.stdpath("config"),
-		name = "yank-ref",
-		config = function()
+	dir = vim.fn.stdpath("config"),
+	name = "yank-ref",
+	config = function()
 			local function current_relative_path()
 				local path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":.")
 				if path == "" then
@@ -59,5 +59,4 @@ return {
 				vim.notify("Copied: " .. ref)
 			end, { desc = "Copy file reference (no line)" })
 		end,
-	},
 }

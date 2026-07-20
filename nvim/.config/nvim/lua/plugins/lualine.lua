@@ -14,6 +14,7 @@ return {
 		local gh_pr_status = require("lualine.gh-pr-status")
 
 		tooling_status.setup_progress_tracking()
+		gh_pr_status.setup()
 
 		require("lualine").setup({
 			sections = {
@@ -29,7 +30,7 @@ return {
 							return str
 						end,
 					},
-					gh_pr_status,
+					gh_pr_status.component,
 					"diff",
 					"diagnostics",
 				},

@@ -8,16 +8,22 @@ local hls = {
 	CLOSED = { name = "LualineGhClosed", link = "DiagnosticError" },
 }
 
-for _, h in pairs(hls) do
-	vim.api.nvim_set_hl(0, h.name, { link = h.link })
+local M = {}
+
+function M.setup()
+	for _, h in pairs(hls) do
+		vim.api.nvim_set_hl(0, h.name, { link = h.link })
+	end
+
+	vim.api.nvim_create_autocmd("DirChanged", {
+		group = vim.api.nvim_create_augroup("lualine_gh_status", { clear = true }),
+		callback = function()
+			cache.cwd = nil
+		end,
+	})
 end
 
-vim.api.nvim_create_autocmd("DirChanged", {
-	group = vim.api.nvim_create_augroup("lualine_gh_status", { clear = true }),
-	callback = function() cache.cwd = nil end,
-})
-
-return function()
+function M.component()
 	local cwd = vim.fn.getcwd()
 	local now = vim.uv.now()
 
@@ -40,3 +46,5 @@ return function()
 
 	return ""
 end
+
+return M

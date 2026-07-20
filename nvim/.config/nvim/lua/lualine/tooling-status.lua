@@ -8,10 +8,16 @@ local ignore_lsps = { ["null-ls"] = true, ["none-ls"] = true }
 M.work = {}
 M.conform_running = 0
 
+local function refresh_lualine()
+	pcall(function()
+		require("lualine").refresh({ place = { "statusline" } })
+	end)
+end
+
 M.setup_progress_tracking = function()
 	local group = vim.api.nvim_create_augroup("lualine_tooling_status", { clear = true })
 
-	pcall(vim.api.nvim_create_autocmd, "LspProgress", {
+	vim.api.nvim_create_autocmd("LspProgress", {
 		group = group,
 		callback = function(event)
 			local kind = event.data.params.value.kind
@@ -26,9 +32,7 @@ M.setup_progress_tracking = function()
 			end
 
 			if (prev == 0 and curr > 0) or (prev > 0 and curr == 0) then
-				pcall(function()
-					require("lualine").refresh({ place = { "statusline" } })
-				end)
+				refresh_lualine()
 			end
 		end,
 	})
@@ -39,9 +43,7 @@ M.setup_progress_tracking = function()
 		callback = function()
 			M.conform_running = math.min(M.conform_running + 1, 10)
 			if M.conform_running == 1 then
-				pcall(function()
-					require("lualine").refresh({ place = { "statusline" } })
-				end)
+				refresh_lualine()
 			end
 		end,
 	})
@@ -52,9 +54,7 @@ M.setup_progress_tracking = function()
 		callback = function()
 			M.conform_running = math.max(M.conform_running - 1, 0)
 			if M.conform_running == 0 then
-				pcall(function()
-					require("lualine").refresh({ place = { "statusline" } })
-				end)
+				refresh_lualine()
 			end
 		end,
 	})
@@ -63,9 +63,7 @@ M.setup_progress_tracking = function()
 		group = group,
 		callback = function(args)
 			M.work[args.data.client_id] = nil
-			pcall(function()
-				require("lualine").refresh({ place = { "statusline" } })
-			end)
+			refresh_lualine()
 		end,
 	})
 end

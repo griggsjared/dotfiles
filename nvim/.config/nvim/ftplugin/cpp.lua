@@ -1,4 +1,1 @@
-require("nvim-treesitter").install({ "cpp" })
-vim.treesitter.start()
-vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-vim.lsp.enable("clangd")
+require("config.ft").setup("cpp")

@@ -23,12 +23,13 @@ return {
 					},
 				})
 				if not vim.g.copilot_enabled then
-					vim.cmd.Copilot.disable()
+					vim.cmd.Copilot("disable")
 				end
 			end,
 		},
 	},
 	version = "*",
+	lazy = false,
 	keys = {
 		{
 			"<leader>ac",

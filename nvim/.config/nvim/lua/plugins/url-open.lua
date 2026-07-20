@@ -1,6 +1,7 @@
 ---@type LazySpec
 return {
 	"sontungexpt/url-open",
+	event = "VeryLazy",
 	cmd = "URLOpenUnderCursor",
 	keys = {
 		{ "<leader>gu", "<cmd>URLOpenUnderCursor<cr>", desc = "Open URL under cursor" },

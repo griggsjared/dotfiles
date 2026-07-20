@@ -14,6 +14,7 @@ end
 ---@type LazySpec
 return {
 	"lewis6991/gitsigns.nvim",
+	lazy = false,
 	keys = {
 		{ "<leader>pp", "<cmd>Gitsigns preview_hunk_inline<cr>", desc = "Preview hunk" },
 		{ "<leader>pr", "<cmd>Gitsigns reset_hunk<cr>", desc = "Reset git hunk" },

@@ -1,3 +1,4 @@
+---@return string
 local function indent_info()
 	local expandtab = vim.bo.expandtab
 	local tabstop = vim.bo.tabstop

@@ -1,3 +1,5 @@
+---@param active boolean
+---@return string
 local function sidekick_status(active)
 	local cli = vim.b.sidekick_cli and vim.b.sidekick_cli.name
 	if not cli then

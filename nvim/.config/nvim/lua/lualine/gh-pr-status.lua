@@ -1,3 +1,7 @@
+---@class GhPrCache
+---@field cwd string? @ current working directory for cache key
+---@field result string? @ cached formatted PR string
+---@field at integer @ timestamp of last fetch
 local cache = { cwd = nil, result = nil, at = 0 }
 local TTL = 30000
 
@@ -10,6 +14,7 @@ local hls = {
 
 local M = {}
 
+---Set up highlight groups and DirChanged autocmd. Call once in lualine config.
 function M.setup()
 	for _, h in pairs(hls) do
 		vim.api.nvim_set_hl(0, h.name, { link = h.link })
@@ -23,6 +28,8 @@ function M.setup()
 	})
 end
 
+---Lualine component: returns formatted PR state string or empty.
+---@return string
 function M.component()
 	local cwd = vim.fn.getcwd()
 	local now = vim.uv.now()

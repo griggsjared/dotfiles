@@ -1,10 +1,16 @@
 local M = {}
 
+---@class ToolingWork
+---@field count integer
+---@field names string[]
+
 local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 local hrtime = vim.uv.hrtime
 
 local ignore_lsps = { ["null-ls"] = true, ["none-ls"] = true }
 
+---@field work table<integer, integer> @ client_id -> active work count
+---@field conform_running integer
 M.work = {}
 M.conform_running = 0
 

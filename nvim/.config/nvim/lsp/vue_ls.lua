@@ -1,15 +1,19 @@
+local mason = require("config.mason")
+
+---@type vim.lsp.Config
 return {
+	---@param client vim.lsp.Client
 	on_init = function(client)
 		local retries = 0
 
-		local function typescriptHandler(_, result, context)
+		local function typescriptHandler(err, result, context)
 			local ts_client = vim.lsp.get_clients({ bufnr = context.bufnr, name = "vtsls" })[1]
 
 			if not ts_client then
 				if retries <= 10 then
 					retries = retries + 1
 					vim.defer_fn(function()
-						typescriptHandler(_, result, context)
+						typescriptHandler(err, result, context)
 					end, 100)
 				else
 					vim.notify(
@@ -20,8 +24,8 @@ return {
 				return
 			end
 
-			local param = unpack(result)
-			local id, command, payload = unpack(param)
+			local param = table.unpack(result)
+			local id, command, payload = table.unpack(param)
 			ts_client:exec_cmd({
 				title = "vue_request_forward",
 				command = "typescript.tsserverRequest",
@@ -37,8 +41,7 @@ return {
 	end,
 	init_options = {
 		typescript = {
-			tsdk = vim.fn.stdpath("data")
-				.. "/mason/packages/vue-language-server/node_modules/typescript/lib",
+			tsdk = mason.package_path("vue-language-server", "node_modules", "typescript", "lib"),
 		},
 	},
 }

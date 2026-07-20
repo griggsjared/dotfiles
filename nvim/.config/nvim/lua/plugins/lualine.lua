@@ -44,7 +44,9 @@ return {
 					{ tooling_status.component, on_click = tooling_status.show_popup },
 					{
 						function()
-							if vim.g.copilot_enabled then return "" end
+							if vim.g.copilot_enabled then
+								return ""
+							end
 							return ""
 						end,
 					},

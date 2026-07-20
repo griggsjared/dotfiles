@@ -19,7 +19,11 @@ return {
 		{ "<leader>pr", "<cmd>Gitsigns reset_hunk<cr>", desc = "Reset git hunk" },
 		{ "<leader>ps", "<cmd>Gitsigns stage_hunk<cr>", desc = "Stage git hunk" },
 		{ "<leader>pb", toggle_blame, desc = "Toggle full git blame UI" },
-		{ "<leader>pl", "<cmd>Gitsigns toggle_current_line_blame<cr>", desc = "Toggle current line blame" },
+		{
+			"<leader>pl",
+			"<cmd>Gitsigns toggle_current_line_blame<cr>",
+			desc = "Toggle current line blame",
+		},
 	},
 	config = function()
 		require("gitsigns").setup({ current_line_blame = true })

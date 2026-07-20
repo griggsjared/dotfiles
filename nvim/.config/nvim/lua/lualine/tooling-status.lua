@@ -220,12 +220,15 @@ M.show_popup = function()
 		pcall(vim.api.nvim_del_augroup_by_name, augroup_name)
 	end
 
-	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "InsertEnter", "BufLeave", "WinLeave" }, {
-		group = augroup,
-		buffer = vim.api.nvim_get_current_buf(),
-		once = true,
-		callback = close,
-	})
+	vim.api.nvim_create_autocmd(
+		{ "CursorMoved", "CursorMovedI", "InsertEnter", "BufLeave", "WinLeave" },
+		{
+			group = augroup,
+			buffer = vim.api.nvim_get_current_buf(),
+			once = true,
+			callback = close,
+		}
+	)
 
 	vim.defer_fn(close, 8000)
 end

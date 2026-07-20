@@ -79,16 +79,47 @@ return {
 				group = group,
 				desc = "Buffer-local LSP keymaps",
 				callback = function(event)
-					vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = event.buf, desc = "Show hover documentation" })
-					vim.keymap.set("n", "<leader>gd", vim.lsp.buf.definition, { buffer = event.buf, desc = "Go to definition" })
-					vim.keymap.set("n", "<leader>gr", vim.lsp.buf.references, { buffer = event.buf, desc = "Show references" })
-					vim.keymap.set("n", "<leader>gi", vim.lsp.buf.implementation, { buffer = event.buf, desc = "Go to implementation" })
-					vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, { buffer = event.buf, desc = "Show code actions" })
-					vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { buffer = event.buf, desc = "Rename symbol" })
+					vim.keymap.set(
+						"n",
+						"K",
+						vim.lsp.buf.hover,
+						{ buffer = event.buf, desc = "Show hover documentation" }
+					)
+					vim.keymap.set(
+						"n",
+						"<leader>gd",
+						vim.lsp.buf.definition,
+						{ buffer = event.buf, desc = "Go to definition" }
+					)
+					vim.keymap.set(
+						"n",
+						"<leader>gr",
+						vim.lsp.buf.references,
+						{ buffer = event.buf, desc = "Show references" }
+					)
+					vim.keymap.set(
+						"n",
+						"<leader>gi",
+						vim.lsp.buf.implementation,
+						{ buffer = event.buf, desc = "Go to implementation" }
+					)
+					vim.keymap.set(
+						"n",
+						"<leader>ca",
+						vim.lsp.buf.code_action,
+						{ buffer = event.buf, desc = "Show code actions" }
+					)
+					vim.keymap.set(
+						"n",
+						"<leader>rn",
+						vim.lsp.buf.rename,
+						{ buffer = event.buf, desc = "Rename symbol" }
+					)
 				end,
 			})
 
-			local line_diagnostics_group = vim.api.nvim_create_augroup("line-diagnostics", { clear = true })
+			local line_diagnostics_group =
+				vim.api.nvim_create_augroup("line-diagnostics", { clear = true })
 			vim.keymap.set("n", "<leader>xx", function()
 				vim.diagnostic.config({ virtual_lines = { current_line = true }, virtual_text = false })
 				vim.api.nvim_create_autocmd("CursorMoved", {

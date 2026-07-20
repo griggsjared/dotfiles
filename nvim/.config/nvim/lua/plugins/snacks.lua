@@ -172,7 +172,9 @@ local keys = {
 	{
 		"<leader>fP",
 		function()
-			vim.system({ "gh", "pr", "view", "--json", "number,baseRefName" }, { text = true, cwd = vim.fn.getcwd() },
+			vim.system(
+				{ "gh", "pr", "view", "--json", "number,baseRefName" },
+				{ text = true, cwd = vim.fn.getcwd() },
 				vim.schedule_wrap(function(out)
 					if out.code ~= 0 then
 						vim.notify("No open PR found for the current branch", vim.log.levels.ERROR)
@@ -187,7 +189,8 @@ local keys = {
 						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")",
 						base = d.baseRefName,
 					})
-				end))
+				end)
+			)
 		end,
 		desc = "GitHub PR diff",
 	},
@@ -205,87 +208,92 @@ local keys = {
 ---@type LazySpec
 return {
 	"folke/snacks.nvim",
-		priority = 1000,
-		lazy = false,
-		opts = {
-			bigfile = { enabled = true },
-			quickfile = { enabled = true },
-			statuscolumn = { enabled = true },
-			indent = {
+	priority = 1000,
+	lazy = false,
+	opts = {
+		bigfile = { enabled = true },
+		quickfile = { enabled = true },
+		statuscolumn = { enabled = true },
+		indent = {
+			enabled = true,
+			char = "┊",
+			scope = {
 				enabled = true,
 				char = "┊",
-				scope = {
-					enabled = true,
-					char = "┊",
+			},
+		},
+		image = { enabled = true },
+		lazygit = {
+			enabled = true,
+			config = {
+				os = {
+					edit = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}}]],
+					editAtLine = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}} && nvim --server "$NVIM" --remote-send ":{{line}}<CR>"]],
+					openDirInEditor = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{dir}}]],
 				},
 			},
-			image = { enabled = true },
-			lazygit = {
-				enabled = true,
-				config = {
-					os = {
-						edit = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}}]],
-						editAtLine = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{filename}} && nvim --server "$NVIM" --remote-send ":{{line}}<CR>"]],
-						openDirInEditor = [[nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote-expr "win_gotoid(g:snacks_lazygit_main_win)" && nvim --server "$NVIM" --remote {{dir}}]],
-					},
-				},
-				win = {
-					style = {
-						border = "rounded",
-					},
+			win = {
+				style = {
+					border = "rounded",
 				},
 			},
-			picker = {
-				enabled = true,
-				main = { file = false },
+		},
+		picker = {
+			enabled = true,
+			main = { file = false },
+			layout = {
+				preset = "ivy",
 				layout = {
-					preset = "ivy",
-					layout = {
-						backdrop = true,
-						title_pos = "center",
-					},
-				},
-				actions = {
-					transfer_up = function(_, item)
-						vim.cmd.TransferUpload(item.file)
-					end,
-					transfer_down = function(_, item)
-						vim.cmd.TransferDownload(item.file)
-					end,
-				},
-				formatters = {
-					file = {
-						icon_width = 3,
-					},
+					backdrop = true,
+					title_pos = "center",
 				},
 			},
-			dashboard = {
-				enabled = true,
-				width = 50,
-				sections = {
-					{
-						header = [[
+			actions = {
+				transfer_up = function(_, item)
+					vim.cmd.TransferUpload(item.file)
+				end,
+				transfer_down = function(_, item)
+					vim.cmd.TransferDownload(item.file)
+				end,
+			},
+			formatters = {
+				file = {
+					icon_width = 3,
+				},
+			},
+		},
+		dashboard = {
+			enabled = true,
+			width = 50,
+			sections = {
+				{
+					header = [[
 ░░░    ░░ ░░░░░░░  ░░░░░░  ░░    ░░ ░░ ░░░    ░░░
 ▒▒▒▒   ▒▒ ▒▒      ▒▒    ▒▒ ▒▒    ▒▒ ▒▒ ▒▒▒▒  ▒▒▒▒
 ▒▒ ▒▒  ▒▒ ▒▒▒▒▒   ▒▒    ▒▒ ▒▒    ▒▒ ▒▒ ▒▒ ▒▒▒▒ ▒▒
 ▓▓  ▓▓ ▓▓ ▓▓      ▓▓    ▓▓  ▓▓  ▓▓  ▓▓ ▓▓  ▓▓  ▓▓
 ██   ████ ███████  ██████    ████   ██ ██      ██
 ]],
-					},
-					function()
-						local v = vim.version()
-						local version = ("v%d.%d.%d%s"):format(v.major, v.minor, v.patch, v.prerelease and "-dev" or "")
-						return {
-							align = "center",
-							{
-								text = {
-									{ version, hl = "special" },
-								},
-							},
-						}
-					end,
 				},
+				function()
+					local v = vim.version()
+					local version = ("v%d.%d.%d%s"):format(
+						v.major,
+						v.minor,
+						v.patch,
+						v.prerelease and "-dev" or ""
+					)
+					return {
+						align = "center",
+						{
+							text = {
+								{ version, hl = "special" },
+							},
+						},
+					}
+				end,
 			},
 		},
-		keys = keys,
+	},
+	keys = keys,
 }

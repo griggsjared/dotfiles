@@ -21,7 +21,9 @@ end
 
 local function format_cli_item(s)
 	local parts = require("sidekick.cli.ui.select").format(s)
-	return table.concat(vim.tbl_map(function(p) return p[1] end, parts))
+	return table.concat(vim.tbl_map(function(p)
+		return p[1]
+	end, parts))
 end
 
 local function open_local(name, opts)
@@ -40,7 +42,9 @@ local function send_local(msg)
 	local sk_select = require("sidekick.cli.ui.select")
 
 	local function dispatch(state)
-		if not state then return end
+		if not state then
+			return
+		end
 		if not state.session then
 			state = State.attach(state, { show = true, focus = false })
 		end
@@ -100,7 +104,9 @@ local function open_cli()
 		format_item = format_cli_item,
 		snacks = { format = sk_select.format },
 	}, function(state)
-		if state then open_local(state.tool.name) end
+		if state then
+			open_local(state.tool.name)
+		end
 	end)
 end
 

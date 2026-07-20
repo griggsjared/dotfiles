@@ -6,8 +6,8 @@ local cache = { cwd = nil, result = nil, at = 0 }
 local TTL = 30000
 
 local hls = {
-	OPEN   = { name = "LualineGhOpen",   link = "diffAdded" },
-	DRAFT  = { name = "LualineGhDraft",  link = "Comment" },
+	OPEN = { name = "LualineGhOpen", link = "diffAdded" },
+	DRAFT = { name = "LualineGhDraft", link = "Comment" },
 	MERGED = { name = "LualineGhMerged", link = "Keyword" },
 	CLOSED = { name = "LualineGhClosed", link = "DiagnosticError" },
 }
@@ -40,16 +40,23 @@ function M.component()
 
 	cache.cwd, cache.at, cache.result = cwd, now, nil
 
-	vim.system({ "gh", "pr", "view", "--json", "number,isDraft,state" }, { text = true, cwd = cwd },
+	vim.system(
+		{ "gh", "pr", "view", "--json", "number,isDraft,state" },
+		{ text = true, cwd = cwd },
 		vim.schedule_wrap(function(out)
-			if out.code ~= 0 then return end
+			if out.code ~= 0 then
+				return
+			end
 			local ok, d = pcall(vim.json.decode, out.stdout)
-			if not ok or not d then return end
+			if not ok or not d then
+				return
+			end
 			local state = (d.state == "OPEN" and d.isDraft) and "DRAFT" or d.state
 			local h = hls[state] or hls.OPEN
 			cache.result = "%#" .. h.name .. "#PR#" .. d.number .. "%*"
 			pcall(require("lualine").refresh, { place = { "statusline" } })
-		end))
+		end)
+	)
 
 	return ""
 end

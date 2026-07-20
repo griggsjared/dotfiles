@@ -54,61 +54,61 @@ return {
 	config = function()
 		require("blink.cmp").setup({
 			keymap = { preset = "enter" },
-				appearance = {
-					nerd_font_variant = "mono",
+			appearance = {
+				nerd_font_variant = "mono",
+			},
+			completion = {
+				documentation = {
+					auto_show = true,
+					auto_show_delay_ms = 50,
 				},
+				menu = {
+					draw = {
+						columns = {
+							{ "label", "label_description", gap = 1 },
+							{ "kind" },
+						},
+					},
+				},
+				list = {
+					selection = {
+						preselect = false,
+						auto_insert = true,
+					},
+				},
+			},
+			cmdline = {
+				enabled = true,
 				completion = {
-					documentation = {
-						auto_show = true,
-						auto_show_delay_ms = 50,
-					},
 					menu = {
-						draw = {
-							columns = {
-								{ "label", "label_description", gap = 1 },
-								{ "kind" },
-							},
-						},
-					},
-					list = {
-						selection = {
-							preselect = false,
-							auto_insert = true,
-						},
+						auto_show = true,
 					},
 				},
-				cmdline = {
-					enabled = true,
-					completion = {
-						menu = {
-							auto_show = true,
-						},
+			},
+			signature = {
+				enabled = true,
+			},
+			sources = {
+				default = { "lsp", "path", "snippets", "buffer", "copilot" },
+				providers = {
+					copilot = {
+						name = "copilot",
+						module = "blink-copilot",
+						score_offset = 100,
+						async = true,
+						enabled = function()
+							return vim.g.copilot_enabled
+						end,
+						transform_items = function(_, items)
+							for _, item in ipairs(items) do
+								item.kind_name = "Super"
+							end
+							return items
+						end,
 					},
 				},
-				signature = {
-					enabled = true,
-				},
-				sources = {
-					default = { "lsp", "path", "snippets", "buffer", "copilot" },
-					providers = {
-						copilot = {
-							name = "copilot",
-							module = "blink-copilot",
-							score_offset = 100,
-							async = true,
-							enabled = function()
-								return vim.g.copilot_enabled
-							end,
-							transform_items = function(_, items)
-								for _, item in ipairs(items) do
-									item.kind_name = "Super"
-								end
-								return items
-							end,
-						},
-					},
-				},
-				fuzzy = { implementation = "prefer_rust_with_warning" },
+			},
+			fuzzy = { implementation = "prefer_rust_with_warning" },
 		})
 	end,
 }

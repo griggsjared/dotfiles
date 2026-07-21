@@ -16,6 +16,18 @@
 
 7. **Delegate broad exploration** - For broad codebase exploration or fan-out searches across many files, delegate to a read-only exploration subagent instead of searching directly. Keep only the conclusions in the main context.
 
+## Prose Style
+
+Apply these rules to all human-facing prose, including documentation, PR text, and messages. Do not apply them to code or exact technical terms. Use everyday words only when they preserve precision.
+
+- Do not use a metaphor, simile, or other figure of speech that is common in print.
+- Use a short word when it works as well as a long one.
+- Cut every word that is not needed.
+- Use the active voice when possible.
+- Prefer everyday English to foreign phrases, scientific terms, or jargon when it preserves the meaning.
+- Break any of these rules rather than write something unclear or awkward.
+- Review all prose against these rules before delivering it.
+
 ## Scope Control
 
 - Keep edits focused on the files directly related to the request.

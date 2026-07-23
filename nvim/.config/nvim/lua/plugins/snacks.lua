@@ -248,6 +248,13 @@ return {
 					title_pos = "center",
 				},
 			},
+			win = {
+				input = {
+					keys = {
+						["-"] = { function() end, mode = { "n" } },
+					},
+				},
+			},
 			actions = {
 				transfer_up = function(_, item)
 					vim.cmd.TransferUpload(item.file)

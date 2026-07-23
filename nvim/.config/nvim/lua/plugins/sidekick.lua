@@ -3,13 +3,15 @@ local nes_enabled = vim.env.NVIM_SIDEKICK_NES_ENABLED == "1"
 -- Optional allowlist: NVIM_SIDEKICK_CLIS="opencode,claude" restricts the CLIs we
 -- offer to this set. It only ever narrows the list — it never adds a CLI that
 -- wouldn't have shown otherwise. Empty/unset means allow all.
-local allowed_clis ---@type table<string, boolean>?
+local allowed_clis ---@type table<string, integer>?
 if vim.env.NVIM_SIDEKICK_CLIS and vim.env.NVIM_SIDEKICK_CLIS ~= "" then
 	allowed_clis = {}
+	local rank = 0
 	for name in vim.gsplit(vim.env.NVIM_SIDEKICK_CLIS, ",", { trimempty = true }) do
 		name = vim.trim(name)
-		if name ~= "" then
-			allowed_clis[name] = true
+		if name ~= "" and not allowed_clis[name] then
+			rank = rank + 1
+			allowed_clis[name] = rank
 		end
 	end
 end
@@ -17,6 +19,22 @@ end
 -- A local (non-external) state that passes the optional allowlist
 local function is_allowed_local(s)
 	return not s.external and (not allowed_clis or allowed_clis[s.tool.name])
+end
+
+local function order_allowed(states)
+	if not allowed_clis then
+		return states
+	end
+	local original_order = {}
+	for i, state in ipairs(states) do
+		original_order[state] = i
+	end
+	table.sort(states, function(a, b)
+		local a_rank = allowed_clis[a.tool.name]
+		local b_rank = allowed_clis[b.tool.name]
+		return a_rank == b_rank and original_order[a] < original_order[b] or a_rank < b_rank
+	end)
+	return states
 end
 
 local function format_cli_item(s)
@@ -37,7 +55,7 @@ local function open_local(name, opts)
 	end
 end
 
-local function send_local(msg)
+local function send_local(message)
 	local State = require("sidekick.cli.state")
 	local sk_select = require("sidekick.cli.ui.select")
 
@@ -48,7 +66,9 @@ local function send_local(msg)
 		if not state.session then
 			state = State.attach(state, { show = true, focus = false })
 		end
-		require("sidekick.cli").send({ msg = msg, filter = { session = state.session.id } })
+		local opts = type(message) == "string" and { msg = message } or vim.deepcopy(message)
+		opts.filter = { session = state.session.id }
+		require("sidekick.cli").send(opts)
 	end
 
 	local function pick(items)
@@ -62,9 +82,9 @@ local function send_local(msg)
 
 	local all = State.get()
 
-	local running = vim.tbl_filter(function(s)
+	local running = order_allowed(vim.tbl_filter(function(s)
 		return s.attached and is_allowed_local(s)
-	end, all)
+	end, all))
 	if #running == 1 then
 		dispatch(running[1])
 		return
@@ -73,9 +93,9 @@ local function send_local(msg)
 		return
 	end
 
-	local installed = vim.tbl_filter(function(s)
+	local installed = order_allowed(vim.tbl_filter(function(s)
 		return s.installed and is_allowed_local(s)
-	end, all)
+	end, all))
 	if #installed == 0 then
 		return
 	elseif #installed == 1 then
@@ -88,9 +108,9 @@ end
 local function open_cli()
 	local State = require("sidekick.cli.state")
 	local sk_select = require("sidekick.cli.ui.select")
-	local states = vim.tbl_filter(function(s)
+	local states = order_allowed(vim.tbl_filter(function(s)
 		return s.installed and is_allowed_local(s)
-	end, State.get())
+	end, State.get()))
 	if #states == 0 then
 		return
 	end
@@ -170,7 +190,11 @@ local keys = {
 	{
 		"<leader>cq",
 		function()
-			require("sidekick.cli").prompt()
+			require("sidekick.cli").prompt(function(_, text)
+				if text then
+					send_local({ text = text })
+				end
+			end)
 		end,
 		desc = "Sidekick prompts",
 		mode = { "n", "v" },

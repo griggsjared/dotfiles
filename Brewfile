@@ -6,9 +6,9 @@ tap "sst/tap"
 
 # Casks (GUI Applications)
 cask "alt-tab"
-cask "jordanbaird-ice"
 cask "ghostty"
 cask "raycast"
+cask "thaw"
 
 # Packages (CLI Tools & Languages)
 # Shell & Terminal Tools

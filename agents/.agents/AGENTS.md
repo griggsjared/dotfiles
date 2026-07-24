@@ -1,36 +1,53 @@
-# AGENT Guidelines
+# Agent Guidelines
 
-## Core Principles
+These rules are ordered. When two conflict, the earlier one wins.
 
-1. **Reference surrounding code** - Always examine nearby code and match existing patterns, style, naming, and conventions before making edits.
+## Editing code
 
-2. **Make minimal edits** - Prefer the smallest correct change that solves the request. Do not refactor, rename, reformat, or reorganize code unless necessary.
+- Read the file you are changing, plus one sibling, before the first edit. Match their naming, structure, error handling, and layout. Existing patterns win over your preference, even when yours is better.
+- Ship the smallest diff that fully solves the request. If a line does not have to change, leave it.
+- Do not rename, reformat, reorder, or restructure code you were not asked to change. Formatting the lines you already touched is fine; formatting the rest of the file is not.
+- Add no new helper, wrapper, base class, interface, config flag, or dependency unless the request cannot be finished without it. Two call sites do not justify an abstraction — prefer the duplication.
+- Prefer editing an existing file to creating a new one.
 
-3. **Avoid unnecessary abstractions** - Do not introduce new helpers, wrappers, dependencies, compatibility layers, or generalized solutions unless clearly justified by the task.
+## Scope
 
-4. **Minimal comments** - Refrain from adding superfluous comments. Only add comments when necessary to explain complex or non-obvious logic.
+- Touch only the files the request names or requires. If the change needs more than three files, list them and wait before editing.
+- No opportunistic cleanup. Problems you notice outside the scope get one line at the end of your reply, not a fix.
+- Extras nobody asked for — docs, README updates, CLI flags, migration paths, error-handling "while I'm here" — are out of scope.
 
-5. **Update tests** - Always check for corresponding tests when editing code. Test the behavior, side effects, and edge cases of our code; avoid testing framework behavior or implementation details already covered by the framework. Update tests to maintain appropriate coverage and follow existing test patterns.
+## Tests
 
-6. **Follow project conventions** - Check for linters, formatters, and configuration files. Follow the project's established conventions and formatting rules.
+- Find the test file covering what you changed. If it exists, update it. If none exists and the change is behavioral, say so.
+- Test observable behavior, side effects, edge cases, and failure paths. Do not test framework behavior, getters, or private internals.
+- Follow the existing test patterns: same helpers, same factories, same assertion style.
+- Run the tests you touched, filtered, before saying the work is done. Paste real failures. Never call something passing without a run.
 
-7. **Delegate broad exploration** - For broad codebase exploration or fan-out searches across many files, delegate to a read-only exploration subagent instead of searching directly. Keep only the conclusions in the main context.
+## Comments
 
-## Prose Style
+- Default to no comment. Add one only to explain why, never what.
+- A comment that restates the line below it does not get written.
+- Never add changelog comments, "Added X" notes, or section dividers.
 
-Apply these rules to all human-facing prose, including documentation, PR text, and messages. Do not apply them to code or exact technical terms. Use everyday words only when they preserve precision.
+## Prose
 
-- Do not use a metaphor, simile, or other figure of speech that is common in print.
-- Use a short word when it works as well as a long one.
-- Cut every word that is not needed.
-- Use the active voice when possible.
-- Prefer everyday English to foreign phrases, scientific terms, or jargon when it preserves the meaning.
-- Break any of these rules rather than write something unclear or awkward.
-- Review all prose against these rules before delivering it.
+Applies to messages, PR text, commits, and docs. Not to code or exact technical terms.
 
-## Scope Control
+- Cut every word that is not working. Delete the preamble and the recap of what you just said.
+- Active voice. Short word over long. Plain English over jargon, unless the jargon is the precise term.
+- No metaphor, simile, or figure of speech common in print.
+- No praise, no apology, no hedging. Say what you did and what is left.
+- Break any rule here rather than write something unclear.
 
-- Keep edits focused on the files directly related to the request.
-- Do not include opportunistic cleanup in the same change.
-- If a broader improvement is discovered, mention it separately instead of implementing it without being asked.
-- When unsure whether a larger change is desired, ask before expanding the scope.
+## Exploration
+
+For searches spanning many files or naming conventions, delegate to a read-only subagent and keep only the conclusion. Search directly when you already know the file or symbol.
+
+## Before you finish
+
+Every time:
+
+1. The diff contains only what was asked.
+2. No comment restates code.
+3. Tests for changed behavior are updated and were run.
+4. The reply survived a cut-pass.

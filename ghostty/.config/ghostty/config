@@ -12,11 +12,11 @@ window-padding-y = 4
 keybind = global:alt+right=unbind
 keybind = global:alt+left=unbind
 
-background-opacity = 0.99
+background-opacity = 1
 cursor-invert-fg-bg = true
 theme = rpg
 
 macos-titlebar-style = "tabs"
 macos-icon = "retro"
 
-custom-shader = shaders/cursor_smear.glsl
+#custom-shader = shaders/cursor_smear.glsl

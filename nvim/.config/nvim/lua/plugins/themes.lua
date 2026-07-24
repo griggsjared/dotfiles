@@ -9,7 +9,7 @@ return {
 		lazy = false,
 		config = function()
 			require("rpg").setup({
-				transparent_background = true,
+				transparent_background = false,
 			})
 			vim.cmd([[colorscheme rpg]])
 		end,

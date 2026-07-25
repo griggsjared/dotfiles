@@ -2,7 +2,7 @@
 
 # Composer global bin
 if [ -d $HOME/.composer/vendor/bin ]; then
-  export PATH=$HOME/.composer/vendor/bin:$PATH
+  export PATH=$PATH:$HOME/.composer/vendor/bin
 fi
 
 # Valet aliases

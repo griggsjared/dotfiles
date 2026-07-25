@@ -20,5 +20,6 @@ require("config.autocmds")
 require("lazy").setup("plugins", {
 	ui = {
 		border = "rounded",
+		backdrop = 100,
 	},
 })

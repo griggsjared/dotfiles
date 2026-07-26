@@ -45,6 +45,7 @@ local registry = {
 	python = { bo = { tabstop = 4, shiftwidth = 4 } },
 	rust = { parsers = { "rust" }, lsp = { "rust_analyzer" } },
 	sh = { parsers = { "bash" } },
+	svelte = { parsers = { "svelte" }, lsp = { "svelte", "vtsls", "tailwindcss", "eslint" } },
 	templ = { parsers = { "templ" }, lsp = { "templ", "html", "tailwindcss" } },
 	typescript = {
 		parsers = { "typescript" },

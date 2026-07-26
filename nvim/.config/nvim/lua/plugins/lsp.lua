@@ -45,6 +45,7 @@ return {
 					"gopls",
 					"templ",
 					"astro",
+					"svelte",
 					"rust_analyzer",
 					"zls",
 					"clangd",

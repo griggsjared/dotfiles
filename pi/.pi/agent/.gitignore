@@ -1,0 +1,6 @@
+# whitelist: only track theme and statusline; everything else is machine-local
+*
+!*/
+!.gitignore
+!themes/**
+!extensions/statusline.ts

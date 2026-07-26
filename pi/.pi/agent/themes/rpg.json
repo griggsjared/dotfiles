@@ -1,0 +1,83 @@
+{
+  "$schema": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/modes/interactive/theme/theme-schema.json",
+  "name": "rpg",
+  "vars": {
+    "bg": "#171717",
+    "fg": "#fcfcfa",
+    "red": "#d9726c",
+    "green": "#7acc5c",
+    "yellow": "#d9b85c",
+    "cyan": "#e6975c",
+    "purple": "#9d6ac4",
+    "blue": "#4a8cbd",
+    "dim": "#727271",
+    "gray1": "#2c2c2c",
+    "gray2": "#3e3e3e",
+    "gray3": "#505050"
+  },
+  "colors": {
+    "accent": "cyan",
+    "border": "gray2",
+    "borderAccent": "blue",
+    "borderMuted": "gray1",
+    "success": "green",
+    "error": "red",
+    "warning": "yellow",
+    "muted": "dim",
+    "dim": "gray3",
+    "text": "fg",
+    "thinkingText": "dim",
+
+    "selectedBg": "gray1",
+    "userMessageBg": "gray1",
+    "userMessageText": "fg",
+    "customMessageBg": "#2d2838",
+    "customMessageText": "fg",
+    "customMessageLabel": "purple",
+    "toolPendingBg": "gray1",
+    "toolSuccessBg": "gray1",
+    "toolErrorBg": "#3a2828",
+    "toolTitle": "fg",
+    "toolOutput": "dim",
+
+    "mdHeading": "blue",
+    "mdLink": "cyan",
+    "mdLinkUrl": "purple",
+    "mdCode": "yellow",
+    "mdCodeBlock": "fg",
+    "mdCodeBlockBorder": "gray2",
+    "mdQuote": "dim",
+    "mdQuoteBorder": "gray2",
+    "mdHr": "gray2",
+    "mdListBullet": "blue",
+
+    "toolDiffAdded": "green",
+    "toolDiffRemoved": "red",
+    "toolDiffContext": "dim",
+
+    "syntaxComment": "dim",
+    "syntaxKeyword": "red",
+    "syntaxFunction": "green",
+    "syntaxVariable": "fg",
+    "syntaxString": "yellow",
+    "syntaxNumber": "purple",
+    "syntaxType": "blue",
+    "syntaxOperator": "red",
+    "syntaxPunctuation": "fg",
+
+    "thinkingOff": "gray3",
+    "thinkingMinimal": "dim",
+    "thinkingLow": "blue",
+    "thinkingMedium": "cyan",
+    "thinkingHigh": "purple",
+    "thinkingXhigh": "red",
+    "thinkingMax": "yellow",
+
+    "bashMode": "green"
+  },
+  "export": {
+    "pageBg": "bg",
+    "cardBg": "gray1",
+    "infoBg": "#3c3728"
+  }
+}

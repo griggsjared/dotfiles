@@ -257,6 +257,11 @@ return {
 			tools = {
 				cursor = { cmd = { "cursor-agent", "--mode", "ask" } },
 			},
+			win = {
+				wo = {
+					winhighlight = "",
+				},
+			},
 		},
 	},
 	keys = keys,

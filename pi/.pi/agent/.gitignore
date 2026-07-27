@@ -3,4 +3,5 @@
 !*/
 !.gitignore
 !themes/**
+!extensions/header.ts
 !extensions/statusline.ts

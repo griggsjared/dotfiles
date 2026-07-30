@@ -1,10 +1,10 @@
 #!/bin/sh
 input=$(cat)
 model=$(echo "$input" | jq -r '.model.display_name')
-used=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 mode=$(echo "$input" | jq -r '.output_style.name // empty')
 total_in=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
 ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
+effort=$(echo "$input" | jq -r '.effort.level // empty')
 tasks=$(echo "$input" | jq -r 'if .agent then 1 else 0 end')
 five_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
@@ -12,6 +12,16 @@ week_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empt
 week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
 out=$(printf "\033[32m%s\033[0m" "$model")
+
+if [ -n "$effort" ]; then
+    case "$effort" in
+        low) effort=lo ;;
+        medium) effort=md ;;
+        high) effort=hi ;;
+        xhigh) effort=xh ;;
+    esac
+    out="$out $(printf "\033[33m%s\033[0m" "$effort")"
+fi
 
 abbrev() {
     n=$1
@@ -24,8 +34,8 @@ abbrev() {
     fi
 }
 
-if [ -n "$used" ] && [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
-    out="$out $(printf "\033[34m%s/%s (%.0f%%)\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")" "$used")"
+if [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
+    out="$out $(printf "\033[34m%s/%s\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")")"
 fi
 
 if [ -n "$mode" ] && [ "$mode" != "null" ] && [ "$mode" != "default" ]; then
@@ -51,14 +61,14 @@ fmt_remaining() {
 
 # Rate limits (only shown when present — Claude.ai subscribers after first API response)
 if [ -n "$five_pct" ]; then
-    five_str="5h:$(printf '%.0f' "$five_pct")%"
+    five_str="$(printf '%.0f' "$five_pct")%"
     if [ -n "$five_reset" ]; then
         five_str="$five_str ($(fmt_remaining "$five_reset"))"
     fi
     out="$out $(printf "\033[36m%s\033[0m" "$five_str")"
 fi
 if [ -n "$week_pct" ]; then
-    week_str="7d:$(printf '%.0f' "$week_pct")%"
+    week_str="$(printf '%.0f' "$week_pct")%"
     if [ -n "$week_reset" ]; then
         week_str="$week_str ($(fmt_remaining "$week_reset"))"
     fi

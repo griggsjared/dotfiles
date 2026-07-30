@@ -20,9 +20,10 @@ This repo uses GNU `stow` to manage symlinks. Every config file here is symlinke
 | `opencode/.config/opencode/` | `~/.config/opencode/` |
 | `agents/.codex/` | `~/.codex/` |
 | `agents/.agents/` | `~/.agents/` |
+| `agents/.pi/agent/` | `~/.pi/agent/` |
 | `yazi/.config/yazi/` | `~/.config/yazi/` |
 
-`agents/.claude/CLAUDE.md` and `agents/.claude/skills/` are also symlinked into `~/.claude/`, and `agents/.config/opencode/AGENTS.md` and `agents/.config/opencode/skills/` into `~/.config/opencode/`.
+`agents/.claude/CLAUDE.md` and `agents/.claude/skills/` are also symlinked into `~/.claude/`, `agents/.config/opencode/AGENTS.md` and `agents/.config/opencode/skills/` into `~/.config/opencode/`, and `agents/.pi/agent/AGENTS.md` into `~/.pi/agent/AGENTS.md` (for Pi).
 
 If you open a file via its system path (e.g. `~/.config/nvim/init.lua`), you are editing the symlink target — which resolves back to this repo — but prefer to use the repo path explicitly so the source of truth is obvious.
 

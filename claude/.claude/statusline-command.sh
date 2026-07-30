@@ -1,6 +1,7 @@
 #!/bin/sh
 input=$(cat)
 model=$(echo "$input" | jq -r '.model.display_name')
+model="${model% (*}"
 mode=$(echo "$input" | jq -r '.output_style.name // empty')
 total_in=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
 ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
@@ -14,12 +15,6 @@ week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 out=$(printf "\033[32m%s\033[0m" "$model")
 
 if [ -n "$effort" ]; then
-    case "$effort" in
-        low) effort=lo ;;
-        medium) effort=md ;;
-        high) effort=hi ;;
-        xhigh) effort=xh ;;
-    esac
     out="$out $(printf "\033[33m%s\033[0m" "$effort")"
 fi
 

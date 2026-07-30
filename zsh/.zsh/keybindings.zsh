@@ -12,7 +12,7 @@ bindkey ' ' magic-space
 # Open buffer in editor with Ctrl+E
 autoload -Uz edit-command-line
 zle -N edit-command-line
-bindkey '^E' edit-command-line
+bindkey '^G' edit-command-line
 
 # Open tm with Ctrl+P
 _run_tm() {

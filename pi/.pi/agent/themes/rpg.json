@@ -24,7 +24,7 @@
     "error": "red",
     "warning": "yellow",
     "muted": "dim",
-    "dim": "gray3",
+    "dim": "dim",
     "text": "fg",
     "thinkingText": "dim",
 
@@ -65,13 +65,13 @@
     "syntaxOperator": "red",
     "syntaxPunctuation": "fg",
 
-    "thinkingOff": "gray3",
-    "thinkingMinimal": "dim",
-    "thinkingLow": "blue",
-    "thinkingMedium": "cyan",
-    "thinkingHigh": "purple",
-    "thinkingXhigh": "red",
-    "thinkingMax": "yellow",
+    "thinkingOff": "fg",
+    "thinkingMinimal": "fg",
+    "thinkingLow": "fg",
+    "thinkingMedium": "fg",
+    "thinkingHigh": "fg",
+    "thinkingXhigh": "fg",
+    "thinkingMax": "fg",
 
     "bashMode": "green"
   },

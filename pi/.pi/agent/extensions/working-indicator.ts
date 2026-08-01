@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const WORKING_WORDS = [
 	"Pondering", "Wrangling", "Conjuring", "Untangling", "Harmonizing",
-	"Investigating", "Frolicking", "Mulling", "Wibbling", "Reasoning",
+	"Investigating", "Frolicking", "Mulling", "Wibbling", "Reasoning", "Imagining",
 	"Rummaging", "Brewing", "Sketching", "Connecting", "Exploring",
 	"Deciphering", "Composing", "Meandering", "Calculating", "Tinkering",
 	"Percolating", "Consulting", "Unraveling", "Constructing", "Improvising",
@@ -19,13 +19,7 @@ const SPINNER_INTERVAL_MS = 150;
 type WorkingPattern = (typeof WORKING_PATTERNS)[number];
 type PaletteColor = (typeof THEME_COLORS)[number];
 
-const SPINNER_SYMBOLS: Record<WorkingPattern, string[]> = {
-	shimmer: ["✶", "✸", "✹", "✺", "✹", "✷"],
-	bounce: ["⠁", "⠂", "⠄", "⠂"],
-	karaoke: ["◜", "◠", "◝", "◞", "◡", "◟"],
-	ripple: ["◴", "◷", "◶", "◵"],
-	sparkle: ["·", "+", "×", "*"],
-};
+const SPINNER_SYMBOLS = ["✻", "✽", "✻", "✾"];
 
 function patternColor(
 	pattern: WorkingPattern,
@@ -72,6 +66,19 @@ function patternColor(
 	}
 }
 
+function formatTokens(count: number): string {
+	if (count < 1000) return String(count);
+	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
+	if (count < 1000000) return `${Math.round(count / 1000)}k`;
+	return `${Math.round(count / 1000000)}m`;
+}
+
+function formatDuration(milliseconds: number): string {
+	const seconds = Math.floor(milliseconds / 1000);
+	const minutes = Math.floor(seconds / 60);
+	return minutes > 0 ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
+}
+
 function styleWorkingText(
 	text: string,
 	colorize: (color: PaletteColor, text: string) => string,
@@ -87,9 +94,14 @@ function styleWorkingText(
 
 export default function (pi: ExtensionAPI) {
 	let workingTimer: ReturnType<typeof setInterval> | undefined;
+	let startedAt = 0;
+	let outputTokens = 0;
+	let renderWorkingMessage: (() => void) | undefined;
 
 	pi.on("agent_start", (_event, ctx) => {
 		if (workingTimer) clearInterval(workingTimer);
+		startedAt = Date.now();
+		outputTokens = 0;
 
 		let wordIndex = Math.floor(Math.random() * WORKING_WORDS.length);
 		const firstPatternIndex = Math.floor(Math.random() * WORKING_PATTERNS.length);
@@ -101,7 +113,7 @@ export default function (pi: ExtensionAPI) {
 		let animationTick = 0;
 		const spinnerFramesPerWord = WORD_INTERVAL_MS / SPINNER_INTERVAL_MS;
 		const spinnerFrames = plans.flatMap(({ pattern, colors }) => {
-			const symbols = SPINNER_SYMBOLS[pattern];
+			const symbols = SPINNER_SYMBOLS;
 			return Array.from({ length: spinnerFramesPerWord }, (_, frameIndex) => {
 				const symbolIndex = frameIndex % symbols.length;
 				const colorOffset = Math.floor(frameIndex * SPINNER_INTERVAL_MS / COLOR_INTERVAL_MS);
@@ -111,17 +123,20 @@ export default function (pi: ExtensionAPI) {
 				);
 			});
 		});
-		const updateWorkingMessage = () => {
+		renderWorkingMessage = () => {
 			const { pattern, colors } = plans[planIndex];
-			ctx.ui.setWorkingMessage(`${styleWorkingText(
-				WORKING_WORDS[wordIndex],
+			const message = styleWorkingText(
+				`${WORKING_WORDS[wordIndex]}…`,
 				(color, character) => ctx.ui.theme.fg(color, character),
 				pattern,
 				animationTick,
 				colors,
-			)}…`);
+			);
+			const elapsed = Date.now() - startedAt;
+			const details = `(${formatDuration(elapsed)} · ↓ ${formatTokens(outputTokens)} tokens)`;
+			ctx.ui.setWorkingMessage(`${message} ${ctx.ui.theme.fg("dim", details)}`);
 		};
-		updateWorkingMessage();
+		renderWorkingMessage();
 		ctx.ui.setWorkingIndicator({ frames: spinnerFrames, intervalMs: SPINNER_INTERVAL_MS });
 		workingTimer = setInterval(() => {
 			animationTick++;
@@ -130,13 +145,36 @@ export default function (pi: ExtensionAPI) {
 				wordIndex = (wordIndex + 1) % WORKING_WORDS.length;
 				planIndex = (planIndex + 1) % plans.length;
 			}
-			updateWorkingMessage();
+			renderWorkingMessage?.();
 		}, COLOR_INTERVAL_MS);
+	});
+
+	pi.on("message_update", (event) => {
+		if (event.message.role !== "assistant") return;
+
+		if (event.message.usage.output > 0) {
+			outputTokens = event.message.usage.output;
+		} else {
+			const characters = event.message.content.reduce((total, block) => {
+				if (block.type === "text") return total + block.text.length;
+				if (block.type === "thinking") return total + block.thinking.length;
+				if (block.type === "toolCall") return total + JSON.stringify(block.arguments).length;
+				return total;
+			}, 0);
+			const estimate = Math.ceil(characters / 4);
+			if (estimate > outputTokens) {
+				outputTokens = estimate;
+			}
+		}
+		renderWorkingMessage?.();
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
 		if (workingTimer) clearInterval(workingTimer);
 		workingTimer = undefined;
+		renderWorkingMessage = undefined;
+		startedAt = 0;
+		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
 	});
@@ -144,5 +182,8 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => {
 		if (workingTimer) clearInterval(workingTimer);
 		workingTimer = undefined;
+		renderWorkingMessage = undefined;
+		startedAt = 0;
+		outputTokens = 0;
 	});
 }

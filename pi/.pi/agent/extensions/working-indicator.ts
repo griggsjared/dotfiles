@@ -94,12 +94,14 @@ function styleWorkingText(
 
 export default function (pi: ExtensionAPI) {
 	let workingTimer: ReturnType<typeof setInterval> | undefined;
+	let workingRunId = 0;
 	let startedAt = 0;
 	let outputTokens = 0;
 	let renderWorkingMessage: (() => void) | undefined;
 
 	pi.on("agent_start", (_event, ctx) => {
 		if (workingTimer) clearInterval(workingTimer);
+		const runId = ++workingRunId;
 		startedAt = Date.now();
 		outputTokens = 0;
 
@@ -124,6 +126,7 @@ export default function (pi: ExtensionAPI) {
 			});
 		});
 		renderWorkingMessage = () => {
+			if (runId !== workingRunId) return;
 			const { pattern, colors } = plans[planIndex];
 			const message = styleWorkingText(
 				`${WORKING_WORDS[wordIndex]}…`,
@@ -137,8 +140,14 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.setWorkingMessage(`${message} ${ctx.ui.theme.fg("dim", details)}`);
 		};
 		renderWorkingMessage();
+		ctx.ui.setWorkingVisible(true);
 		ctx.ui.setWorkingIndicator({ frames: spinnerFrames, intervalMs: SPINNER_INTERVAL_MS });
-		workingTimer = setInterval(() => {
+		let timer: ReturnType<typeof setInterval>;
+		timer = setInterval(() => {
+			if (runId !== workingRunId) {
+				clearInterval(timer);
+				return;
+			}
 			animationTick++;
 			if (animationTick * COLOR_INTERVAL_MS >= WORD_INTERVAL_MS) {
 				animationTick = 0;
@@ -147,6 +156,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			renderWorkingMessage?.();
 		}, COLOR_INTERVAL_MS);
+		workingTimer = timer;
 	});
 
 	pi.on("message_update", (event) => {
@@ -170,6 +180,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
+		if (!ctx.isIdle()) return;
+		workingRunId++;
 		if (workingTimer) clearInterval(workingTimer);
 		workingTimer = undefined;
 		renderWorkingMessage = undefined;
@@ -177,13 +189,18 @@ export default function (pi: ExtensionAPI) {
 		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
+		ctx.ui.setWorkingVisible(false);
 	});
 
-	pi.on("session_shutdown", () => {
+	pi.on("session_shutdown", (_event, ctx) => {
+		workingRunId++;
 		if (workingTimer) clearInterval(workingTimer);
 		workingTimer = undefined;
 		renderWorkingMessage = undefined;
 		startedAt = 0;
 		outputTokens = 0;
+		ctx.ui.setWorkingMessage();
+		ctx.ui.setWorkingIndicator();
+		ctx.ui.setWorkingVisible(false);
 	});
 }

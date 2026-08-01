@@ -15,7 +15,33 @@ function formatTokens(count: number): string {
 	return `${Math.round(count / 1000000)}m`;
 }
 
+const WORKING_WORDS = [
+	"Pondering",
+	"Wrangling",
+	"Conjuring",
+	"Untangling",
+	"Harmonizing",
+	"Investigating",
+	"Frolicking",
+	"Mulling",
+	"Wibbling",
+];
+
 export default function (pi: ExtensionAPI) {
+	pi.on("agent_start", (_event, ctx) => {
+		const word = WORKING_WORDS[Math.floor(Math.random() * WORKING_WORDS.length)];
+		const frames = ["✻", "✽", "✻", "✾"].map((frame) =>
+			ctx.ui.theme.fg("accent", frame),
+		);
+		ctx.ui.setWorkingMessage(`${word}…`);
+		ctx.ui.setWorkingIndicator({ frames, intervalMs: 140 });
+	});
+
+	pi.on("agent_settled", (_event, ctx) => {
+		ctx.ui.setWorkingMessage();
+		ctx.ui.setWorkingIndicator();
+	});
+
 	pi.on("session_start", (_event, ctx) => {
 		ctx.ui.setFooter((_tui, theme, footerData) => {
 			return {

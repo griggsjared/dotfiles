@@ -5,6 +5,7 @@ vim.opt.cursorline = true -- Highlight current line
 vim.opt.wrap = false -- Don't wrap lines
 vim.opt.scrolloff = 10 -- Keep lines above/below cursor
 vim.opt.sidescrolloff = 8 -- Keep columns left/right of cursor
+vim.opt.mousescroll = "ver:3,hor:0"
 vim.opt.swapfile = false -- Disable swap files
 vim.opt.showmode = false -- Don't show mode in command line
 vim.opt.clipboard = "unnamedplus" -- Use system clipboard

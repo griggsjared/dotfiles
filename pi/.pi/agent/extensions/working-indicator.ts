@@ -11,13 +11,17 @@ const WORKING_WORDS = [
 	"Spelunking", "Synthesizing", "Interrogating", "Mapping", "Deliberating",
 ];
 
-const THEME_COLORS = ["accent", "error", "warning", "success", "borderAccent", "customMessageLabel", "muted", "text"] as const;
-const WORKING_PATTERNS = ["shimmer", "bounce", "karaoke", "ripple", "sparkle"] as const;
+const THEME_COLORS = ["error", "warning", "success", "accent", "borderAccent", "customMessageLabel"] as const;
+const WORKING_PATTERNS = ["shimmer", "bounce", "karaoke", "ripple", "sparkle", "rainbow", "palettePulse"] as const;
 const COLOR_INTERVAL_MS = 300;
+const PALETTE_PULSE_INTERVAL_MS = 1500;
 const WORD_INTERVAL_MS = 9000;
 const SPINNER_INTERVAL_MS = 150;
 type WorkingPattern = (typeof WORKING_PATTERNS)[number];
 type PaletteColor = (typeof THEME_COLORS)[number];
+type ColorIntensity = "bright" | "normal" | "dim";
+type IntensityDirection = "brighten" | "darken";
+type PatternColor = { color: PaletteColor; intensity: ColorIntensity };
 
 const SPINNER_SYMBOLS = ["✻", "✽", "✻", "✾"];
 
@@ -27,10 +31,16 @@ function patternColor(
 	length: number,
 	offset: number,
 	colors: PaletteColor[],
-): PaletteColor {
-	const primary = colors[0];
-	const secondary = colors[1];
-	const base = colors[2];
+	intensityDirection: IntensityDirection,
+): PatternColor {
+	const color = colors[0]!;
+	const intensity = (value: ColorIntensity): ColorIntensity => {
+		if (intensityDirection === "brighten") return value;
+		return value === "dim" ? "bright" : "normal";
+	};
+	const primary = { color, intensity: intensity("bright") };
+	const secondary = { color, intensity: intensity("normal") };
+	const base = { color, intensity: intensity("dim") };
 	switch (pattern) {
 		case "shimmer": {
 			const head = offset % (length + 4) - 2;
@@ -63,6 +73,12 @@ function patternColor(
 			const second = (offset * 5 + Math.floor(length / 2)) % length;
 			return index === first ? primary : index === second ? secondary : base;
 		}
+		case "rainbow":
+			return { color: colors[(index + offset) % colors.length]!, intensity: "normal" };
+		case "palettePulse": {
+			const colorIndex = Math.floor(offset * COLOR_INTERVAL_MS / PALETTE_PULSE_INTERVAL_MS) % colors.length;
+			return { color: colors[colorIndex]!, intensity: "normal" };
+		}
 	}
 }
 
@@ -81,14 +97,15 @@ function formatDuration(milliseconds: number): string {
 
 function styleWorkingText(
 	text: string,
-	colorize: (color: PaletteColor, text: string) => string,
+	colorize: (color: PatternColor, text: string) => string,
 	pattern: WorkingPattern,
 	offset: number,
 	colors: PaletteColor[],
+	intensityDirection: IntensityDirection,
 ): string {
 	const characters = [...text];
 	return characters.map((character, index) =>
-		colorize(patternColor(pattern, index, characters.length, offset, colors), character),
+		colorize(patternColor(pattern, index, characters.length, offset, colors, intensityDirection), character),
 	).join("");
 }
 
@@ -107,33 +124,52 @@ export default function (pi: ExtensionAPI) {
 
 		let wordIndex = Math.floor(Math.random() * WORKING_WORDS.length);
 		const firstPatternIndex = Math.floor(Math.random() * WORKING_PATTERNS.length);
-		const plans = WORKING_WORDS.map((_, index) => ({
-			pattern: WORKING_PATTERNS[(firstPatternIndex + index) % WORKING_PATTERNS.length],
-			colors: [...THEME_COLORS].sort(() => Math.random() - 0.5),
-		}));
+		const plans = WORKING_WORDS.map((_, index) => {
+			const pattern = WORKING_PATTERNS[(firstPatternIndex + index) % WORKING_PATTERNS.length];
+			const color = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)]!;
+			const randomizeIntensity = pattern === "shimmer"
+				|| pattern === "bounce"
+				|| pattern === "ripple"
+				|| pattern === "sparkle";
+			const intensityDirection: IntensityDirection = randomizeIntensity && Math.random() < 0.5
+				? "darken"
+				: "brighten";
+			return {
+				pattern,
+				colors: pattern === "rainbow" || pattern === "palettePulse" ? [...THEME_COLORS] : [color],
+				intensityDirection,
+			};
+		});
 		let planIndex = 0;
 		let animationTick = 0;
 		const spinnerFramesPerWord = WORD_INTERVAL_MS / SPINNER_INTERVAL_MS;
-		const spinnerFrames = plans.flatMap(({ pattern, colors }) => {
+		const styleColor = (styledColor: PatternColor, text: string): string => {
+			const colored = ctx.ui.theme.fg(styledColor.color, text);
+			if (styledColor.intensity === "bright") return ctx.ui.theme.bold(colored);
+			if (styledColor.intensity === "dim") return `\x1b[2m${colored}\x1b[22m`;
+			return colored;
+		};
+		const spinnerFrames = plans.flatMap(({ pattern, colors, intensityDirection }) => {
 			const symbols = SPINNER_SYMBOLS;
 			return Array.from({ length: spinnerFramesPerWord }, (_, frameIndex) => {
 				const symbolIndex = frameIndex % symbols.length;
 				const colorOffset = Math.floor(frameIndex * SPINNER_INTERVAL_MS / COLOR_INTERVAL_MS);
-				return ctx.ui.theme.fg(
-					patternColor(pattern, symbolIndex, symbols.length, colorOffset, colors),
+				return styleColor(
+					patternColor(pattern, symbolIndex, symbols.length, colorOffset, colors, intensityDirection),
 					symbols[symbolIndex],
 				);
 			});
 		});
 		renderWorkingMessage = () => {
 			if (runId !== workingRunId) return;
-			const { pattern, colors } = plans[planIndex];
+			const { pattern, colors, intensityDirection } = plans[planIndex];
 			const message = styleWorkingText(
 				`${WORKING_WORDS[wordIndex]}…`,
-				(color, character) => ctx.ui.theme.fg(color, character),
+				(style, character) => styleColor(style, character),
 				pattern,
 				animationTick,
 				colors,
+				intensityDirection,
 			);
 			const elapsed = Date.now() - startedAt;
 			const details = `(${formatDuration(elapsed)} · ↓ ${formatTokens(outputTokens)} tokens)`;

@@ -161,6 +161,26 @@ type PatternColor = { color: PaletteColor; intensity: ColorIntensity };
 
 const SPINNER_SYMBOLS = ["✻", "✽", "✻", "✾"];
 
+// Timers live in a process-global registry, not per-instance state: a runtime
+// detached by /reload stops receiving events, so a timer created in the gap
+// between session_shutdown and the fresh runtime would never be cleared by its
+// own handlers. The fresh runtime clears the registry on session_start.
+const TIMER_REGISTRY_KEY = "__pi_working_indicator_timers__";
+
+function liveTimers(): Set<ReturnType<typeof setInterval>> {
+	const g = globalThis as Record<string, unknown>;
+	const existing = g[TIMER_REGISTRY_KEY];
+	if (existing instanceof Set) return existing;
+	const created = new Set<ReturnType<typeof setInterval>>();
+	g[TIMER_REGISTRY_KEY] = created;
+	return created;
+}
+
+function clearAllWorkingTimers(): void {
+	for (const timer of liveTimers()) clearInterval(timer);
+	liveTimers().clear();
+}
+
 function patternColor(
 	pattern: WorkingPattern,
 	index: number,
@@ -246,7 +266,6 @@ function styleWorkingText(
 }
 
 export default function (pi: ExtensionAPI) {
-	let workingTimer: ReturnType<typeof setInterval> | undefined;
 	let workingRunId = 0;
 	let startedAt = 0;
 	let outputTokens = 0;
@@ -277,7 +296,7 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("agent_start", (_event, ctx) => {
-		if (workingTimer) clearInterval(workingTimer);
+		clearAllWorkingTimers();
 		const runId = ++workingRunId;
 		startedAt = Date.now();
 		outputTokens = 0;
@@ -360,6 +379,7 @@ export default function (pi: ExtensionAPI) {
 		timer = setInterval(() => {
 			if (runId !== workingRunId) {
 				clearInterval(timer);
+				liveTimers().delete(timer);
 				return;
 			}
 			const cycle = Math.floor((Date.now() - startedAt) / WORD_INTERVAL_MS);
@@ -369,7 +389,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			renderWorkingMessage?.();
 		}, COLOR_INTERVAL_MS);
-		workingTimer = timer;
+		liveTimers().add(timer);
 	});
 
 	pi.on("message_update", (event) => {
@@ -433,8 +453,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_settled", (_event, ctx) => {
 		if (!ctx.isIdle()) return;
 		workingRunId++;
-		if (workingTimer) clearInterval(workingTimer);
-		workingTimer = undefined;
+		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
 		startedAt = 0;
 		outputTokens = 0;
@@ -445,13 +464,16 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", (_event, ctx) => {
 		workingRunId++;
-		if (workingTimer) clearInterval(workingTimer);
-		workingTimer = undefined;
+		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
 		startedAt = 0;
 		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
 		ctx.ui.setWorkingVisible(false);
+	});
+
+	pi.on("session_start", () => {
+		clearAllWorkingTimers();
 	});
 }

@@ -6,4 +6,5 @@
 !extensions/header.ts
 !extensions/statusline.ts
 !extensions/working-indicator.ts
+!extensions/web-search.ts
 !extensions/subagents/**

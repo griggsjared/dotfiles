@@ -122,7 +122,7 @@ export default function (pi: ExtensionAPI) {
 		startedAt = Date.now();
 		outputTokens = 0;
 
-		let wordIndex = Math.floor(Math.random() * WORKING_WORDS.length);
+		const initialWordIndex = Math.floor(Math.random() * WORKING_WORDS.length);
 		const firstPatternIndex = Math.floor(Math.random() * WORKING_PATTERNS.length);
 		const plans = WORKING_WORDS.map((_, index) => {
 			const pattern = WORKING_PATTERNS[(firstPatternIndex + index) % WORKING_PATTERNS.length];
@@ -140,8 +140,6 @@ export default function (pi: ExtensionAPI) {
 				intensityDirection,
 			};
 		});
-		let planIndex = 0;
-		let animationTick = 0;
 		const spinnerFramesPerWord = WORD_INTERVAL_MS / SPINNER_INTERVAL_MS;
 		const styleColor = (styledColor: PatternColor, text: string): string => {
 			const colored = ctx.ui.theme.fg(styledColor.color, text);
@@ -162,33 +160,41 @@ export default function (pi: ExtensionAPI) {
 		});
 		renderWorkingMessage = () => {
 			if (runId !== workingRunId) return;
-			const { pattern, colors, intensityDirection } = plans[planIndex];
+			const elapsed = Date.now() - startedAt;
+			const cycle = Math.floor(elapsed / WORD_INTERVAL_MS);
+			const { pattern, colors, intensityDirection } = plans[cycle % plans.length];
 			const message = styleWorkingText(
-				`${WORKING_WORDS[wordIndex]}…`,
+				`${WORKING_WORDS[(initialWordIndex + cycle) % WORKING_WORDS.length]}…`,
 				(style, character) => styleColor(style, character),
 				pattern,
-				animationTick,
+				Math.floor(elapsed / COLOR_INTERVAL_MS),
 				colors,
 				intensityDirection,
 			);
-			const elapsed = Date.now() - startedAt;
 			const details = `(${formatDuration(elapsed)} · ↓ ${formatTokens(outputTokens)} tokens)`;
 			ctx.ui.setWorkingMessage(`${message} ${ctx.ui.theme.fg("dim", details)}`);
 		};
 		renderWorkingMessage();
 		ctx.ui.setWorkingVisible(true);
-		ctx.ui.setWorkingIndicator({ frames: spinnerFrames, intervalMs: SPINNER_INTERVAL_MS });
+		const resyncSpinner = (cycle: number) => {
+			const start = (cycle % plans.length) * spinnerFramesPerWord;
+			ctx.ui.setWorkingIndicator({
+				frames: [...spinnerFrames.slice(start), ...spinnerFrames.slice(0, start)],
+				intervalMs: SPINNER_INTERVAL_MS,
+			});
+		};
+		resyncSpinner(0);
 		let timer: ReturnType<typeof setInterval>;
+		let lastCycle = 0;
 		timer = setInterval(() => {
 			if (runId !== workingRunId) {
 				clearInterval(timer);
 				return;
 			}
-			animationTick++;
-			if (animationTick * COLOR_INTERVAL_MS >= WORD_INTERVAL_MS) {
-				animationTick = 0;
-				wordIndex = (wordIndex + 1) % WORKING_WORDS.length;
-				planIndex = (planIndex + 1) % plans.length;
+			const cycle = Math.floor((Date.now() - startedAt) / WORD_INTERVAL_MS);
+			if (cycle !== lastCycle) {
+				lastCycle = cycle;
+				resyncSpinner(cycle);
 			}
 			renderWorkingMessage?.();
 		}, COLOR_INTERVAL_MS);

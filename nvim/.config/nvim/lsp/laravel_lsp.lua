@@ -1,7 +1,7 @@
--- Installed manually: go install github.com/laravel-ls/laravel-ls/cmd/laravel-ls@latest
+-- Installed via: composer global require laravel/lsp
 ---@type vim.lsp.Config
 return {
-	cmd = { "laravel-ls" },
+	cmd = { "laravel-lsp" },
 	filetypes = { "php", "blade" },
 	---@param bufnr integer
 	---@param on_dir fun(root: string)

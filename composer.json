@@ -1,5 +1,6 @@
 {
     "require": {
+        "laravel/lsp": "~0.0",
         "laravel/valet": "~4.9"
     },
     "config": {

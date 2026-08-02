@@ -492,8 +492,12 @@ function appendCompletionEntry(
   });
 }
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI) {
   const extensionDir = __dirname;
+  const discoveredAgents = await discoverAgents(extensionDir);
+  const agentGuidance = discoveredAgents.length > 0
+    ? `Use the subagent tool with these available agents: ${discoveredAgents.map((agent) => `${agent.name} (${agent.description || "no description"})`).join("; ")}.`
+    : "Use the subagent tool with an available agent discovered from the agents directory.";
   const activeProcs = new Set<ChildProcess>();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   const registry = createJobRegistry();
@@ -551,13 +555,14 @@ export default function (pi: ExtensionAPI) {
     name: "subagent",
     label: "Subagent",
     description:
-      "Delegate work to specialized subagents (scout, worker). Use for any multi-file exploration, codebase investigation, or parallel research. Subagents run asynchronously — you can continue working while they execute.",
+      "Delegate work to specialized subagents asynchronously.",
     parameters: SubagentParams,
     promptGuidelines: [
+      agentGuidance,
+      "For code reviews, tell the reviewer to use the peer-review skill when available.",
       "For ANY task requiring reading or exploring multiple files or directories — use a subagent. Do not do broad exploration yourself.",
       "Subagents run in parallel and return results asynchronously. Use tasks[] to explore multiple areas simultaneously.",
       "Give each subagent a clear, self-contained task. Keep tasks scoped so they finish quickly.",
-      "For code reviews, tell the subagent to 'use the peer-review skill'.",
       "Do NOT sleep, wait, or poll for subagent results. Results arrive as followUp messages in the conversation when each subagent completes. Continue working on other things in the meantime.",
     ],
 

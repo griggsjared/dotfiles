@@ -26,6 +26,7 @@ interface AgentConfig {
 interface SubagentResult {
   agent: string;
   task: string;
+  title?: string;
   text: string;
   exitCode: number;
   error: string;
@@ -71,6 +72,7 @@ interface Job {
   id: number;
   agent: string;
   task: string;
+  title?: string;
   startTime: number;
   status: "running" | "completed" | "failed";
   endTime?: number;
@@ -93,19 +95,11 @@ const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
 const WIDGET_KEY = "subagents";
 const STATUS_KEY = "subagents";
 const ENTRY_TYPE = "subagents";
-const STYLE_FILE = join(homedir(), ".pi", "agent", "subagents-style.json");
-let resultStyle: "box" | "plain" = "plain";
-
-async function loadResultStyle(): Promise<void> {
-  try {
-    const data = JSON.parse(await readFile(STYLE_FILE, "utf8"));
-    if (data.style === "box" || data.style === "plain") resultStyle = data.style;
-  } catch { /* first run: default plain */ }
-}
 
 const TaskItem = Type.Object({
   agent: Type.String({ description: "Agent name to invoke" }),
   task: Type.String({ description: "Task to delegate to the agent" }),
+  title: Type.Optional(Type.String({ description: "Short display title for results and history" })),
 });
 
 const SubagentParams = Type.Object({
@@ -114,6 +108,9 @@ const SubagentParams = Type.Object({
   })),
   task: Type.Optional(Type.String({
     description: "Task to delegate (single mode)",
+  })),
+  title: Type.Optional(Type.String({
+    description: "Short display title for results and history (single mode)",
   })),
   tasks: Type.Optional(Type.Array(TaskItem, {
     description: "Array of tasks to run in parallel",
@@ -286,6 +283,20 @@ function truncateStrings(value: unknown, max = 120): unknown {
   return value;
 }
 
+// Coerce empty/whitespace-only/newline-containing titles to undefined so the
+// `??` fallbacks at every display site behave uniformly.
+function normalizeTitle(title: string | undefined): string | undefined {
+  if (!title) return undefined;
+  const cleaned = title.replace(/[\r\n]+/g, " ").trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function shortLabel(title: string | undefined, task: string | undefined, max: number): string {
+  if (title) return title;
+  if (!task) return "...";
+  return task.length > max ? `${task.slice(0, max)}…` : task;
+}
+
 function formatTokens(count: number): string {
   if (count < 1000) return count.toString();
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
@@ -407,6 +418,7 @@ async function runSubagent(
     onUpdate?: (update: SubagentUpdate) => void;
     maxRuntimeMs?: number;
     thinkingLevel?: string;
+    title?: string;
   } = {},
 ): Promise<{ proc: ChildProcess; result: Promise<SubagentResult> }> {
   const tmpDir = await mkdtemp(join(tmpdir(), "subagents-"));
@@ -421,6 +433,7 @@ async function runSubagent(
   const base = getPiCommand();
   const model = agent.model || defaultModel;
   const tools = (agent.tools ?? DEFAULT_TOOLS).join(",");
+  const title = normalizeTitle(options.title);
   const args = [
     ...base.args,
     "--mode",
@@ -436,6 +449,7 @@ async function runSubagent(
     tools,
     "--append-system-prompt",
     promptFile,
+    ...(title ? [`Title: ${title}`] : []),
     `Task: ${task}`,
   ];
 
@@ -631,6 +645,7 @@ async function runSubagent(
       resolve({
         agent: agent.name,
         task,
+        title,
         text,
         exitCode: timedOut ? 124 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
         error: stderr,
@@ -647,6 +662,7 @@ async function runSubagent(
       resolve({
         agent: agent.name,
         task,
+        title,
         text: "",
         exitCode: 1,
         error: stderr || "failed to spawn subagent",
@@ -680,13 +696,15 @@ async function runWithConcurrencyLimit<T, R>(
 function createJobRegistry() {
   let nextId = 1;
   const jobs = new Map<number, Job>();
+  const clearedIds = new Set<number>();
 
-  const add = (agent: string, task: string): number => {
+  const add = (agent: string, task: string, title?: string): number => {
     const id = nextId++;
     jobs.set(id, {
       id,
       agent,
       task,
+      title: normalizeTitle(title),
       startTime: Date.now(),
       status: "running",
       usage: { ...EMPTY_USAGE },
@@ -722,12 +740,23 @@ function createJobRegistry() {
     job.usage = result.usage ?? job.usage;
     job.toolCalls = result.toolCalls ?? job.toolCalls;
     job.model = result.model ?? job.model;
-    // Prune jobs older than 5 minutes
+    // Prune only completed jobs whose batch summary already cleared them;
+    // anything still on display stays until its batch finishes.
     const cutoff = Date.now() - 300_000;
     for (const [jid, j] of jobs) {
-      if (j.status !== "running" && (j.endTime ?? 0) < cutoff) jobs.delete(jid);
+      if (j.status !== "running" && clearedIds.has(jid) && (j.endTime ?? 0) < cutoff) jobs.delete(jid);
     }
   };
+
+  // Completed jobs still on display; cleared once their batch summary is sent.
+  const markCleared = (ids: Iterable<number>): void => {
+    for (const id of ids) clearedIds.add(id);
+  };
+
+  const pendingCompleted = (): Job[] =>
+    Array.from(jobs.values())
+      .filter((j) => j.status !== "running" && !clearedIds.has(j.id))
+      .sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0));
 
   const running = (): Job[] =>
     Array.from(jobs.values()).filter((j) => j.status === "running");
@@ -738,28 +767,26 @@ function createJobRegistry() {
       .sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0))
       .slice(0, limit);
 
-  return { jobs, add, updateLive, complete, running, recent };
+  return { jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent };
 }
 
 function renderFullWidget(registry: ReturnType<typeof createJobRegistry>): string[] {
   const now = Date.now();
   const running = registry.running();
-  const completed = registry.recent(50).filter(j => j.endTime && now - j.endTime < 10000);
+  const completed = registry.pendingCompleted();
 
-  // Merge into single list: running first, then recent completed
   const lines: string[] = [];
   for (const job of running) {
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
-    const preview = job.task.length > 40 ? `${job.task.slice(0, 40)}…` : job.task;
-    const progress = job.progress ? ` — ${job.progress.length > 30 ? `${job.progress.slice(0, 30)}…` : job.progress}` : "";
-    lines.push(`◐ ${job.agent} (${elapsed}s): ${preview}${progress}`);
+    const title = job.title ? `: ${job.title}` : "";
+    lines.push(`◐ ${job.agent} (${elapsed}s)${title}`);
+    lines.push(`  ${shortLabel(undefined, job.progress ?? job.task, 40)}`);
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
     const icon = job.status === "completed" ? "✓" : "✗";
-    const usageStr = formatUsageStats(job.usage, job.model);
-    const preview = job.task.length > 40 ? `${job.task.slice(0, 40)}…` : job.task;
-    lines.push(`${icon} ${job.agent} (${duration}s${usageStr ? ` ${usageStr}` : ""}): ${preview}`);
+    const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
+    lines.push(`${icon} ${job.agent} (${duration}s)${label}`);
   }
   return lines;
 }
@@ -782,7 +809,7 @@ function refreshUi(
   try {
     if (!ctx.hasUI) return;
     const running = registry.running();
-    if (running.length > 0) {
+    if (running.length > 0 || registry.pendingCompleted().length > 0) {
       ctx.ui.setWidget(WIDGET_KEY, renderFullWidget(registry));
     } else {
       ctx.ui.setWidget(WIDGET_KEY, []);
@@ -791,7 +818,6 @@ function refreshUi(
 }
 
 export default async function (pi: ExtensionAPI) {
-  await loadResultStyle();
   const extensionDir = __dirname;
   const discoveredAgents = await discoverAgents(extensionDir);
   const agentGuidance = discoveredAgents.length > 0
@@ -805,7 +831,7 @@ export default async function (pi: ExtensionAPI) {
   // Register custom message renderer for subagent results
   pi.registerMessageRenderer(ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
     const details = message.details as {
-      agent: string; task: string; status: string;
+      agent: string; task: string; title?: string; status: string;
       duration: string; icon: string;
       usage?: SubagentUsage; toolCalls?: ToolCallInfo[]; model?: string;
     } | undefined;
@@ -814,55 +840,35 @@ export default async function (pi: ExtensionAPI) {
     const color = details.status === "completed" ? "success" : "error";
     const prefix = theme.fg(color, details.icon + " " + details.agent);
     const usageStr = formatUsageStats(details.usage, details.model);
-    const meta = theme.fg("muted", ` (${details.duration})${usageStr ? ` ${usageStr}` : ""}`);
-    const fg = theme.fg.bind(theme);
+    const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
+    const taskFallback = details.title ? "" : `: ${theme.fg("dim", shortLabel(undefined, details.task, 60))}`;
+    const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${title}${taskFallback}`;
+    const statsLine = usageStr ? theme.fg("dim", usageStr) : undefined;
     const mdTheme = getMarkdownTheme();
-    const trail = (details.toolCalls ?? []).map((tc) => formatToolCall(tc.name, tc.args, fg));
+    const output = typeof message.content === "string" ? message.content : "";
 
-    if (resultStyle === "box") {
-      if (expanded) {
-        const container = new Container();
-        container.addChild(new Text(`${prefix}${meta}`, 0, 0));
+    if (expanded) {
+      const container = new Container();
+      container.addChild(new Text(headLine, 0, 0));
+      if (statsLine) container.addChild(new Text(`  ${statsLine}`, 0, 0));
+      if (output) {
         container.addChild(new Spacer(1));
-        container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
-        container.addChild(new Text(theme.fg("dim", details.task), 0, 0));
-        if (trail.length > 0) {
-          container.addChild(new Spacer(1));
-          container.addChild(new Text(theme.fg("muted", "─── Tool calls ───"), 0, 0));
-          for (const line of trail) {
-            container.addChild(new Text(theme.fg("muted", "→ ") + line, 0, 0));
-          }
-        }
-        if (message.content) {
-          container.addChild(new Spacer(1));
-          container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
-          container.addChild(new Markdown(typeof message.content === "string" ? message.content : "", 0, 0, mdTheme));
-        }
-        return container;
+        container.addChild(new Markdown(output, 0, 0, mdTheme));
       }
-
-      // Collapsed: header with usage, plus a compact tool-call trail line
-      const taskPreview = details.task.length > 60 ? `${details.task.slice(0, 60)}…` : details.task;
-      const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
-      box.addChild(new Text(`${prefix}${meta}: ${theme.fg("dim", taskPreview)}`, 0, 0));
-      if (trail.length > 0) {
-        const compact = trail.slice(0, 3).join(" · ");
-        const capped = compact.length > 80 ? `${compact.slice(0, 80)}…` : compact;
-        box.addChild(new Text(theme.fg("dim", `→ ${capped}`), 1, 0));
-      }
-      if (message.content) {
-        box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), trail.length > 0 ? 2 : 1, 0));
-      }
-      return box;
+      return container;
     }
 
-    // Plain text card: header, output, trail — no box or sections
-    const cardLines = [`${prefix}${meta}`];
-    if (typeof message.content === "string" && message.content) cardLines.push(message.content);
-    if (trail.length > 0) {
-      cardLines.push(theme.fg("dim", trail.slice(0, 4).map((t) => `→ ${t}`).join(" · ")));
+    // Collapsed: title line, stats, first output line, expand hint
+    const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+    box.addChild(new Text(headLine, 0, 0));
+    if (statsLine) box.addChild(new Text(statsLine, 1, 0));
+    if (output) {
+      const firstLine = output.split("\n")[0].trim();
+      const capped = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
+      if (firstLine) box.addChild(new Text(theme.fg("dim", capped), 1, 0));
+      box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), firstLine ? 2 : 1, 0));
     }
-    return new Text(cardLines.join("\n"), 0, 0);
+    return box;
   });
 
   pi.registerEntryRenderer(ENTRY_TYPE, (entry, _options, theme) => {
@@ -903,6 +909,7 @@ export default async function (pi: ExtensionAPI) {
       "For ANY task requiring reading or exploring multiple files or directories — use a subagent. Do not do broad exploration yourself.",
       "Subagents run in parallel and return results asynchronously. Use tasks[] to explore multiple areas simultaneously.",
       "Give each subagent a clear, self-contained task. Keep tasks scoped so they finish quickly.",
+      "Pass a short display title for each task; it is used in results, the widget, and history.",
       "Do NOT sleep, wait, or poll for subagent results. Results arrive as followUp messages in the conversation when each subagent completes. Continue working on other things in the meantime.",
     ],
 
@@ -928,12 +935,13 @@ export default async function (pi: ExtensionAPI) {
         try { refreshUi(ctx, registry); } catch { /* ctx stale after session change */ }
       };
 
-      const launchOne = async (agent: AgentConfig, task: string, jobId: number): Promise<SubagentResult> => {
+      const launchOne = async (agent: AgentConfig, task: string, jobId: number, title?: string): Promise<SubagentResult> => {
         let proc: ChildProcess | undefined;
         try {
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
             signal,
             thinkingLevel: ctx.thinkingLevel,
+            title,
             onUpdate: (update) => {
               registry.updateLive(jobId, {
                 text: update.text || undefined,
@@ -969,7 +977,7 @@ export default async function (pi: ExtensionAPI) {
         } catch (err) {
           if (proc) activeProcs.delete(proc);
           registry.complete(jobId, {
-            agent: agent.name, task, text: "", exitCode: 1, error: String(err),
+            agent: agent.name, task, title, text: "", exitCode: 1, error: String(err),
           });
           recordCompletion(jobId);
           safeRefresh();
@@ -1005,6 +1013,7 @@ export default async function (pi: ExtensionAPI) {
             details: {
               agent: result.agent,
               task: result.task,
+              title: result.title,
               status,
               duration,
               icon,
@@ -1026,9 +1035,11 @@ export default async function (pi: ExtensionAPI) {
         const lines = batchCompleted.map(j => {
           const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
           const icon = j.status === "completed" ? "✓" : "✗";
-          return `${icon} ${j.agent} (${duration}s): ${j.task}`;
+          return `${icon} ${j.agent} (${duration}s): ${j.title ?? j.task}`;
         });
         lines.unshift("**Subagents complete:**");
+        registry.markCleared(batchJobIds);
+        safeRefresh();
         try {
           pi.sendUserMessage(lines.join("\n"), { deliverAs: "steer", triggerTurn: true });
         } catch { /* stale session */ }
@@ -1041,7 +1052,7 @@ export default async function (pi: ExtensionAPI) {
           throw new Error(`Unknown agent "${params.agent}". Available agents: ${available}`);
         }
 
-        const jobId = registry.add(agent.name, params.task!);
+        const jobId = registry.add(agent.name, params.task!, params.title);
         batchJobIds.add(jobId);
         pendingCount = 1;
         safeRefresh();
@@ -1055,14 +1066,14 @@ export default async function (pi: ExtensionAPI) {
           });
         } catch { /* stale ctx */ }
 
-        launchOne(agent, params.task!, jobId)
+        launchOne(agent, params.task!, jobId, params.title)
           .then((r) => { clearInterval(ticker); activeTickers.delete(ticker); deliverResult(jobId, r); maybeBatchSummary(); })
-          .catch((err) => { clearInterval(ticker); activeTickers.delete(ticker); try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: agent.name, task: params.task!, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ } maybeBatchSummary(); });
+          .catch((err) => { clearInterval(ticker); activeTickers.delete(ticker); try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: agent.name, task: params.task!, title: params.title, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ } maybeBatchSummary(); });
 
         // Return before the child finishes so the parent model is not blocked;
         // results are delivered via sendMessage with custom renderer
         return {
-          content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${params.task!}"` }],
+          content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${params.title ?? params.task!}"` }],
           details: { agent: agent.name, status: "launched" },
         };
       }
@@ -1078,7 +1089,7 @@ export default async function (pi: ExtensionAPI) {
       );
 
       const jobIds = tasks.map((t) => {
-        const id = registry.add(t.agent, t.task);
+        const id = registry.add(t.agent, t.task, t.title);
         batchJobIds.add(id);
         return id;
       });
@@ -1092,7 +1103,7 @@ export default async function (pi: ExtensionAPI) {
         if (!agent) {
           try {
             const result: SubagentResult = {
-              agent: task.agent, task: task.task, text: "", exitCode: 1,
+              agent: task.agent, task: task.task, title: task.title, text: "", exitCode: 1,
               error: `Unknown agent "${task.agent}". Available: ${agents.map((a) => a.name).join(", ") || "none"}`,
             };
             registry.complete(jobIds[index], result);
@@ -1104,11 +1115,11 @@ export default async function (pi: ExtensionAPI) {
           return;
         }
         try {
-          const result = await launchOne(agent, task.task, jobIds[index]);
+          const result = await launchOne(agent, task.task, jobIds[index], task.title);
           deliverResult(jobIds[index], result);
           maybeBatchSummary();
         } catch (err) {
-          try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: task.agent, task: task.task, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ }
+          try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: task.agent, task: task.task, title: task.title, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ }
           maybeBatchSummary();
         }
       };
@@ -1131,14 +1142,14 @@ export default async function (pi: ExtensionAPI) {
           theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
           theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
         for (const t of args.tasks.slice(0, 3)) {
-          const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}…` : t.task;
+          const preview = shortLabel(t.title, t.task, 40);
           text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
         }
         if (args.tasks.length > 3) text += `\n  ${theme.fg("muted", `… +${args.tasks.length - 3} more`)}`;
         return new Text(text, 0, 0);
       }
       const agentName = args.agent || "...";
-      const preview = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}…` : args.task) : "...";
+      const preview = shortLabel(args.title, args.task, 60);
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", agentName) +
@@ -1175,7 +1186,7 @@ export default async function (pi: ExtensionAPI) {
         for (const j of running) {
           const elapsed = ((now - j.startTime) / 1000).toFixed(1);
           const progress = j.progress ? ` — ${j.progress}` : "";
-          lines.push(`- ◐ ${j.agent} (${elapsed}s): ${j.task}${progress}`);
+          lines.push(`- ◐ ${j.agent} (${elapsed}s): ${j.title ?? j.task}${progress}`);
         }
       } else {
         lines.push("**Running:** none");
@@ -1186,7 +1197,7 @@ export default async function (pi: ExtensionAPI) {
           const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
           const icon = j.status === "completed" ? "✓" : "✗";
           const usageStr = formatUsageStats(j.usage, j.model);
-          lines.push(`- ${icon} ${j.agent} (${duration}s${usageStr ? ` ${usageStr}` : ""}): ${j.task}`);
+          lines.push(`- ${icon} ${j.agent} (${duration}s${usageStr ? ` ${usageStr}` : ""}): ${j.title ?? j.task}`);
         }
       }
       return { content: [{ type: "text", text: lines.join("\n") }] };
@@ -1206,7 +1217,7 @@ export default async function (pi: ExtensionAPI) {
         const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
         const icon = job.status === "completed" ? "✓" : "✗";
         const maxLen = 40;
-        const preview = job.task.length > maxLen ? `${job.task.slice(0, maxLen)}…` : job.task;
+        const preview = shortLabel(job.title, job.task, maxLen);
         return `${icon} ${job.agent} (${duration}s) — ${preview}`;
       });
       await ctx.ui.select("Subagent History", items);
@@ -1227,24 +1238,6 @@ export default async function (pi: ExtensionAPI) {
         setTimeout(() => { try { if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL"); } catch { /* already dead */ } }, 5000);
       }
       ctx.ui.notify(`Cancelling ${count} subagent${count > 1 ? "s" : ""}`, "info");
-    },
-  });
-
-  pi.registerCommand("subagents-style", {
-    description: "Set subagent result rendering: box | plain (no arg shows current)",
-    handler: async (args, ctx) => {
-      const arg = args.trim();
-      if (arg === "box" || arg === "plain") {
-        resultStyle = arg;
-        try {
-          await writeFile(STYLE_FILE, JSON.stringify({ style: arg }, null, 2), "utf8");
-          ctx.ui.notify(`Subagent results: ${arg} style`, "info");
-        } catch {
-          ctx.ui.notify("Failed to save style preference", "error");
-        }
-      } else {
-        ctx.ui.notify(`Subagent results are currently: ${resultStyle}`, "info");
-      }
     },
   });
 

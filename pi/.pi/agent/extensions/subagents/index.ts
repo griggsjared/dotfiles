@@ -93,6 +93,15 @@ const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
 const WIDGET_KEY = "subagents";
 const STATUS_KEY = "subagents";
 const ENTRY_TYPE = "subagents";
+const STYLE_FILE = join(homedir(), ".pi", "agent", "subagents-style.json");
+let resultStyle: "box" | "plain" = "plain";
+
+async function loadResultStyle(): Promise<void> {
+  try {
+    const data = JSON.parse(await readFile(STYLE_FILE, "utf8"));
+    if (data.style === "box" || data.style === "plain") resultStyle = data.style;
+  } catch { /* first run: default plain */ }
+}
 
 const TaskItem = Type.Object({
   agent: Type.String({ description: "Agent name to invoke" }),
@@ -781,28 +790,8 @@ function refreshUi(
   } catch { /* ctx stale after session change */ }
 }
 
-function appendCompletionEntry(
-  pi: ExtensionAPI,
-  job: Job,
-): void {
-  const output = job.text || job.error || "(no output)";
-  const capped = output.length > 20000 ? `${output.slice(0, 20000)}\n…` : output;
-  pi.appendEntry(ENTRY_TYPE, {
-    id: job.id,
-    agent: job.agent,
-    task: job.task,
-    status: job.status,
-    startTime: job.startTime,
-    endTime: job.endTime,
-    durationMs: job.endTime ? job.endTime - job.startTime : undefined,
-    usage: job.usage,
-    toolCalls: job.toolCalls.slice(-8),
-    model: job.model,
-    output: capped,
-  });
-}
-
 export default async function (pi: ExtensionAPI) {
+  await loadResultStyle();
   const extensionDir = __dirname;
   const discoveredAgents = await discoverAgents(extensionDir);
   const agentGuidance = discoveredAgents.length > 0
@@ -830,37 +819,50 @@ export default async function (pi: ExtensionAPI) {
     const mdTheme = getMarkdownTheme();
     const trail = (details.toolCalls ?? []).map((tc) => formatToolCall(tc.name, tc.args, fg));
 
-    if (expanded) {
-      const container = new Container();
-      container.addChild(new Text(`${prefix}${meta}`, 0, 0));
-      container.addChild(new Spacer(1));
-      container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
-      container.addChild(new Text(theme.fg("dim", details.task), 0, 0));
-      if (trail.length > 0) {
+    if (resultStyle === "box") {
+      if (expanded) {
+        const container = new Container();
+        container.addChild(new Text(`${prefix}${meta}`, 0, 0));
         container.addChild(new Spacer(1));
-        container.addChild(new Text(theme.fg("muted", "─── Tool calls ───"), 0, 0));
-        for (const line of trail) {
-          container.addChild(new Text(theme.fg("muted", "→ ") + line, 0, 0));
+        container.addChild(new Text(theme.fg("muted", "─── Task ───"), 0, 0));
+        container.addChild(new Text(theme.fg("dim", details.task), 0, 0));
+        if (trail.length > 0) {
+          container.addChild(new Spacer(1));
+          container.addChild(new Text(theme.fg("muted", "─── Tool calls ───"), 0, 0));
+          for (const line of trail) {
+            container.addChild(new Text(theme.fg("muted", "→ ") + line, 0, 0));
+          }
         }
+        if (message.content) {
+          container.addChild(new Spacer(1));
+          container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
+          container.addChild(new Markdown(typeof message.content === "string" ? message.content : "", 0, 0, mdTheme));
+        }
+        return container;
+      }
+
+      // Collapsed: header with usage, plus a compact tool-call trail line
+      const taskPreview = details.task.length > 60 ? `${details.task.slice(0, 60)}…` : details.task;
+      const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+      box.addChild(new Text(`${prefix}${meta}: ${theme.fg("dim", taskPreview)}`, 0, 0));
+      if (trail.length > 0) {
+        const compact = trail.slice(0, 3).join(" · ");
+        const capped = compact.length > 80 ? `${compact.slice(0, 80)}…` : compact;
+        box.addChild(new Text(theme.fg("dim", `→ ${capped}`), 1, 0));
       }
       if (message.content) {
-        container.addChild(new Spacer(1));
-        container.addChild(new Text(theme.fg("muted", "─── Output ───"), 0, 0));
-        container.addChild(new Markdown(typeof message.content === "string" ? message.content : "", 0, 0, mdTheme));
+        box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), trail.length > 0 ? 2 : 1, 0));
       }
-      return container;
+      return box;
     }
 
-    // Collapsed: header with usage, plus a compact tool-call trail line
-    const taskPreview = details.task.length > 60 ? `${details.task.slice(0, 60)}…` : details.task;
-    const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
-    box.addChild(new Text(`${prefix}${meta}: ${theme.fg("dim", taskPreview)}`, 0, 0));
+    // Plain text card: header, output, trail — no box or sections
+    const cardLines = [`${prefix}${meta}`];
+    if (typeof message.content === "string" && message.content) cardLines.push(message.content);
     if (trail.length > 0) {
-      const compact = trail.slice(0, 3).join(" · ");
-      const capped = compact.length > 80 ? `${compact.slice(0, 80)}…` : compact;
-      box.addChild(new Text(theme.fg("dim", `→ ${capped}`), 1, 0));
+      cardLines.push(theme.fg("dim", trail.slice(0, 4).map((t) => `→ ${t}`).join(" · ")));
     }
-    return box;
+    return new Text(cardLines.join("\n"), 0, 0);
   });
 
   pi.registerEntryRenderer(ENTRY_TYPE, (entry, _options, theme) => {
@@ -957,8 +959,6 @@ export default async function (pi: ExtensionAPI) {
           registry.complete(jobId, subagentResult);
           safeRefresh();
           try {
-            const job = registry.jobs.get(jobId);
-            if (job) appendCompletionEntry(pi, job);
             if (ctx.hasUI) {
               const status = subagentResult.exitCode === 0 ? "completed" : "failed";
               ctx.ui.notify(`${agent.name} subagent ${status}`, status === "completed" ? "info" : "error");
@@ -971,10 +971,6 @@ export default async function (pi: ExtensionAPI) {
           registry.complete(jobId, {
             agent: agent.name, task, text: "", exitCode: 1, error: String(err),
           });
-          try {
-            const job = registry.jobs.get(jobId);
-            if (job) appendCompletionEntry(pi, job);
-          } catch { /* stale ctx */ }
           recordCompletion(jobId);
           safeRefresh();
           throw err;
@@ -1054,7 +1050,7 @@ export default async function (pi: ExtensionAPI) {
 
         try {
           onUpdate?.({
-            content: [{ type: "text", text: `⏳ Launched **${agent.name}** subagent — waiting for result...` }],
+            content: [{ type: "text", text: `◐ Launched **${agent.name}** subagent — waiting for result...` }],
             details: { agent: agent.name, status: "launched" },
           });
         } catch { /* stale ctx */ }
@@ -1100,10 +1096,6 @@ export default async function (pi: ExtensionAPI) {
               error: `Unknown agent "${task.agent}". Available: ${agents.map((a) => a.name).join(", ") || "none"}`,
             };
             registry.complete(jobIds[index], result);
-            try {
-              const job = registry.jobs.get(jobIds[index]);
-              if (job) appendCompletionEntry(pi, job);
-            } catch { /* stale ctx */ }
             recordCompletion(jobIds[index]);
             safeRefresh();
             deliverResult(jobIds[index], result);
@@ -1130,6 +1122,40 @@ export default async function (pi: ExtensionAPI) {
         content: [{ type: "text", text: `Launched ${tasks.length - unknownCount} subagents in parallel${skipped}.` }],
         details: { count: tasks.length - unknownCount, skipped: unknownCount, status: "launched" },
       };
+    },
+
+    renderCall(args, theme, _context) {
+      if (args.tasks && args.tasks.length > 0) {
+        let text =
+          theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
+          theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
+        for (const t of args.tasks.slice(0, 3)) {
+          const preview = t.task.length > 40 ? `${t.task.slice(0, 40)}…` : t.task;
+          text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
+        }
+        if (args.tasks.length > 3) text += `\n  ${theme.fg("muted", `… +${args.tasks.length - 3} more`)}`;
+        return new Text(text, 0, 0);
+      }
+      const agentName = args.agent || "...";
+      const preview = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}…` : args.task) : "...";
+      return new Text(
+        theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg("accent", agentName) +
+          `\n  ${theme.fg("dim", preview)}`,
+        0, 0,
+      );
+    },
+
+    renderResult(result, _options, theme, _context) {
+      const details = result.details as { status?: string } | undefined;
+      const summary = result.content?.[0]?.type === "text" ? result.content[0].text : "(no output)";
+      const launched = details?.status === "launched";
+      return new Text(
+        theme.fg("toolTitle", theme.bold("subagent ")) +
+          theme.fg(launched ? "warning" : "success", `${launched ? "◐" : "✓"} ${summary}`),
+        0, 0,
+      );
     },
   });
 
@@ -1201,6 +1227,24 @@ export default async function (pi: ExtensionAPI) {
         setTimeout(() => { try { if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL"); } catch { /* already dead */ } }, 5000);
       }
       ctx.ui.notify(`Cancelling ${count} subagent${count > 1 ? "s" : ""}`, "info");
+    },
+  });
+
+  pi.registerCommand("subagents-style", {
+    description: "Set subagent result rendering: box | plain (no arg shows current)",
+    handler: async (args, ctx) => {
+      const arg = args.trim();
+      if (arg === "box" || arg === "plain") {
+        resultStyle = arg;
+        try {
+          await writeFile(STYLE_FILE, JSON.stringify({ style: arg }, null, 2), "utf8");
+          ctx.ui.notify(`Subagent results: ${arg} style`, "info");
+        } catch {
+          ctx.ui.notify("Failed to save style preference", "error");
+        }
+      } else {
+        ctx.ui.notify(`Subagent results are currently: ${resultStyle}`, "info");
+      }
     },
   });
 

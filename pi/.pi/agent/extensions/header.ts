@@ -14,12 +14,12 @@ export default function (pi: ExtensionAPI) {
 			invalidate() {},
 			render(width: number): string[] {
 				const logo = [
-					`  ${theme.fg("accent", "██████")}`,
-					`  ${theme.fg("error", "██")}  ${theme.fg("accent", "██")}`,
-					`  ${theme.fg("error", "████")}  ${theme.fg("success", "██")}`,
-					`  ${theme.fg("error", "██")}    ${theme.fg("success", "██")}`,
+					`  ${theme.fg("accent", "██████████")}`,
+					`  ${theme.fg("error", "██")}      ${theme.fg("success", "██")}`,
+					`  ${theme.fg("error", "██")}      ${theme.fg("success", "██")}`,
+					`  ${theme.fg("error", "██")}      ${theme.fg("success", "██")}`,
 				];
-				const title = `${theme.bold("  Pi")}${theme.fg("dim", ` v${VERSION}`)}`;
+				const title = `${theme.bold("  π")}${theme.fg("dim", ` v${VERSION}`)}`;
 				const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 				const contextFiles = loadProjectContextFiles({ cwd: ctx.cwd, agentDir });
 				const agents = theme.fg(

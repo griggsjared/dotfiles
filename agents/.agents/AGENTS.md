@@ -9,6 +9,7 @@ These rules are ordered. When two conflict, the earlier one wins.
 - Do not rename, reformat, reorder, or restructure code you were not asked to change. Formatting the lines you already touched is fine; formatting the rest of the file is not.
 - Add no new helper, wrapper, base class, interface, config flag, or dependency unless the request cannot be finished without it. Two call sites do not justify an abstraction — prefer the duplication.
 - Prefer editing an existing file to creating a new one.
+- Never create a commit without explicit user direction. If the user has not directed you to commit, ask first.
 
 ## Scope
 

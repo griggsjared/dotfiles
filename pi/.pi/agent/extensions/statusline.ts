@@ -1,8 +1,8 @@
 /**
  * Custom footer that mimics the Claude Code statusline format.
  *
- * Shows model name, thinking level, context usage, token stats, and the
- * provider — all in a compact Claude-style layout.
+ * Shows model name, thinking level, context usage, session cost, and the
+ * current mode — all in a compact Claude-style layout.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -22,6 +22,10 @@ export default function (pi: ExtensionAPI) {
 				dispose() {},
 				invalidate() {},
 				render(width: number): string[] {
+					//Extension statuses
+					const statuses = footerData.getExtensionStatuses();
+					const modeStatus = statuses.get("modes") ?? "";
+
 					//Model name
 					const model = ctx.model;
 					const modelName = model?.name || model?.id || "no-model";
@@ -40,39 +44,31 @@ export default function (pi: ExtensionAPI) {
 						line += ` ${theme.fg("borderAccent", `${used}/${total}`)}`;
 					}
 
-					//Token stats
-					let input = 0, output = 0, cost = 0;
+					//Cost
+					let cost = 0;
 					for (const e of ctx.sessionManager.getBranch()) {
 						if (e.type === "message" && e.message.role === "assistant") {
-							const m = e.message as AssistantMessage;
-							input += m.usage.input;
-							output += m.usage.output;
-							cost += m.usage.cost.total;
+							cost += (e.message as AssistantMessage).usage.cost.total;
 						}
 					}
-					if (input || output) {
-						const stats = `↑${formatTokens(input)} ↓${formatTokens(output)}`;
-						line += ` ${theme.fg("dim", stats)}`;
-						if (cost > 0) {
-							line += theme.fg("dim", ` $${cost.toFixed(3)}`);
-						}
+					if (cost > 0) {
+						line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;
 					}
 
-					// ── Provider (dim, right-aligned) ──
-					const provider = model?.provider ? theme.fg("muted", model.provider) : "";
-					const gap = width - visibleWidth(line) - visibleWidth(provider);
+					// ── Mode (right-aligned) ──
+					const gap = width - visibleWidth(line) - visibleWidth(modeStatus);
 
 					const result = gap >= 2
-						? line + " ".repeat(gap) + provider
+						? line + " ".repeat(gap) + modeStatus
 						: truncateToWidth(line, width, "...");
 
-					// ── Show extension statuses on subsequent lines ──
-					const statuses = footerData.getExtensionStatuses();
-					if (statuses.size > 0) {
-						const sorted = Array.from(statuses.entries())
-							.sort(([a], [b]) => a.localeCompare(b))
-							.map(([, text]) => text);
-						return [result, ...sorted.map((s) => truncateToWidth(s, width, theme.fg("dim", "...")))];
+					// ── Show remaining extension statuses on subsequent lines ──
+					const rest = Array.from(statuses.entries())
+						.filter(([key]) => key !== "modes")
+						.sort(([a], [b]) => a.localeCompare(b))
+						.map(([, text]) => text);
+					if (rest.length > 0) {
+						return [result, ...rest.map((s) => truncateToWidth(s, width, theme.fg("dim", "...")))];
 					}
 
 					return [result];

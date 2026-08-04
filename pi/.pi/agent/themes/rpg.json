@@ -13,7 +13,8 @@
     "dim": "#727271",
     "gray1": "#2c2c2c",
     "gray2": "#3e3e3e",
-    "gray3": "#505050"
+    "gray3": "#505050",
+    "dimmed2": "#949493"
   },
   "colors": {
     "accent": "cyan",
@@ -45,7 +46,7 @@
     "mdLinkUrl": "purple",
     "mdCode": "yellow",
     "mdCodeBlock": "fg",
-    "mdCodeBlockBorder": "gray2",
+    "mdCodeBlockBorder": "dimmed2",
     "mdQuote": "dim",
     "mdQuoteBorder": "gray2",
     "mdHr": "gray2",
@@ -58,12 +59,12 @@
     "syntaxComment": "dim",
     "syntaxKeyword": "red",
     "syntaxFunction": "green",
-    "syntaxVariable": "fg",
+    "syntaxVariable": "cyan",
     "syntaxString": "yellow",
     "syntaxNumber": "purple",
     "syntaxType": "blue",
     "syntaxOperator": "red",
-    "syntaxPunctuation": "fg",
+    "syntaxPunctuation": "dim",
 
     "thinkingOff": "fg",
     "thinkingMinimal": "fg",

@@ -220,11 +220,6 @@ export default function (pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerShortcut(Key.tab, {
-		description: "Cycle modes (build -> plan -> ask)",
-		handler: async (ctx) => cycleMode(ctx),
-	});
-
 	pi.registerShortcut(Key.alt("m"), {
 		description: "Cycle modes (build -> plan -> ask)",
 		handler: async (ctx) => cycleMode(ctx),

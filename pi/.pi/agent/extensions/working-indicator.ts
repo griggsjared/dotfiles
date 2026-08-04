@@ -268,6 +268,10 @@ function styleWorkingText(
 export default function (pi: ExtensionAPI) {
 	let workingRunId = 0;
 	let startedAt = 0;
+	// Task totals, kept across agent runs (reset on each new user prompt):
+	// usage of completed messages plus the message currently streaming.
+	let settledTokens = 0;
+	let inFlightTokens = 0;
 	let outputTokens = 0;
 	let renderWorkingMessage: (() => void) | undefined;
 	let currentPhase: Phase = "thinking";
@@ -298,8 +302,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", (_event, ctx) => {
 		clearAllWorkingTimers();
 		const runId = ++workingRunId;
-		startedAt = Date.now();
-		outputTokens = 0;
+		if (startedAt === 0) startedAt = Date.now();
 		currentPhase = "thinking";
 		currentTool = undefined;
 		activeTools.clear();
@@ -373,9 +376,10 @@ export default function (pi: ExtensionAPI) {
 				intervalMs: SPINNER_INTERVAL_MS,
 			});
 		};
-		resyncSpinner(0);
+		const startCycle = Math.floor((Date.now() - startedAt) / WORD_INTERVAL_MS);
+		resyncSpinner(startCycle);
 		let timer: ReturnType<typeof setInterval>;
-		let lastCycle = 0;
+		let lastCycle = startCycle;
 		timer = setInterval(() => {
 			if (runId !== workingRunId) {
 				clearInterval(timer);
@@ -392,11 +396,20 @@ export default function (pi: ExtensionAPI) {
 		liveTimers().add(timer);
 	});
 
+	pi.on("input", (event) => {
+		if (event.source !== "interactive") return;
+		startedAt = Date.now();
+		settledTokens = 0;
+		inFlightTokens = 0;
+		outputTokens = 0;
+		renderWorkingMessage?.();
+	});
+
 	pi.on("message_update", (event) => {
 		if (event.message.role !== "assistant") return;
 
 		if (event.message.usage.output > 0) {
-			outputTokens = event.message.usage.output;
+			inFlightTokens = event.message.usage.output;
 		} else {
 			const characters = event.message.content.reduce((total, block) => {
 				if (block.type === "text") return total + block.text.length;
@@ -405,16 +418,26 @@ export default function (pi: ExtensionAPI) {
 				return total;
 			}, 0);
 			const estimate = Math.ceil(characters / 4);
-			if (estimate > outputTokens) {
-				outputTokens = estimate;
+			if (estimate > inFlightTokens) {
+				inFlightTokens = estimate;
 			}
 		}
+		outputTokens = settledTokens + inFlightTokens;
 		for (let index = event.message.content.length - 1; index >= 0; index--) {
 			const block = event.message.content[index]!;
 			if (block.type === "thinking") { currentPhase = "thinking"; break; }
 			if (block.type === "text") { currentPhase = "writing"; break; }
 			if (block.type === "toolCall") break;
 		}
+		renderWorkingMessage?.();
+	});
+
+	pi.on("message_end", (event) => {
+		if (event.message.role !== "assistant") return;
+		const usageOutput = event.message.usage.output;
+		settledTokens += usageOutput > 0 ? usageOutput : inFlightTokens;
+		inFlightTokens = 0;
+		outputTokens = settledTokens;
 		renderWorkingMessage?.();
 	});
 
@@ -455,8 +478,6 @@ export default function (pi: ExtensionAPI) {
 		workingRunId++;
 		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
-		startedAt = 0;
-		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
 		ctx.ui.setWorkingVisible(false);
@@ -467,6 +488,8 @@ export default function (pi: ExtensionAPI) {
 		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
 		startedAt = 0;
+		settledTokens = 0;
+		inFlightTokens = 0;
 		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
@@ -475,5 +498,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", () => {
 		clearAllWorkingTimers();
+		startedAt = Date.now();
+		settledTokens = 0;
+		inFlightTokens = 0;
+		outputTokens = 0;
 	});
 }

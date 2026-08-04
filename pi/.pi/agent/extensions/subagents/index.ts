@@ -770,7 +770,12 @@ function createJobRegistry() {
   return { jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent };
 }
 
-function renderFullWidget(registry: ReturnType<typeof createJobRegistry>): string[] {
+const MAX_WIDGET_LINES = 10; // pi caps string-array widgets at 10 lines; keep the same cap for the factory form
+
+function renderFullWidget(
+  registry: ReturnType<typeof createJobRegistry>,
+  fg: (color: any, text: string) => string,
+): string[] {
   const now = Date.now();
   const running = registry.running();
   const completed = registry.pendingCompleted();
@@ -779,14 +784,27 @@ function renderFullWidget(registry: ReturnType<typeof createJobRegistry>): strin
   for (const job of running) {
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
     const title = job.title ? `: ${job.title}` : "";
-    lines.push(`◐ ${job.agent} (${elapsed}s)${title}`);
-    lines.push(`  ${shortLabel(undefined, job.progress ?? job.task, 40)}`);
+    lines.push(
+      fg("accent", `◐ ${job.agent}`) +
+        fg("muted", ` (${elapsed}s)`) +
+        (title ? fg("dim", title) : ""),
+    );
+    lines.push(fg("muted", `  ${shortLabel(undefined, job.progress ?? job.task, 40)}`));
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
     const icon = job.status === "completed" ? "✓" : "✗";
+    const color = job.status === "completed" ? "success" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
-    lines.push(`${icon} ${job.agent} (${duration}s)${label}`);
+    lines.push(
+      fg(color, `${icon} ${job.agent}`) +
+        fg("muted", ` (${duration}s)`) +
+        fg("dim", label),
+    );
+  }
+  if (lines.length > MAX_WIDGET_LINES) {
+    lines.length = MAX_WIDGET_LINES;
+    lines.push(fg("muted", "... (widget truncated)"));
   }
   return lines;
 }
@@ -796,7 +814,7 @@ function renderFullWidget(registry: ReturnType<typeof createJobRegistry>): strin
 interface UiContext {
   hasUI: boolean;
   ui: {
-    setWidget: (key: string, lines: string[]) => void;
+    setWidget: (key: string, content: any) => void;
     setStatus: (key: string, status?: string) => void;
     notify: (message: string, type: "info" | "warning" | "error") => void;
   };
@@ -810,7 +828,12 @@ function refreshUi(
     if (!ctx.hasUI) return;
     const running = registry.running();
     if (running.length > 0 || registry.pendingCompleted().length > 0) {
-      ctx.ui.setWidget(WIDGET_KEY, renderFullWidget(registry));
+      // Factory form so lines can use theme colors; re-set on every tick,
+      // so the factory re-runs with the current theme.
+      ctx.ui.setWidget(WIDGET_KEY, (_tui: unknown, theme: { fg: (color: string, text: string) => string }) => ({
+        render: () => renderFullWidget(registry, (color, text) => theme.fg(color, text)),
+        invalidate: () => {},
+      }));
     } else {
       ctx.ui.setWidget(WIDGET_KEY, []);
     }

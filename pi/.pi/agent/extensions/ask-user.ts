@@ -72,6 +72,8 @@ type Selected =
 
 type Answer = { question: string; selected: Selected };
 
+type InitialState = { values?: string[]; otherText?: string };
+
 type PickResult =
 	| { kind: "item"; item: SelectItem }
 	| { kind: "other"; text: string }
@@ -194,15 +196,22 @@ class MultiLineSelectList {
 	private selectedIndex: number;
 	private maxVisible: number;
 	private theme: MultiLineListTheme;
+	private descriptionIndent: number;
 	onSelect?: (item: SelectItem) => void;
 	onCancel?: () => void;
 	onSelectionChange?: (item: SelectItem) => void;
 
-	constructor(items: SelectItem[], maxVisible: number, theme: MultiLineListTheme) {
+	constructor(
+		items: SelectItem[],
+		maxVisible: number,
+		theme: MultiLineListTheme,
+		descriptionIndent = 2,
+	) {
 		this.items = items;
 		this.selectedIndex = 0;
 		this.maxVisible = maxVisible;
 		this.theme = theme;
+		this.descriptionIndent = descriptionIndent;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -217,18 +226,23 @@ class MultiLineSelectList {
 
 	handleInput(keyData: string): void {
 		const kb = getKeybindings();
-		if (kb.matches(keyData, "tui.select.up")) {
+		if (kb.matches(keyData, "tui.select.up") || keyData === "up") {
 			this.selectedIndex =
 				this.selectedIndex === 0 ? this.items.length - 1 : this.selectedIndex - 1;
 			this.notifySelectionChange();
-		} else if (kb.matches(keyData, "tui.select.down")) {
+		} else if (kb.matches(keyData, "tui.select.down") || keyData === "down") {
 			this.selectedIndex =
 				this.selectedIndex === this.items.length - 1 ? 0 : this.selectedIndex + 1;
 			this.notifySelectionChange();
-		} else if (kb.matches(keyData, "tui.select.confirm")) {
+		} else if (
+			kb.matches(keyData, "tui.select.confirm") ||
+			keyData === "\n" ||
+			keyData === "enter" ||
+			keyData === "\r"
+		) {
 			const item = this.items[this.selectedIndex];
 			if (item && this.onSelect) this.onSelect(item);
-		} else if (kb.matches(keyData, "tui.select.cancel")) {
+		} else if (kb.matches(keyData, "tui.select.cancel") || keyData === "escape" || keyData === "ctrl+c") {
 			if (this.onCancel) this.onCancel();
 		}
 	}
@@ -258,8 +272,11 @@ class MultiLineSelectList {
 			const padded = row + " ".repeat(Math.max(0, width - visibleWidth(row)));
 			lines.push(selected ? this.theme.selectedBg(this.theme.selectedText(padded)) : padded);
 			if (item.description) {
-				for (const line of wrapTextWithAnsi(item.description, Math.max(1, labelWidth - 2))) {
-					lines.push(`  ${this.theme.description(line)}`);
+				for (const line of wrapTextWithAnsi(
+					item.description,
+					Math.max(1, labelWidth - this.descriptionIndent),
+				)) {
+					lines.push(" ".repeat(this.descriptionIndent) + this.theme.description(line));
 				}
 			}
 		}
@@ -276,6 +293,7 @@ function pickTui(
 	question: { title?: string; description?: string; question: string },
 	items: SelectItem[],
 	signal?: AbortSignal,
+	initial?: InitialState,
 ): Promise<PickResult | null> {
 	return ctx.ui.custom<PickResult | null>((tui, theme, _kb, done) => {
 		const container = new Container();
@@ -302,11 +320,24 @@ function pickTui(
 			tui.requestRender();
 		};
 		const beginTyping = () => {
-			otherText = "";
+			otherText = typing ? otherText : initial?.otherText ?? "";
 			typing = true;
 			updateOtherInput();
 		};
-		const selectList = new MultiLineSelectList(items, Math.min(items.length, 10), listTheme(theme));
+		const selectList = new MultiLineSelectList(
+			initial?.otherText
+				? items.map((item) =>
+						item.value === OTHER_VALUE
+							? { ...item, description: initial.otherText }
+							: item,
+					)
+				: items,
+			Math.min(items.length, 10),
+			listTheme(theme),
+		);
+		selectList.setSelectedIndex(
+			Math.max(0, items.findIndex((item) => item.value === initial?.values?.[0])),
+		);
 		selectList.onSelect = (item) => {
 			if (item.value === OTHER_VALUE) {
 				beginTyping();
@@ -373,6 +404,7 @@ function pickMultiTui(
 	question: { title?: string; description?: string; question: string },
 	items: SelectItem[],
 	signal?: AbortSignal,
+	initial?: InitialState,
 ): Promise<PickResult | null> {
 	return ctx.ui.custom<PickResult | null>((tui, theme, _kb, done) => {
 		const container = new Container();
@@ -384,11 +416,12 @@ function pickMultiTui(
 		if (question.description) {
 			container.addChild(new Text(theme.fg("muted", question.description), 1, 0));
 		}
-		const selected = new Set<string>();
+		const selected = new Set<string>(initial?.values ?? []);
 		let listHolder: MultiLineSelectList;
 		let cursor = 0;
 		let typing = false;
 		let otherText = "";
+		let committedOtherText = initial?.otherText ?? "";
 		const kb = getKeybindings();
 		const otherInput = new Text("", 1, 0);
 		const updateOtherInput = () => {
@@ -407,8 +440,14 @@ function pickMultiTui(
 				label: selected.has(item.value)
 					? `${theme.fg("success", "✓")} ${item.label}`
 					: `  ${item.label}`,
+				description:
+					item.value === OTHER_VALUE && selected.has(OTHER_VALUE)
+						? committedOtherText
+						: item.description,
 			})),
-			{ value: DONE_VALUE, label: "Done", description: "Confirm selection" },
+			...(selected.size > 0
+				? [{ value: DONE_VALUE, label: "  Done", description: "Confirm selection" }]
+				: []),
 		];
 		const replaceList = (from: MultiLineSelectList, next: MultiLineSelectList) => {
 			const index = container.children.indexOf(from);
@@ -421,6 +460,7 @@ function pickMultiTui(
 				listItems(),
 				Math.min(items.length + 1, 10),
 				listTheme(theme),
+				4,
 			);
 			selectList.setSelectedIndex(Math.min(cursor, items.length));
 			selectList.onSelectionChange = (item) => {
@@ -432,7 +472,7 @@ function pickMultiTui(
 						kind: "multi",
 						values: [...selected],
 						otherToggled: selected.has(OTHER_VALUE),
-						otherText: selected.has(OTHER_VALUE) ? otherText : undefined,
+						otherText: selected.has(OTHER_VALUE) ? committedOtherText : undefined,
 					});
 					return;
 				}
@@ -449,18 +489,13 @@ function pickMultiTui(
 		};
 		const toggle = (value: string) => {
 			if (value === OTHER_VALUE) {
-				if (selected.has(OTHER_VALUE)) {
-					selected.delete(OTHER_VALUE);
-					otherText = "";
-					typing = false;
-					updateOtherInput();
-				} else {
-					otherText = "";
-					typing = true;
-					updateOtherInput();
-					return;
-				}
-			} else if (selected.has(value)) {
+				otherText = selected.has(OTHER_VALUE) ? committedOtherText : initial?.otherText ?? "";
+				typing = true;
+				cursor = listItems().findIndex((i) => i.value === value);
+				updateOtherInput();
+				return;
+			}
+			if (selected.has(value)) {
 				selected.delete(value);
 			} else {
 				selected.add(value);
@@ -471,7 +506,7 @@ function pickMultiTui(
 		container.addChild(makeList());
 		container.addChild(otherInput);
 		container.addChild(
-			new Text(theme.fg("dim", "↑↓ navigate • 1-9 toggle • enter toggle • done confirms • esc cancel"), 1, 0),
+			new Text(theme.fg("dim", "↑↓ navigate • 1-9 toggle • enter/space toggle • done confirms • esc cancel"), 1, 0),
 		);
 		container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
 		signal?.addEventListener("abort", () => done(null), { once: true });
@@ -482,15 +517,23 @@ function pickMultiTui(
 				if (typing) {
 					if (kb.matches(data, "tui.select.cancel") || data === "escape" || data === "ctrl+c") {
 						typing = false;
-						otherText = "";
+						otherText = selected.has(OTHER_VALUE) ? committedOtherText : "";
 						updateOtherInput();
 					} else if (kb.matches(data, "tui.select.confirm") || data === "\n" || data === "enter" || data === "\r") {
 						if (otherText.trim()) {
 							selected.add(OTHER_VALUE);
+							committedOtherText = otherText;
 							typing = false;
 							cursor = listItems().findIndex((i) => i.value === OTHER_VALUE);
 							rebuild();
 							updateOtherInput();
+						} else {
+							selected.delete(OTHER_VALUE);
+							committedOtherText = "";
+							otherText = "";
+							typing = false;
+							updateOtherInput();
+							rebuild();
 						}
 					} else if (data === "backspace" || data === "\u007f") {
 						otherText = otherText.slice(0, -1);
@@ -504,6 +547,13 @@ function pickMultiTui(
 					}
 					return;
 				}
+				if (data === "space") {
+					const item = listHolder.getSelectedItem();
+					if (item && item.value !== DONE_VALUE) {
+						toggle(item.value);
+					}
+					return;
+				}
 				if (/^[1-9]$/.test(data)) {
 					const item = listItems()[Number(data) - 1];
 					if (item) {
@@ -512,7 +562,7 @@ function pickMultiTui(
 								kind: "multi",
 								values: [...selected],
 								otherToggled: selected.has(OTHER_VALUE),
-								otherText: selected.has(OTHER_VALUE) ? otherText : undefined,
+								otherText: selected.has(OTHER_VALUE) ? committedOtherText : undefined,
 							});
 							return;
 						}
@@ -674,13 +724,29 @@ export default function (pi: ExtensionAPI) {
 			}
 			const answers: Answer[] = [];
 			let cancelled = false;
-			const askOne = async (question: (typeof params.questions)[number]): Promise<Answer | null> => {
+			const askOne = async (
+				question: (typeof params.questions)[number],
+				previous?: Answer,
+			): Promise<Answer | null> => {
+				const initial: InitialState | undefined = previous
+					? "items" in previous.selected
+						? {
+								values: [
+									...previous.selected.items.map((item) => String(item.index)),
+									...(previous.selected.other ? [OTHER_VALUE] : []),
+								],
+								otherText: previous.selected.other,
+							}
+						: "other" in previous.selected
+							? { otherText: previous.selected.other }
+							: { values: [String(previous.selected.index)] }
+					: undefined;
 				const items = buildItems(question);
 				const result =
 					ctx.mode === "tui"
 						? question.multiple
-							? await pickMultiTui(ctx, question, items, signal)
-							: await pickTui(ctx, question, items, signal)
+							? await pickMultiTui(ctx, question, items, signal, initial)
+							: await pickTui(ctx, question, items, signal, initial)
 						: question.multiple
 							? await pickMultiSimple(ctx.ui, question, items, signal)
 							: await pickSimple(ctx.ui, question, items, signal);
@@ -755,7 +821,7 @@ export default function (pi: ExtensionAPI) {
 						break;
 					}
 					if (confirmIndex === 0) break;
-					const reanswered = await askOne(params.questions[confirmIndex - 1]);
+					const reanswered = await askOne(params.questions[confirmIndex - 1], answers[confirmIndex - 1]);
 					if (reanswered === null) {
 						cancelled = true;
 						break;

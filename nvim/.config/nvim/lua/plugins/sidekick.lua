@@ -18,7 +18,10 @@ end
 
 -- A local (non-external) state that passes the optional allowlist
 local function is_allowed_local(s)
-	return not s.external and (not allowed_clis or allowed_clis[s.tool.name])
+	if s.external then
+		return false
+	end
+	return not allowed_clis or allowed_clis[s.tool.name] ~= nil
 end
 
 local function order_allowed(states)
@@ -83,7 +86,7 @@ local function send_local(message)
 	local all = State.get()
 
 	local running = order_allowed(vim.tbl_filter(function(s)
-		return s.attached and is_allowed_local(s)
+		return s.attached == true and is_allowed_local(s)
 	end, all))
 	if #running == 1 then
 		dispatch(running[1])
@@ -94,7 +97,7 @@ local function send_local(message)
 	end
 
 	local installed = order_allowed(vim.tbl_filter(function(s)
-		return s.installed and is_allowed_local(s)
+		return s.installed == true and is_allowed_local(s)
 	end, all))
 	if #installed == 0 then
 		return
@@ -109,7 +112,7 @@ local function open_cli()
 	local State = require("sidekick.cli.state")
 	local sk_select = require("sidekick.cli.ui.select")
 	local states = order_allowed(vim.tbl_filter(function(s)
-		return s.installed and is_allowed_local(s)
+		return s.installed == true and is_allowed_local(s)
 	end, State.get()))
 	if #states == 0 then
 		return
@@ -177,6 +180,68 @@ local function cycle_clis()
 	end
 end
 
+-- nvim only tails terminal output in the current window, but pi renders
+-- bottom-anchored; keep the pi panel at the live prompt while we edit
+-- elsewhere. A manual scroll of the panel pauses this for a while so
+-- scrollback history stays readable.
+local function tail_pi_windows()
+	local cur = vim.api.nvim_get_current_win()
+	local State = require("sidekick.cli.state")
+	for _, s in ipairs(State.get({ attached = true })) do
+		if s.tool.name == "pi" and s.terminal and s.terminal.win then
+			local win = s.terminal.win
+			if
+				win
+				and win ~= cur
+				and vim.api.nvim_win_is_valid(win)
+				and vim.api.nvim_win_get_buf(win) == s.terminal.buf
+			then
+				local paused = vim.w[win].sidekick_pi_tail_paused
+				if not paused or paused < vim.loop.now() - 8000 then
+					vim.w[win].sidekick_pi_tail_internal = true
+					local buf = vim.api.nvim_win_get_buf(win)
+					vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
+					-- WinScrolled fires when back in the main loop, so keep the
+					-- guard up until then: our own scroll must not count as manual
+					vim.defer_fn(function()
+						if vim.w[win] and vim.w[win].sidekick_pi_tail_internal then
+							vim.w[win].sidekick_pi_tail_internal = nil
+						end
+					end, 100)
+				end
+			end
+		end
+	end
+end
+
+vim.api.nvim_create_autocmd("WinScrolled", {
+	callback = function(args)
+		local win = args.win ---@type integer?
+		if not (win and vim.w[win] and vim.w[win].sidekick_session_id) then
+			return
+		end
+		if win == vim.api.nvim_get_current_win() then
+			return
+		end
+		if vim.w[win].sidekick_pi_tail_internal then
+			vim.w[win].sidekick_pi_tail_internal = nil
+			return
+		end
+		vim.w[win].sidekick_pi_tail_paused = vim.loop.now()
+	end,
+})
+
+vim.api.nvim_create_autocmd("WinEnter", {
+	callback = function(args)
+		local win = args.win ---@type integer?
+		if win and vim.w[win] and vim.w[win].sidekick_session_id then
+			vim.w[win].sidekick_pi_tail_paused = nil
+		end
+	end,
+})
+
+vim.fn.timer_start(300, tail_pi_windows, { ["repeat"] = -1 })
+
 -- Dynamic key mappings
 local keys = {
 	{
@@ -190,11 +255,13 @@ local keys = {
 	{
 		"<leader>cq",
 		function()
-			require("sidekick.cli").prompt(function(_, text)
-				if text then
-					send_local({ text = text })
-				end
-			end)
+			require("sidekick.cli").prompt({
+				cb = function(_, text)
+					if text then
+						send_local({ text = text })
+					end
+				end,
+			})
 		end,
 		desc = "Sidekick prompts",
 		mode = { "n", "v" },

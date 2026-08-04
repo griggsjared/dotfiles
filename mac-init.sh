@@ -285,8 +285,8 @@ elif [ -f "$SCRIPT_DIR/composer.json" ]; then
     mkdir -p "$COMPOSER_HOME_DIR"
     cp "$SCRIPT_DIR/composer.json" "$COMPOSER_HOME_DIR/composer.json"
 
-    # Install global packages
-    composer global install --no-dev --optimize-autoloader
+    # Update global packages so new requirements are added to the existing lock file
+    composer global update --no-dev --optimize-autoloader
     
     # Ensure Valet is in PATH
     ensure_valet_path

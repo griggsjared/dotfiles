@@ -8,4 +8,5 @@
 !extensions/working-indicator.ts
 !extensions/web-search.ts
 !extensions/ask-user.ts
+!extensions/modes.ts
 !extensions/subagents/**

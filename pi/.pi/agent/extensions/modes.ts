@@ -170,7 +170,7 @@ export default function (pi: ExtensionAPI): void {
 				pi.setActiveTools(toolsBeforeRestricted);
 				toolsBeforeRestricted = undefined;
 			}
-			ctx.ui.setStatus("modes", ctx.ui.theme.fg("error", "[b]"));
+			ctx.ui.setStatus("modes", mode);
 			return;
 		}
 
@@ -178,8 +178,7 @@ export default function (pi: ExtensionAPI): void {
 			toolsBeforeRestricted = pi.getActiveTools();
 		}
 		pi.setActiveTools(restrictedTools(toolsBeforeRestricted));
-		const color = mode === "plan" ? "borderAccent" : "accent";
-		ctx.ui.setStatus("modes", ctx.ui.theme.fg(color, `[${mode[0]}]`));
+		ctx.ui.setStatus("modes", mode);
 	}
 
 	function setMode(next: Mode, ctx: ExtensionContext, notify = true): void {

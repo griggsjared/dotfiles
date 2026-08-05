@@ -24,7 +24,10 @@ export default function (pi: ExtensionAPI) {
 				render(width: number): string[] {
 					//Extension statuses
 					const statuses = footerData.getExtensionStatuses();
-					const modeStatus = statuses.get("modes") ?? "";
+					const rawMode = statuses.get("modes") ?? "";
+					const modeStatus = rawMode
+						? theme.fg(rawMode === "build" ? "error" : rawMode === "plan" ? "borderAccent" : "accent", `[${rawMode[0]}]`)
+						: "";
 
 					//Model name
 					const model = ctx.model;

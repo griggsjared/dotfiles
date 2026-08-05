@@ -1,8 +1,8 @@
 /**
  * Custom footer that mimics the Claude Code statusline format.
  *
- * Shows model name, thinking level, context usage, session cost, and the
- * current mode — all in a compact Claude-style layout.
+ * Shows mode, model name, thinking level, context usage, session cost, and
+ * provider — all in a compact Claude-style layout.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -30,6 +30,9 @@ export default function (pi: ExtensionAPI) {
 					const model = ctx.model;
 					const modelName = model?.name || model?.id || "no-model";
 					let line = theme.fg("success", modelName);
+					if (modeStatus) {
+						line = `${modeStatus} ${line}`;
+					}
 
 					//Thinking level / effort
 					if (ctx.thinkingLevel && ctx.thinkingLevel !== "off") {
@@ -55,11 +58,12 @@ export default function (pi: ExtensionAPI) {
 						line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;
 					}
 
-					// ── Mode (right-aligned) ──
-					const gap = width - visibleWidth(line) - visibleWidth(modeStatus);
+					// ── Provider (right-aligned) ──
+					const provider = model?.provider ? theme.fg("muted", model.provider) : "";
+					const gap = width - visibleWidth(line) - visibleWidth(provider);
 
 					const result = gap >= 2
-						? line + " ".repeat(gap) + modeStatus
+						? line + " ".repeat(gap) + provider
 						: truncateToWidth(line, width, "...");
 
 					// ── Show remaining extension statuses on subsequent lines ──

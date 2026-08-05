@@ -11,6 +11,7 @@ import { join, parse } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
 interface AgentConfig {
@@ -57,6 +58,8 @@ interface SubagentUpdate {
   toolCalls: ToolCallInfo[];
   model?: string;
 }
+
+type ExecutionMode = "async" | "sync";
 
 const EMPTY_USAGE: SubagentUsage = {
   turns: 0,
@@ -114,6 +117,10 @@ const SubagentParams = Type.Object({
   })),
   tasks: Type.Optional(Type.Array(TaskItem, {
     description: "Array of tasks to run in parallel",
+  })),
+  execution: Type.Optional(StringEnum(["async", "sync"] as const, {
+    default: "async",
+    description: "Return immediately (async) or wait for results (sync)",
   })),
   concurrency: Type.Optional(Type.Integer({
     minimum: 1,
@@ -316,6 +323,17 @@ function formatUsageStats(usage: SubagentUsage | undefined, model?: string): str
   if (usage.contextTokens > 0) parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
   if (model) parts.push(model);
   return parts.join(" ");
+}
+
+function formatResultOutput(result: SubagentResult): string {
+  const parts: string[] = [];
+  if (result.text) parts.push(result.text);
+  if (result.error) parts.push(result.error);
+  return parts.join("\n") || "(no output)";
+}
+
+function capOutput(output: string, max: number): string {
+  return output.length > max ? `${output.slice(0, max)}\n…` : output;
 }
 
 // Plain, short label of a tool call, used for live progress in the widget.
@@ -924,22 +942,28 @@ export default async function (pi: ExtensionAPI) {
     name: "subagent",
     label: "Subagent",
     description:
-      "Delegate work to specialized subagents asynchronously.",
+      "Delegate work to specialized subagents; choose async or sync execution.",
     parameters: SubagentParams,
     promptGuidelines: [
       agentGuidance,
       "For code reviews, tell the reviewer to use the peer-review skill when available.",
       "For ANY task requiring reading or exploring multiple files or directories — use a subagent. Do not do broad exploration yourself.",
-      "Subagents run in parallel and return results asynchronously. Use tasks[] to explore multiple areas simultaneously.",
+      "Use the subagent tool with execution:'sync' when you need results before continuing; use execution:'async' for independent work that can finish later. Async is the default.",
+      "The subagent tool's async jobs return immediately and deliver results via follow-up messages; do not block or poll for them.",
+      "After launching async subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
+      "Use subagent_status only when you need a snapshot of running or recent subagents; async completion is automatic, so do not poll for normal completion.",
+      "Use subagent_cancel or /cancel-subagents when running subagents are stalled or no longer needed; cancellation stops all running subagents.",
+      "With the subagent tool, execution:'sync' on tasks[] waits for the whole batch; concurrency still controls how many children run at once.",
       "Give each subagent a clear, self-contained task. Keep tasks scoped so they finish quickly.",
       "Pass a short display title for each task; it is used in results, the widget, and history.",
-      "Do NOT sleep, wait, or poll for subagent results. Results arrive as followUp messages in the conversation when each subagent completes. Continue working on other things in the meantime.",
+      "For delegated research or exploration, act as the orchestrator: do not duplicate an async subagent's investigation. If you continue working while it runs, do only independent, non-overlapping work; otherwise end the turn and use its result when it arrives to decide the next step.",
     ],
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const agents = await discoverAgents(extensionDir);
       const agentByName = new Map(agents.map((a) => [a.name, a]));
       const defaultModel = formatModel(ctx.model);
+      const execution: ExecutionMode = params.execution ?? "async";
       lastUiContext = ctx;
       const hasSingle = Boolean(params.agent && params.task);
       const hasTasks = (params.tasks?.length ?? 0) > 0;
@@ -1019,11 +1043,7 @@ export default async function (pi: ExtensionAPI) {
       };
 
       const deliverResult = (jobId: number, result: SubagentResult) => {
-        const parts: string[] = [];
-        if (result.text) parts.push(result.text);
-        if (result.error) parts.push(result.error);
-        const output = parts.join("\n") || "(no output)";
-        const capped = output.length > 20000 ? `${output.slice(0, 20000)}\n…` : output;
+        const capped = capOutput(formatResultOutput(result), 20000);
         const job = registry.jobs.get(jobId);
         const duration = job?.endTime ? `${((job.endTime - job.startTime) / 1000).toFixed(1)}s` : "?";
         const status = result.exitCode === 0 ? "completed" : "failed";
@@ -1084,20 +1104,45 @@ export default async function (pi: ExtensionAPI) {
 
         try {
           onUpdate?.({
-            content: [{ type: "text", text: `◐ Launched **${agent.name}** subagent — waiting for result...` }],
-            details: { agent: agent.name, status: "launched" },
+            content: [{ type: "text", text: `${execution === "sync" ? "◐ Running" : "◐ Launched"} **${agent.name}** subagent — waiting for result...` }],
+            details: { agent: agent.name, status: execution === "sync" ? "running" : "launched" },
           });
         } catch { /* stale ctx */ }
+
+        if (execution === "sync") {
+          let result: SubagentResult;
+          try {
+            result = await launchOne(agent, params.task!, jobId, params.title);
+          } catch (err) {
+            result = {
+              agent: agent.name,
+              task: params.task!,
+              title: params.title,
+              text: "",
+              exitCode: 1,
+              error: String(err),
+            };
+          }
+          clearInterval(ticker);
+          activeTickers.delete(ticker);
+          registry.markCleared(batchJobIds);
+          safeRefresh();
+          const status = result.exitCode === 0 ? "completed" : "failed";
+          return {
+            content: [{ type: "text", text: capOutput(formatResultOutput(result), 20000) }],
+            details: { agent: agent.name, status, execution },
+          };
+        }
 
         launchOne(agent, params.task!, jobId, params.title)
           .then((r) => { clearInterval(ticker); activeTickers.delete(ticker); deliverResult(jobId, r); maybeBatchSummary(); })
           .catch((err) => { clearInterval(ticker); activeTickers.delete(ticker); try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: agent.name, task: params.task!, title: params.title, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ } maybeBatchSummary(); });
 
-        // Return before the child finishes so the parent model is not blocked;
-        // results are delivered via sendMessage with custom renderer
+        // Return before the child finishes only for async execution; results
+        // are delivered via sendMessage with custom renderer.
         return {
           content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${params.title ?? params.task!}"` }],
-          details: { agent: agent.name, status: "launched" },
+          details: { agent: agent.name, status: "launched", execution },
         };
       }
 
@@ -1121,6 +1166,7 @@ export default async function (pi: ExtensionAPI) {
       const ticker = setInterval(safeRefresh, 1000);
       activeTickers.add(ticker);
 
+      const results: Array<SubagentResult | undefined> = new Array(tasks.length);
       const runWithAgent = async (task: typeof tasks[0], index: number): Promise<void> => {
         const agent = agentByName.get(task.agent);
         if (!agent) {
@@ -1129,23 +1175,68 @@ export default async function (pi: ExtensionAPI) {
               agent: task.agent, task: task.task, title: task.title, text: "", exitCode: 1,
               error: `Unknown agent "${task.agent}". Available: ${agents.map((a) => a.name).join(", ") || "none"}`,
             };
+            results[index] = result;
             registry.complete(jobIds[index], result);
             recordCompletion(jobIds[index]);
             safeRefresh();
-            deliverResult(jobIds[index], result);
-            maybeBatchSummary();
+            if (execution === "async") {
+              deliverResult(jobIds[index], result);
+              maybeBatchSummary();
+            }
           } catch { /* absorbed by the chain's .catch */ }
           return;
         }
         try {
           const result = await launchOne(agent, task.task, jobIds[index], task.title);
-          deliverResult(jobIds[index], result);
-          maybeBatchSummary();
+          results[index] = result;
+          if (execution === "async") {
+            deliverResult(jobIds[index], result);
+            maybeBatchSummary();
+          }
         } catch (err) {
-          try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: task.agent, task: task.task, title: task.title, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ }
-          maybeBatchSummary();
+          const result: SubagentResult = {
+            agent: task.agent,
+            task: task.task,
+            title: task.title,
+            text: "",
+            exitCode: 1,
+            error: String(err),
+          };
+          results[index] = result;
+          if (execution === "async") {
+            try { pi.sendMessage({ customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details: { agent: task.agent, task: task.task, title: task.title, status: "failed", duration: "?", icon: "✗" } }, { deliverAs: "steer" }); } catch { /* stale */ }
+            maybeBatchSummary();
+          }
         }
       };
+
+      if (execution === "sync") {
+        try {
+          await runWithConcurrencyLimit(tasks, concurrency, runWithAgent);
+        } finally {
+          clearInterval(ticker);
+          activeTickers.delete(ticker);
+        }
+        registry.markCleared(jobIds);
+        safeRefresh();
+        const output = results.map((result, index) => {
+          const task = tasks[index];
+          const title = normalizeTitle(task.title);
+          const label = title ? `${task.agent}: ${title}` : `${task.agent}: ${shortLabel(undefined, task.task, 120)}`;
+          return `### ${label}\n${result ? formatResultOutput(result) : "(no output)"}`;
+        }).join("\n\n");
+        const failed = results.some((result) => !result || result.exitCode !== 0);
+        const skipped = unknownCount > 0 ? `, ${unknownCount} skipped (unknown agent)` : "";
+        return {
+          content: [{ type: "text", text: capOutput(output, 50000) }],
+          details: {
+            count: tasks.length - unknownCount,
+            skipped: unknownCount,
+            status: failed ? "failed" : "completed",
+            execution,
+          },
+        };
+      }
 
       runWithConcurrencyLimit(tasks, concurrency, runWithAgent)
         .finally(() => { clearInterval(ticker); activeTickers.delete(ticker); })
@@ -1154,7 +1245,7 @@ export default async function (pi: ExtensionAPI) {
       const skipped = unknownCount > 0 ? `, ${unknownCount} skipped (unknown agent)` : "";
       return {
         content: [{ type: "text", text: `Launched ${tasks.length - unknownCount} subagents in parallel${skipped}.` }],
-        details: { count: tasks.length - unknownCount, skipped: unknownCount, status: "launched" },
+        details: { count: tasks.length - unknownCount, skipped: unknownCount, status: "launched", execution },
       };
     },
 
@@ -1163,7 +1254,7 @@ export default async function (pi: ExtensionAPI) {
         let text =
           theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
-          theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
+          theme.fg("muted", ` [${args.execution ?? "async"}, concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
         for (const t of args.tasks.slice(0, 3)) {
           const preview = shortLabel(t.title, t.task, 40);
           text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
@@ -1176,6 +1267,7 @@ export default async function (pi: ExtensionAPI) {
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", agentName) +
+          theme.fg("muted", ` [${args.execution ?? "async"}]`) +
           `\n  ${theme.fg("dim", preview)}`,
         0, 0,
       );
@@ -1183,11 +1275,13 @@ export default async function (pi: ExtensionAPI) {
 
     renderResult(result, _options, theme, _context) {
       const details = result.details as { status?: string } | undefined;
-      const summary = result.content?.[0]?.type === "text" ? result.content[0].text : "(no output)";
+      const rawSummary = result.content?.[0]?.type === "text" ? result.content[0].text : "(no output)";
+      const summary = capOutput(rawSummary, 500);
       const launched = details?.status === "launched";
+      const failed = details?.status === "failed";
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg(launched ? "warning" : "success", `${launched ? "◐" : "✓"} ${summary}`),
+          theme.fg(launched ? "warning" : failed ? "error" : "success", `${launched ? "◐" : failed ? "✗" : "✓"} ${summary}`),
         0, 0,
       );
     },
@@ -1196,7 +1290,7 @@ export default async function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "subagent_status",
     label: "Subagent Status",
-    description: "Check the status of running and recently completed subagents. Use this to poll for progress without blocking.",
+    description: "Inspect running and recently completed subagents when needed. Async jobs deliver results automatically; do not poll for normal completion.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const now = Date.now();

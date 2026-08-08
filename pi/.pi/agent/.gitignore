@@ -3,6 +3,7 @@
 !*/
 !.gitignore
 !themes/**
+!extensions/package.json
 !extensions/header.ts
 !extensions/statusline.ts
 !extensions/working-indicator.ts

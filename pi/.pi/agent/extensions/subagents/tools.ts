@@ -83,8 +83,23 @@ export function resolveMode(params: SubagentParamsType): Mode {
   throw new Error("Provide exactly one mode: either agent+task (single) or tasks[] (parallel).");
 }
 
-function failedResult(agent: string, task: string, title: string | undefined, err: unknown): SubagentResult {
-  return { agent, task, title, text: "", exitCode: 1, error: String(err) };
+function failedResult(
+  agent: string,
+  task: string,
+  title: string | undefined,
+  err: unknown,
+  metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+): SubagentResult {
+  return {
+    agent,
+    task,
+    title,
+    text: "",
+    exitCode: 1,
+    error: String(err),
+    model: metadata?.model,
+    thinkingLevel: metadata?.thinkingLevel,
+  };
 }
 
 function startTicker(tickers: Set<ReturnType<typeof setInterval>>, fn: () => void): () => void {
@@ -164,6 +179,7 @@ export class Batch {
       usage: result.usage,
       toolCalls: result.toolCalls,
       model: result.model,
+      thinkingLevel: result.thinkingLevel,
     };
     try {
       this.deps.pi.sendMessage(
@@ -175,7 +191,13 @@ export class Batch {
     }
   }
 
-  sendError(agent: string, task: string, title: string | undefined, err: unknown): void {
+  sendError(
+    agent: string,
+    task: string,
+    title: string | undefined,
+    err: unknown,
+    metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+  ): void {
     const details: SubagentMessageDetails = {
       agent,
       task,
@@ -183,6 +205,8 @@ export class Batch {
       status: "failed",
       duration: "?",
       icon: "✗",
+      model: metadata?.model,
+      thinkingLevel: metadata?.thinkingLevel,
     };
     try {
       this.deps.pi.sendMessage(
@@ -248,11 +272,19 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     promptGuidelines: buildGuidelines(deps.agents),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const agents = (await deps.discover()).map((agent) => resolveAgentSettings(agent, deps.settings));
+      const defaultModel = formatModel(ctx.model);
+      const parentThinkingLevel = ctx.thinkingLevel;
+      const agents = (await deps.discover()).map((agent) => {
+        const resolved = resolveAgentSettings(agent, deps.settings);
+        return {
+          ...resolved,
+          model: resolved.model ?? defaultModel,
+          thinkingLevel: resolved.thinkingLevel ?? parentThinkingLevel,
+        };
+      });
       const { registry, activeProcs, activeTickers } = deps;
       const agentByName = new Map(agents.map((a) => [a.name, a]));
       const available = agents.map((a) => a.name).join(", ") || "none";
-      const defaultModel = formatModel(ctx.model);
       const execution: ExecutionMode = params.execution ?? "async";
       const mode = resolveMode(params);
       deps.onUiContext(ctx);
@@ -267,7 +299,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         try {
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
             signal,
-            thinkingLevel: agent.thinkingLevel ?? ctx.thinkingLevel,
+            thinkingLevel: agent.thinkingLevel,
             title,
             spawnFn: deps.spawnFn,
             onUpdate: (update) => {
@@ -277,6 +309,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
                 usage: update.usage,
                 toolCalls: update.toolCalls,
                 model: update.model,
+                thinkingLevel: update.thinkingLevel,
               });
               refresh();
             },
@@ -297,7 +330,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           return subagentResult;
         } catch (err) {
           if (proc) activeProcs.delete(proc);
-          registry.complete(jobId, failedResult(agent.name, task, title, err));
+          registry.complete(jobId, failedResult(agent.name, task, title, err, agent));
           batch.recordCompletion(jobId);
           refresh();
           throw err;
@@ -311,7 +344,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           throw new Error(`Unknown agent "${single.agent}". Available agents: ${available}`);
         }
 
-        const jobId = registry.add(agent.name, single.task, single.title);
+        const jobId = registry.add(agent.name, single.task, single.title, agent);
         batch.addJob(jobId);
         refresh();
         const stopTicker = startTicker(activeTickers, refresh);
@@ -320,7 +353,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           try {
             result = await launchOne(agent, single.task, jobId, single.title);
           } catch (err) {
-            result = failedResult(agent.name, single.task, single.title, err);
+            result = failedResult(agent.name, single.task, single.title, err, agent);
           }
           stopTicker();
           batch.deliverResult(jobId, result);
@@ -341,7 +374,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           })
           .catch((err) => {
             stopTicker();
-            batch.sendError(agent.name, single.task, single.title, err);
+            batch.sendError(agent.name, single.task, single.title, err, agent);
             batch.summary();
           });
 
@@ -364,7 +397,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       );
 
       const jobIds = tasks.map((t) => {
-        const id = registry.add(t.agent, t.task, t.title);
+        const id = registry.add(t.agent, t.task, t.title, agentByName.get(t.agent));
         batch.addJob(id);
         return id;
       });
@@ -401,10 +434,10 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             batch.summary();
           }
         } catch (err) {
-          const result = failedResult(task.agent, task.task, task.title, err);
+          const result = failedResult(task.agent, task.task, task.title, err, agent);
           results[index] = result;
           if (execution === "async") {
-            batch.sendError(task.agent, task.task, task.title, err);
+            batch.sendError(task.agent, task.task, task.title, err, agent);
             batch.summary();
           }
         }

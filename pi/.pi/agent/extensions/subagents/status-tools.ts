@@ -31,7 +31,8 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
         for (const j of running) {
           const elapsed = ((now - j.startTime) / 1000).toFixed(1);
           const progress = j.progress ? ` — ${j.progress}` : "";
-          lines.push(`- ◐ ${j.agent} (${elapsed}s): ${j.title ?? j.task}${progress}`);
+          const metadata = formatUsageStats(undefined, j.model, j.thinkingLevel);
+          lines.push(`- ◐ ${j.agent} (${elapsed}s${metadata ? ` ${metadata}` : ""}): ${j.title ?? j.task}${progress}`);
         }
       } else {
         lines.push("**Running:** none");
@@ -41,7 +42,7 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
         for (const j of recent) {
           const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
           const icon = j.status === "completed" ? "✓" : "✗";
-          const usageStr = formatUsageStats(j.usage, j.model);
+          const usageStr = formatUsageStats(j.usage, j.model, j.thinkingLevel);
           lines.push(`- ${icon} ${j.agent} (${duration}s${usageStr ? ` ${usageStr}` : ""}): ${j.title ?? j.task}`);
         }
       }

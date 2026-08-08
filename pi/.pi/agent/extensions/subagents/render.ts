@@ -27,22 +27,24 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg): string[] {
   const lines: string[] = [];
   for (const job of running) {
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
+    const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
     const title = job.title ? `: ${job.title}` : "";
     lines.push(
       fg("accent", `◐ ${job.agent}`) +
-        fg("muted", ` (${elapsed}s)`) +
+        fg("muted", ` (${elapsed}s${metadata ? ` ${metadata}` : ""})`) +
         (title ? fg("dim", title) : ""),
     );
     lines.push(fg("muted", `  ${shortLabel(undefined, job.progress ?? job.task, 40)}`));
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
+    const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
     const icon = job.status === "completed" ? "✓" : "✗";
     const color = job.status === "completed" ? "success" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
     lines.push(
       fg(color, `${icon} ${job.agent}`) +
-        fg("muted", ` (${duration}s)`) +
+        fg("muted", ` (${duration}s${metadata ? ` ${metadata}` : ""})`) +
         fg("dim", label),
     );
   }
@@ -81,7 +83,7 @@ export function registerRenderers(pi: ExtensionAPI): void {
 
     const color = details.status === "completed" ? "success" : "error";
     const prefix = theme.fg(color, details.icon + " " + details.agent);
-    const usageStr = formatUsageStats(details.usage, details.model);
+    const usageStr = formatUsageStats(details.usage, details.model, details.thinkingLevel);
     const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
     const taskFallback = details.title ? "" : `: ${theme.fg("dim", shortLabel(undefined, details.task, 60))}`;
     const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${title}${taskFallback}`;

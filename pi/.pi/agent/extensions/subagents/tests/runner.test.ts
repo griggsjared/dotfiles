@@ -55,6 +55,7 @@ test("runSubagent: assembles result from streamed JSONL", async () => {
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "do the thing", "/tmp", "m/provider", {
     spawnFn: fakeSpawn(child),
+    thinkingLevel: "medium",
   });
   const promise = result.then((r) => {
     assert.equal(r.agent, "worker");
@@ -65,6 +66,7 @@ test("runSubagent: assembles result from streamed JSONL", async () => {
       turns: 1, input: 5, output: 3, cacheRead: 0, cacheWrite: 0, cost: 0.0001, contextTokens: 8,
     });
     assert.equal(r.model, "served-model");
+    assert.equal(r.thinkingLevel, "medium");
   });
 
   child.stdout.emit("data", Buffer.from(updateEvent("partial")));

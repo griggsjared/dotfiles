@@ -39,6 +39,7 @@ export interface SubagentResult {
   usage?: SubagentUsage;
   toolCalls?: ToolCallInfo[];
   model?: string;
+  thinkingLevel?: string;
 }
 
 export interface SubagentUpdate {
@@ -47,6 +48,7 @@ export interface SubagentUpdate {
   usage: SubagentUsage;
   toolCalls: ToolCallInfo[];
   model?: string;
+  thinkingLevel?: string;
 }
 
 /** details payload of the subagent tool's AgentToolResult / live updates. */
@@ -72,4 +74,5 @@ export interface SubagentMessageDetails {
   usage?: SubagentUsage;
   toolCalls?: ToolCallInfo[];
   model?: string;
+  thinkingLevel?: string;
 }

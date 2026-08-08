@@ -16,6 +16,7 @@ export interface Job {
   usage: SubagentUsage;
   toolCalls: ToolCallInfo[];
   model?: string;
+  thinkingLevel?: string;
 }
 
 /** Completed jobs older than this are pruned once their batch summary cleared them. */
@@ -24,13 +25,14 @@ const PRUNE_AFTER_MS = 300_000;
 export interface JobRegistry {
   scope: string;
   jobs: Map<number, Job>;
-  add(agent: string, task: string, title?: string): number;
+  add(agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string }): number;
   updateLive(id: number, live: {
     text?: string;
     progress?: string;
     usage?: SubagentUsage;
     toolCalls?: ToolCallInfo[];
     model?: string;
+    thinkingLevel?: string;
   }): void;
   complete(id: number, result: SubagentResult): void;
   markCleared(ids: Iterable<number>): void;
@@ -46,7 +48,12 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
   const jobs = new Map<number, Job>();
   const clearedIds = new Set<number>();
 
-  const add = (agent: string, task: string, title?: string): number => {
+  const add = (
+    agent: string,
+    task: string,
+    title?: string,
+    metadata?: { model?: string; thinkingLevel?: string },
+  ): number => {
     const id = nextId++;
     jobs.set(id, {
       id,
@@ -57,6 +64,8 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
       status: "running",
       usage: { ...EMPTY_USAGE },
       toolCalls: [],
+      model: metadata?.model,
+      thinkingLevel: metadata?.thinkingLevel,
     });
     return id;
   };
@@ -67,6 +76,7 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
     usage?: SubagentUsage;
     toolCalls?: ToolCallInfo[];
     model?: string;
+    thinkingLevel?: string;
   }): void => {
     const job = jobs.get(id);
     if (!job) return;
@@ -75,6 +85,7 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
     if (live.usage) job.usage = live.usage;
     if (live.toolCalls) job.toolCalls = live.toolCalls;
     if (live.model !== undefined) job.model = live.model;
+    if (live.thinkingLevel !== undefined) job.thinkingLevel = live.thinkingLevel;
   };
 
   const complete = (id: number, result: SubagentResult): void => {
@@ -88,6 +99,7 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
     job.usage = result.usage ?? job.usage;
     job.toolCalls = result.toolCalls ?? job.toolCalls;
     job.model = result.model ?? job.model;
+    job.thinkingLevel = result.thinkingLevel ?? job.thinkingLevel;
     // Prune only completed jobs whose batch summary already cleared them;
     // anything still on display stays until its batch finishes.
     const cutoff = now() - PRUNE_AFTER_MS;

@@ -18,19 +18,24 @@ function result(overrides: Partial<SubagentResult> = {}): SubagentResult {
 test("registry lifecycle: add -> complete -> pendingCompleted -> markCleared", () => {
   let time = 0;
   const registry = createJobRegistry({ now: () => time });
-  const id = registry.add("worker", "task", "  title \n");
+  const id = registry.add("worker", "task", "  title \n", { model: "served-model", thinkingLevel: "high" });
   const job = registry.jobs.get(id)!;
   assert.equal(job.title, "title");
   assert.equal(job.status, "running");
+  assert.equal(job.model, "served-model");
+  assert.equal(job.thinkingLevel, "high");
   assert.equal(registry.running().length, 1);
 
-  registry.updateLive(id, { text: "partial", progress: "read x.ts" });
+  registry.updateLive(id, { text: "partial", progress: "read x.ts", model: "served-model", thinkingLevel: "high" });
   assert.equal(job.text, "partial");
   assert.equal(job.progress, "read x.ts");
+  assert.equal(job.model, "served-model");
+  assert.equal(job.thinkingLevel, "high");
 
   time = 1000;
-  registry.complete(id, result());
+  registry.complete(id, result({ thinkingLevel: "high" }));
   assert.equal(job.status, "completed");
+  assert.equal(job.thinkingLevel, "high");
   assert.equal(job.endTime, 1000);
   assert.equal(registry.running().length, 0);
   assert.deepEqual(registry.pendingCompleted().map((j) => j.id), [id]);

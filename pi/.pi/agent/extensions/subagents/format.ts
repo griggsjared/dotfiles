@@ -21,17 +21,20 @@ export function formatTokens(count: number): string {
   return `${(count / 1000000).toFixed(1)}M`;
 }
 
-export function formatUsageStats(usage: SubagentUsage | undefined, model?: string): string {
-  if (!usage) return "";
+export function formatUsageStats(usage: SubagentUsage | undefined, model?: string, thinkingLevel?: string): string {
+  if (!usage && !model && !thinkingLevel) return "";
   const parts: string[] = [];
-  if (usage.turns > 0) parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
-  if (usage.input > 0) parts.push(`↑${formatTokens(usage.input)}`);
-  if (usage.output > 0) parts.push(`↓${formatTokens(usage.output)}`);
-  if (usage.cacheRead > 0) parts.push(`R${formatTokens(usage.cacheRead)}`);
-  if (usage.cacheWrite > 0) parts.push(`W${formatTokens(usage.cacheWrite)}`);
-  if (usage.cost > 0) parts.push(`$${usage.cost < 0.0001 ? usage.cost.toFixed(6) : usage.cost.toFixed(4)}`);
-  if (usage.contextTokens > 0) parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
-  if (model) parts.push(model);
+  if (usage) {
+    if (usage.turns > 0) parts.push(`${usage.turns} turn${usage.turns > 1 ? "s" : ""}`);
+    if (usage.input > 0) parts.push(`↑${formatTokens(usage.input)}`);
+    if (usage.output > 0) parts.push(`↓${formatTokens(usage.output)}`);
+    if (usage.cacheRead > 0) parts.push(`R${formatTokens(usage.cacheRead)}`);
+    if (usage.cacheWrite > 0) parts.push(`W${formatTokens(usage.cacheWrite)}`);
+    if (usage.cost > 0) parts.push(`$${usage.cost < 0.0001 ? usage.cost.toFixed(6) : usage.cost.toFixed(4)}`);
+    if (usage.contextTokens > 0) parts.push(`ctx:${formatTokens(usage.contextTokens)}`);
+  }
+  if (model) parts.push(thinkingLevel ? `${model}:${thinkingLevel}` : model);
+  else if (thinkingLevel) parts.push(`effort:${thinkingLevel}`);
   return parts.join(" ");
 }
 

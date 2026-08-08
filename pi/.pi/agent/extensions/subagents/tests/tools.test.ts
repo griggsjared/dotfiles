@@ -7,7 +7,8 @@ import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
 import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
-import { ENTRY_TYPE } from "../types.ts";
+import { createStatusTool } from "../status-tools.ts";
+import { EMPTY_USAGE, ENTRY_TYPE } from "../types.ts";
 import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent, type SpawnCall } from "./fake-child.ts";
 
 const AGENT: AgentConfig = {
@@ -153,17 +154,45 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
     text: longText,
     exitCode: 0,
     error: "",
+    model: "openai-codex/gpt-5.6-luna",
+    thinkingLevel: "high",
   });
   assert.equal(sendMessage.calls.length, 1);
   const [message, options] = sendMessage.calls[0] as [
-    { customType: string; content: string; details: { status: string; icon: string; agent: string } },
+    { customType: string; content: string; details: { status: string; icon: string; agent: string; model?: string; thinkingLevel?: string } },
     { deliverAs: string },
   ];
   assert.equal(message.customType, ENTRY_TYPE);
   assert.equal(message.content.length, 20002); // 20000 + "\n…"
   assert.equal(message.details.status, "completed");
   assert.equal(message.details.icon, "✓");
+  assert.equal(message.details.model, "openai-codex/gpt-5.6-luna");
+  assert.equal(message.details.thinkingLevel, "high");
   assert.equal(options.deliverAs, "steer");
+});
+
+test("subagent status includes compact model and effort", async () => {
+  const registry = createJobRegistry();
+  registry.add("scout", "running task", undefined, {
+    model: "openai-codex/gpt-5.6-luna",
+    thinkingLevel: "minimal",
+  });
+  const id = registry.add("worker", "task");
+  registry.complete(id, {
+    agent: "worker",
+    task: "task",
+    text: "done",
+    exitCode: 0,
+    error: "",
+    usage: { ...EMPTY_USAGE, turns: 1 },
+    model: "openai-codex/gpt-5.6-luna",
+    thinkingLevel: "high",
+  });
+  const tool = createStatusTool({ registry });
+  const result = await tool.execute("call1", {}, undefined, undefined, {} as never);
+  const text = (result.content[0] as { text: string }).text;
+  assert.match(text, /◐ scout .*openai-codex\/gpt-5\.6-luna:minimal/);
+  assert.match(text, /openai-codex\/gpt-5\.6-luna:high/);
 });
 
 // --- createSubagentTool.execute ----------------------------------------------
@@ -244,6 +273,20 @@ test("execute: default settings set child model and thinking level", async () =>
   const args = calls[0]?.args ?? [];
   assert.equal(args[args.indexOf("--model") + 1], "default-model");
   assert.equal(args[args.indexOf("--thinking") + 1], "low");
+});
+
+test("execute: setup failures preserve inherited model and effort", async () => {
+  const spawnFn = (() => {
+    throw new Error("spawn failed");
+  }) as typeof spawn;
+  const { tool, sendMessage, ctx } = makeTool({ spawnFn });
+  (ctx as unknown as { thinkingLevel?: string }).thinkingLevel = "medium";
+
+  const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+  assert.equal(result.details.status, "failed");
+  const [message] = sendMessage.calls[0] as [{ details: { model?: string; thinkingLevel?: string } }];
+  assert.equal(message.details.model, "p/m");
+  assert.equal(message.details.thinkingLevel, "medium");
 });
 
 test("execute: sync single drives the child and returns completed details", async () => {
@@ -389,10 +432,14 @@ function renderText(value: unknown): string {
 
 test("renderFullWidget: shows progress when no tool call is active", () => {
   const registry = createJobRegistry();
-  const id = registry.add("scout", "task", "title");
+  const id = registry.add("scout", "task", "title", {
+    model: "openai-codex/gpt-5.6-luna",
+    thinkingLevel: "high",
+  });
   registry.updateLive(id, { progress: "reading files", text: "live agent output" });
   const output = renderFullWidget(registry, (_color, text) => text).join("\n");
   assert.match(output, /reading files/);
+  assert.match(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
 });
 
@@ -468,11 +515,24 @@ test("message renderer: renders with details and falls back without them", () =>
   const theme = fakeTheme() as never;
   const options = { expanded: false, outputPad: 2 };
   const withDetails = captured!(
-    { content: "out", details: { agent: "a", task: "t", status: "completed", duration: "1s", icon: "✓" } },
+    {
+      content: "out",
+      details: {
+        agent: "a",
+        task: "t",
+        status: "completed",
+        duration: "1s",
+        icon: "✓",
+        usage: { ...EMPTY_USAGE, turns: 1 },
+        model: "openai-codex/gpt-5.6-luna",
+        thinkingLevel: "high",
+      },
+    },
     options,
     theme,
   );
   assert.ok(renderable(withDetails));
+  assert.match(renderText(withDetails), /openai-codex\/gpt-5\.6-luna:high/);
 
   const withoutDetails = captured!({ content: "plain", details: undefined }, options, theme);
   assert.ok(renderable(withoutDetails));

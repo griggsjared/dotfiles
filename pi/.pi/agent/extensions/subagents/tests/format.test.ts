@@ -21,12 +21,12 @@ test("formatTokens", () => {
   assert.equal(formatTokens(1000000), "1.0M");
 });
 
-test("formatUsageStats returns empty string without usage", () => {
+test("formatUsageStats keeps metadata without usage", () => {
   assert.equal(formatUsageStats(undefined), "");
-  assert.equal(formatUsageStats(undefined, "opencode-go/x"), "");
+  assert.equal(formatUsageStats(undefined, "opencode-go/x", "high"), "opencode-go/x:high");
 });
 
-test("formatUsageStats renders non-zero fields in order with model suffix", () => {
+test("formatUsageStats renders non-zero fields with compact model and effort suffix", () => {
   const usage: SubagentUsage = {
     ...EMPTY_USAGE,
     turns: 2,
@@ -38,8 +38,8 @@ test("formatUsageStats renders non-zero fields in order with model suffix", () =
     contextTokens: 20000,
   };
   assert.equal(
-    formatUsageStats(usage, "opencode-go/x"),
-    "2 turns ↑1.5k ↓400 R5.0k $0.0001 ctx:20k opencode-go/x",
+    formatUsageStats(usage, "opencode-go/x", "high"),
+    "2 turns ↑1.5k ↓400 R5.0k $0.0001 ctx:20k opencode-go/x:high",
   );
 });
 

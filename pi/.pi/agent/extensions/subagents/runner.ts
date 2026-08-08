@@ -160,6 +160,7 @@ export async function runSubagent(
         usage: { ...state.usage },
         toolCalls: [...state.toolCalls],
         model: state.model,
+        thinkingLevel: options.thinkingLevel,
       });
     };
 
@@ -233,6 +234,7 @@ export async function runSubagent(
         usage: { ...state.usage },
         toolCalls: [...state.toolCalls],
         model: state.model,
+        thinkingLevel: options.thinkingLevel,
       });
       if (!text && stdout.length > 0) {
         const snippet = stdout.length > 2000
@@ -257,6 +259,7 @@ export async function runSubagent(
         usage: { ...state.usage },
         toolCalls: state.toolCalls,
         model: state.model,
+        thinkingLevel: options.thinkingLevel,
       });
     });
 
@@ -271,6 +274,8 @@ export async function runSubagent(
         text: "",
         exitCode: 1,
         error: stderr || "failed to spawn subagent",
+        model: state.model,
+        thinkingLevel: options.thinkingLevel,
       });
     });
   });

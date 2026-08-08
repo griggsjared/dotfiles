@@ -93,6 +93,18 @@ test("runSubagent: reports live updates when state changes", async () => {
   assert.equal(updates.length, 2); // final flush on close
 });
 
+test("runSubagent: zero maxRuntimeMs disables the timeout", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    maxRuntimeMs: 0,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(child.killed, null);
+  child.finish(0);
+  assert.equal((await result).exitCode, 0);
+});
+
 test("runSubagent: timeout kills the child and reports exit code 124", async () => {
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "t", "/tmp", "m", {

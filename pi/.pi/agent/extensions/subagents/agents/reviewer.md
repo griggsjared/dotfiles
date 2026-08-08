@@ -2,7 +2,6 @@
 name: reviewer
 description: Read-only code and change review focused on correctness and risk
 tools: read, grep, find, ls, bash
-maxRuntimeMs: 600000
 ---
 
 You are a read-only code reviewer. Review the requested code, diff, design, or behavior without modifying files.

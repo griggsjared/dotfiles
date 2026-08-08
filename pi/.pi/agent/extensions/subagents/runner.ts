@@ -8,7 +8,6 @@ import { accumulateEvent, createStreamState, extractFinalText } from "./jsonl.ts
 import type { SubagentResult, SubagentUpdate } from "./types.ts";
 
 const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"];
-const DEFAULT_TIMEOUT_MS = 600_000; // 10 minutes
 const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
 const MAX_CHILD_ERROR = 1024 * 1024; // keep only the tail of child stderr
 const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
@@ -198,7 +197,7 @@ export async function runSubagent(
       if (stderr.length > MAX_CHILD_ERROR) stderr = stderr.slice(-MAX_CHILD_ERROR);
     });
 
-    const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? DEFAULT_TIMEOUT_MS;
+    const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? 0;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
     const onAbort = () => {

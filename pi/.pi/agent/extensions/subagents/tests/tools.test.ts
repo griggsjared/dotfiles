@@ -535,15 +535,44 @@ test("message renderer: renders with details and falls back without them", () =>
     theme,
   );
   assert.ok(renderable(withDetails));
-  assert.match(renderText(withDetails), /openai-codex\/gpt-5\.6-luna:high/);
+  const compactText = renderText(withDetails);
+  assert.match(compactText, /openai-codex\/gpt-5\.6-luna:high/);
+  assert.doesNotMatch(compactText, /\bout\b/);
+  assert.match(compactText, /Ctrl\+O to expand/);
+  assert.equal(compactText.split("\n").filter((line) => line.trim()).length, 3);
 
   const withoutDetails = captured!({ content: "plain", details: undefined }, options, theme);
   assert.ok(renderable(withoutDetails));
 
+  const backgroundCalls: string[] = [];
+  const expandedTheme = {
+    ...fakeTheme(),
+    bg: (color: string, text: string) => {
+      backgroundCalls.push(color);
+      return text;
+    },
+  } as never;
   const expanded = captured!(
-    { content: "out", details: { agent: "a", task: "t", status: "failed", duration: "1s", icon: "✗" } },
+    {
+      content: "out",
+      details: {
+        agent: "a",
+        task: "t",
+        status: "failed",
+        duration: "1s",
+        icon: "✗",
+        toolCalls: [
+          { name: "read", args: { path: "src/index.ts", offset: 1, limit: 2 } },
+          { name: "bash", args: { command: "npm test" } },
+        ],
+      },
+    },
     { ...options, expanded: true },
-    theme,
+    expandedTheme,
   );
   assert.ok(renderable(expanded));
+  assert.match(renderText(expanded), /Tool calls/);
+  assert.match(renderText(expanded), /read src\/index\.ts:1-2/);
+  assert.match(renderText(expanded), /\$ npm test/);
+  assert.ok(backgroundCalls.includes("customMessageBg"));
 });

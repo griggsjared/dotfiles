@@ -1,5 +1,5 @@
 import type { TUI } from "@earendil-works/pi-tui";
-import { Box, Container, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Box, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import {
   getMarkdownTheme,
   type ExtensionAPI,
@@ -7,7 +7,7 @@ import {
   type Theme,
   type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
-import { formatUsageStats, shortLabel } from "./format.ts";
+import { formatUsageStats, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry } from "./registry.ts";
 import {
   ENTRY_TYPE,
@@ -97,26 +97,28 @@ export function registerRenderers(pi: ExtensionAPI): void {
     const output = typeof message.content === "string" ? message.content : "";
 
     if (expanded) {
-      const container = new Container();
-      container.addChild(new Text(headLine, 0, 0));
-      if (statsLine) container.addChild(new Text(`  ${statsLine}`, 0, 0));
+      const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
+      box.addChild(new Text(headLine, 0, 0));
+      if (statsLine) box.addChild(new Text(`  ${statsLine}`, 0, 0));
       if (output) {
-        container.addChild(new Spacer(1));
-        container.addChild(new Markdown(output, 0, 0, mdTheme));
+        box.addChild(new Spacer(1));
+        box.addChild(new Markdown(output, 0, 0, mdTheme));
       }
-      return container;
+      if (details.toolCalls && details.toolCalls.length > 0) {
+        box.addChild(new Spacer(1));
+        box.addChild(new Text(theme.fg("muted", "Tool calls"), 0, 0));
+        for (const call of details.toolCalls) {
+          box.addChild(new Text(theme.fg("dim", `  ${toolCallLabel(call.name, call.args)}`), 0, 0));
+        }
+      }
+      return box;
     }
 
-    // Collapsed: title line, stats, first output line, expand hint
+    // Collapsed: title line, stats, and expand hint.
     const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
     box.addChild(new Text(headLine, 0, 0));
     if (statsLine) box.addChild(new Text(statsLine, 1, 0));
-    if (output) {
-      const firstLine = (output.split("\n")[0] ?? "").trim();
-      const capped = firstLine.length > 80 ? `${firstLine.slice(0, 80)}…` : firstLine;
-      if (firstLine) box.addChild(new Text(theme.fg("dim", capped), 1, 0));
-      box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), firstLine ? 2 : 1, 0));
-    }
+    if (output) box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), 1, 0));
     return box;
   });
 }

@@ -208,7 +208,10 @@ export class Batch {
     this.deps.registry.markCleared(this.jobIds);
     this.deps.refresh();
     try {
-      this.deps.pi.sendUserMessage(lines.join("\n"), { deliverAs: "steer" });
+      this.deps.pi.sendMessage(
+        { customType: ENTRY_TYPE, content: lines.join("\n"), display: false },
+        { triggerTurn: true, deliverAs: "steer" },
+      );
     } catch (err) {
       console.error("subagents: failed to send batch summary", err);
     }
@@ -242,7 +245,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     parameters: SubagentParams,
     promptGuidelines: buildGuidelines(deps.agents),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const agents = await deps.discover();
       const { registry, activeProcs, activeTickers } = deps;
       const agentByName = new Map(agents.map((a) => [a.name, a]));
@@ -274,13 +277,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
                 model: update.model,
               });
               refresh();
-              try {
-                const live = update.text || (update.progress ? `working on ${update.progress}…` : "");
-                onUpdate?.({
-                  content: [{ type: "text", text: live || "(running...)" }],
-                  details: { agent: agent.name, task, status: "running" },
-                });
-              } catch { /* session torn down mid-stream; nothing left to update */ }
             },
           });
           proc = launched.proc;
@@ -317,13 +313,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         batch.addJob(jobId);
         refresh();
         const stopTicker = startTicker(activeTickers, refresh);
-        try {
-          onUpdate?.({
-            content: [{ type: "text", text: `${execution === "sync" ? "◐ Running" : "◐ Launched"} **${agent.name}** subagent — waiting for result...` }],
-            details: { agent: agent.name, status: execution === "sync" ? "running" : "launched" },
-          });
-        } catch { /* session torn down */ }
-
         if (execution === "sync") {
           let result: SubagentResult;
           try {
@@ -332,12 +321,13 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             result = failedResult(agent.name, single.task, single.title, err);
           }
           stopTicker();
+          batch.deliverResult(jobId, result);
           batch.markCleared();
           refresh();
           const status = result.exitCode === 0 ? "completed" : "failed";
           return {
             content: [{ type: "text", text: capOutput(formatResultOutput(result), 20000) }],
-            details: { agent: agent.name, status, execution },
+            details: { agent: agent.name, status, execution, jobIds: [jobId], jobScope: registry.scope },
           };
         }
 
@@ -357,7 +347,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         // are delivered via sendMessage with the custom renderer.
         return {
           content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${single.title ?? single.task}"` }],
-          details: { agent: agent.name, status: "launched", execution },
+          details: { agent: agent.name, status: "launched", execution, jobIds: [jobId], jobScope: registry.scope },
         };
       }
 
@@ -424,6 +414,10 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         } finally {
           stopTicker();
         }
+        for (const [index, result] of results.entries()) {
+          const jobId = jobIds[index];
+          if (jobId !== undefined && result) batch.deliverResult(jobId, result);
+        }
         registry.markCleared(jobIds);
         refresh();
         const output = results.map((result, index) => {
@@ -441,6 +435,8 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             skipped: unknownCount,
             status: failed ? "failed" : "completed",
             execution,
+            jobIds,
+            jobScope: registry.scope,
           },
         };
       }
@@ -452,7 +448,14 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const skipped = unknownCount > 0 ? `, ${unknownCount} skipped (unknown agent)` : "";
       return {
         content: [{ type: "text", text: `Launched ${tasks.length - unknownCount} subagents in parallel${skipped}.` }],
-        details: { count: tasks.length - unknownCount, skipped: unknownCount, status: "launched", execution },
+        details: {
+          count: tasks.length - unknownCount,
+          skipped: unknownCount,
+          status: "launched",
+          execution,
+          jobIds,
+          jobScope: registry.scope,
+        },
       };
     },
 
@@ -462,36 +465,37 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
           theme.fg("muted", ` [${args.execution ?? "async"}, concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
-        for (const t of args.tasks.slice(0, 3)) {
-          const preview = shortLabel(t.title, t.task, 40);
-          text += `\n  ${theme.fg("accent", t.agent)}${theme.fg("dim", ` ${preview}`)}`;
+        for (const task of args.tasks.slice(0, 8)) {
+          const title = normalizeTitle(task.title);
+          const preview = title ? title : shortLabel(undefined, task.task, 60);
+          text += `\n  ${theme.fg("accent", task.agent)}${theme.fg("dim", ` · ${preview}`)}`;
         }
-        if (args.tasks.length > 3) text += `\n  ${theme.fg("muted", `… +${args.tasks.length - 3} more`)}`;
+        if (args.tasks.length > 8) text += `\n  ${theme.fg("muted", `… +${args.tasks.length - 8} more`)}`;
         return new Text(text, 0, 0);
       }
       const agentName = args.agent || "...";
-      const preview = shortLabel(args.title, args.task, 60);
+      const preview = normalizeTitle(args.title) || shortLabel(undefined, args.task, 60);
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", agentName) +
           theme.fg("muted", ` [${args.execution ?? "async"}]`) +
           `\n  ${theme.fg("dim", preview)}`,
-        0, 0,
+        0,
+        0,
       );
     },
 
     renderResult(result, _options, theme, _context) {
       const rawSummary = result.content[0]?.type === "text" ? result.content[0].text : "(no output)";
-      const summary = capOutput(rawSummary, 500);
-      // The SDK omits `details` on error results (validation failures, aborts);
-      // treat that as an undecorated result instead of crashing the renderer.
+      const summary = capOutput(rawSummary ?? "(no output)", 500);
       const status = result.details?.status;
-      const launched = status === "launched";
+      if (status === "launched" || result.details?.jobIds?.length) return new Text("", 0, 0);
       const failed = status === "failed";
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg(launched ? "warning" : failed ? "error" : "success", `${launched ? "◐" : failed ? "✗" : "✓"} ${summary}`),
-        0, 0,
+          theme.fg(failed ? "error" : "success", `${failed ? "✗" : "✓"} ${summary}`),
+        0,
+        0,
       );
     },
   };

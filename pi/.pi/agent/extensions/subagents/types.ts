@@ -57,6 +57,8 @@ export interface SubagentToolDetails {
   execution?: ExecutionMode;
   count?: number;
   skipped?: number;
+  jobIds?: number[];
+  jobScope?: string;
 }
 
 /** details payload of sendMessage()ed result entries (rendered by the message renderer). */

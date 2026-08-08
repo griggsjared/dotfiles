@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
-import { registerRenderers } from "../render.ts";
+import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
 import { ENTRY_TYPE } from "../types.ts";
 import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent } from "./fake-child.ts";
@@ -68,7 +68,7 @@ function complete(registry: ReturnType<typeof createJobRegistry>, id: number, ex
 }
 
 test("Batch: summary fires exactly once when the last job completes", () => {
-  const { registry, batch, sendUserMessage } = makeBatch();
+  const { registry, batch, sendMessage } = makeBatch();
   const id1 = registry.add("a", "t1");
   const id2 = registry.add("b", "t2");
   batch.addJob(id1);
@@ -77,13 +77,17 @@ test("Batch: summary fires exactly once when the last job completes", () => {
   complete(registry, id1);
   batch.recordCompletion(id1);
   batch.summary();
-  assert.equal(sendUserMessage.calls.length, 0, "pending > 0, no summary yet");
+  assert.equal(sendMessage.calls.length, 0, "pending > 0, no summary yet");
 
   complete(registry, id2, 1);
   batch.recordCompletion(id2);
   batch.summary();
-  assert.equal(sendUserMessage.calls.length, 1);
-  const lines = sendUserMessage.calls[0]?.[0] as string;
+  assert.equal(sendMessage.calls.length, 1);
+  const [message, options] = sendMessage.calls[0] as [{ content: string; display: boolean }, { triggerTurn: boolean; deliverAs: string }];
+  assert.equal(message.display, false);
+  assert.equal(options.triggerTurn, true);
+  assert.equal(options.deliverAs, "steer");
+  const lines = message.content;
   assert.equal(lines.split("\n")[0], "**Subagents complete:**");
   assert.match(lines, /✓ a \(.*\): t1/);
   assert.match(lines, /✗ b \(.*\): t2/);
@@ -92,22 +96,22 @@ test("Batch: summary fires exactly once when the last job completes", () => {
 });
 
 test("Batch: an extra summary call never re-fires", () => {
-  const { registry, batch, sendUserMessage } = makeBatch();
+  const { registry, batch, sendMessage } = makeBatch();
   const id = registry.add("a", "t");
   batch.addJob(id);
   complete(registry, id);
   batch.recordCompletion(id);
   batch.summary();
   batch.summary(); // would decrement to -1 under a naive guard
-  assert.equal(sendUserMessage.calls.length, 1);
+  assert.equal(sendMessage.calls.length, 1);
 });
 
 test("Batch: summary with no completed jobs sends nothing", () => {
-  const { registry, batch, sendUserMessage } = makeBatch();
+  const { registry, batch, sendMessage } = makeBatch();
   const id = registry.add("a", "t");
   batch.addJob(id);
   batch.summary();
-  assert.equal(sendUserMessage.calls.length, 0);
+  assert.equal(sendMessage.calls.length, 0);
 });
 
 test("Batch: overlapping batches don't cross-suppress and clear only their own ids", () => {
@@ -126,12 +130,12 @@ test("Batch: overlapping batches don't cross-suppress and clear only their own i
   complete(registry, id1);
   b1.recordCompletion(id1);
   b1.summary();
-  assert.equal(sendUserMessage.calls.length, 1, "b1 completes independently");
+  assert.equal(sendMessage.calls.length, 1, "b1 completes independently");
 
   complete(registry, id2);
   b2.recordCompletion(id2);
   b2.summary();
-  assert.equal(sendUserMessage.calls.length, 2, "b2 completes independently");
+  assert.equal(sendMessage.calls.length, 2, "b2 completes independently");
 
   // b1 cleared id1 but not id2; b2's own summary then cleared id2 as well
   assert.equal(registry.pendingCompleted().length, 0);
@@ -193,8 +197,9 @@ function makeTool(spawnOverride?: { spawnFn: typeof spawn }) {
 }
 
 test("execute: sync single drives the child and returns completed details", async () => {
-  const { tool, registry, activeTickers, activeProcs, child, ctx } = makeTool();
-  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+  const { tool, registry, sendMessage, activeTickers, activeProcs, child, ctx } = makeTool();
+  const updates: unknown[] = [];
+  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, () => updates.push(true), ctx);
 
   await sleep(10); // let runSubagent attach stream listeners
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
@@ -203,7 +208,15 @@ test("execute: sync single drives the child and returns completed details", asyn
   const result = await pending;
   assert.equal(result.content[0]?.type, "text");
   assert.equal((result.content[0] as { text: string }).text, "scouted");
-  assert.deepEqual(result.details, { agent: "scout", status: "completed", execution: "sync" });
+  assert.equal(updates.length, 0, "sync execution does not stream intermediate tool output");
+  assert.equal(sendMessage.calls.length, 1, "sync completion uses the custom result entry");
+  assert.deepEqual(result.details, {
+    agent: "scout",
+    status: "completed",
+    execution: "sync",
+    jobIds: [1],
+    jobScope: registry.scope,
+  });
   const job = [...registry.running()];
   assert.equal(job.length, 0);
   assert.equal(activeTickers.size, 0, "ticker stopped after sync completion");
@@ -211,18 +224,23 @@ test("execute: sync single drives the child and returns completed details", asyn
 });
 
 test("execute: async single returns launched, then delivers result + summary", async () => {
-  const { tool, sendMessage, sendUserMessage, child, ctx } = makeTool();
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
   const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "async" }, undefined, undefined, ctx);
   assert.equal(result.details.status, "launched");
+  assert.equal(result.details.jobScope, registry.scope);
+  assert.deepEqual(result.details.jobIds, [1]);
 
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
   child.finish(0);
   await sleep(20); // let the .then chain run
 
-  assert.equal(sendMessage.calls.length, 1, "deliverResult sent the entry message");
-  assert.equal(sendUserMessage.calls.length, 1, "batch summary sent");
+  assert.equal(sendMessage.calls.length, 2, "result and hidden batch summary sent");
   assert.equal((sendMessage.calls[0]?.[0] as { details: { status: string } }).details.status, "completed");
+  const [summary, options] = sendMessage.calls[1] as [{ content: string; display: boolean }, { triggerTurn: boolean }];
+  assert.equal(summary.display, false);
+  assert.equal(options.triggerTurn, true);
+  assert.match(summary.content, /\*\*Subagents complete:\*\*/);
 });
 
 test("execute: all-unknown sync batch throws", async () => {
@@ -282,8 +300,9 @@ test("execute: async parallel batch delivers per-job results and one summary", a
   children[1]!.finish(0);
   await sleep(30); // let the .then chains run
 
-  assert.equal(sendMessage.calls.length, 2, "deliverResult per job");
-  assert.equal(sendUserMessage.calls.length, 1, "exactly one batch summary");
+  assert.equal(sendMessage.calls.length, 3, "deliverResult per job plus hidden batch summary");
+  assert.equal(sendUserMessage.calls.length, 0, "summary is not displayed as a user message");
+  assert.equal((sendMessage.calls[2]?.[0] as { display: boolean }).display, false);
   assert.equal(activeTickers.size, 0, "ticker stopped via finally");
   assert.equal(activeProcs.size, 0);
 });
@@ -314,6 +333,19 @@ function renderable(value: unknown): boolean {
   return !!value && typeof (value as { render?: unknown }).render === "function";
 }
 
+function renderText(value: unknown): string {
+  return (value as { render: (width: number) => string[] }).render(120).join("\n");
+}
+
+test("renderFullWidget: shows progress when no tool call is active", () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "task", "title");
+  registry.updateLive(id, { progress: "reading files", text: "live agent output" });
+  const output = renderFullWidget(registry, (_color, text) => text).join("\n");
+  assert.match(output, /reading files/);
+  assert.doesNotMatch(output, /live agent output/);
+});
+
 test("renderResult: tolerates missing details (error results omit it)", () => {
   const { tool } = makeTool();
   const theme = fakeTheme() as never;
@@ -337,18 +369,40 @@ test("renderResult: renders launched/failed/completed summaries", () => {
       theme,
       {} as never,
     );
-  assert.ok(renderable(render({ status: "launched" })));
+  const launched = render({ status: "launched" });
+  assert.ok(renderable(launched));
+  assert.equal(renderText(launched).trim(), "");
   assert.ok(renderable(render({ status: "failed" })));
   assert.ok(renderable(render({ status: "completed" })));
+  const completedWithJob = tool.renderResult!(
+    { content: [{ type: "text", text: "done" }], details: { status: "completed", jobIds: [1] } } as never,
+    {} as never,
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(completedWithJob).trim(), "");
 });
 
-test("renderCall: renders single and parallel invocations", () => {
+test("renderCall: shows mode and every agent title", () => {
   const { tool } = makeTool();
   const theme = fakeTheme() as never;
-  assert.ok(renderable(tool.renderCall!({ agent: "scout", task: "t" } as never, theme, {} as never)));
-  assert.ok(renderable(
-    tool.renderCall!({ tasks: [{ agent: "scout", task: "t" }, { agent: "scout", task: "t2" }] } as never, theme, {} as never),
-  ));
+  const rendered = tool.renderCall!(
+    {
+      tasks: [
+        { agent: "scout", task: "task one", title: "First task" },
+        { agent: "worker", task: "task two", title: "Second task" },
+      ],
+      execution: "async",
+    } as never,
+    theme,
+    {} as never,
+  );
+  assert.ok(renderable(rendered));
+  const text = renderText(rendered);
+  assert.match(text, /parallel \(2 tasks\)/);
+  assert.match(text, /\[async/);
+  assert.match(text, /scout.*First task/);
+  assert.match(text, /worker.*Second task/);
 });
 
 test("message renderer: renders with details and falls back without them", () => {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { normalizeTitle } from "./format.ts";
 import { EMPTY_USAGE, type SubagentResult, type SubagentUsage, type ToolCallInfo } from "./types.ts";
 
@@ -21,6 +22,7 @@ export interface Job {
 const PRUNE_AFTER_MS = 300_000;
 
 export interface JobRegistry {
+  scope: string;
   jobs: Map<number, Job>;
   add(agent: string, task: string, title?: string): number;
   updateLive(id: number, live: {
@@ -40,6 +42,7 @@ export interface JobRegistry {
 export function createJobRegistry(options: { now?: () => number } = {}) {
   const now = options.now ?? Date.now;
   let nextId = 1;
+  const scope = randomUUID();
   const jobs = new Map<number, Job>();
   const clearedIds = new Set<number>();
 
@@ -112,5 +115,5 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
       .sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0))
       .slice(0, limit);
 
-  return { jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent };
+  return { scope, jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent };
 }

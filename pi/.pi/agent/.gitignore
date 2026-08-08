@@ -6,6 +6,7 @@
 !extensions/package.json
 !extensions/header.ts
 !extensions/statusline.ts
+!extensions/codex-usage.ts
 !extensions/working-indicator.ts
 !extensions/web-search.ts
 !extensions/ask-user.ts

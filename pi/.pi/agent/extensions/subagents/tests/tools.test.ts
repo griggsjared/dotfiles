@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
@@ -432,12 +433,14 @@ function renderText(value: unknown): string {
 
 test("renderFullWidget: shows progress when no tool call is active", () => {
   const registry = createJobRegistry();
-  const id = registry.add("scout", "task", "title", {
+  const id = registry.add("scout", "task", "a".repeat(60), {
     model: "openai-codex/gpt-5.6-luna",
     thinkingLevel: "high",
   });
   registry.updateLive(id, { progress: "reading files", text: "live agent output" });
-  const output = renderFullWidget(registry, (_color, text) => text).join("\n");
+  const lines = renderFullWidget(registry, (_color, text) => text, 80);
+  const output = lines.join("\n");
+  assert.ok(lines.every((line) => visibleWidth(line) <= 80));
   assert.match(output, /reading files/);
   assert.match(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);

@@ -1,5 +1,5 @@
 import type { TUI } from "@earendil-works/pi-tui";
-import { Box, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import { Box, Container, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import {
   getMarkdownTheme,
   type ExtensionAPI,
@@ -19,8 +19,9 @@ export type Fg = (color: ThemeColor, text: string) => string;
 
 const MAX_WIDGET_LINES = 10; // pi caps string-array widgets at 10 lines; keep the same cap for the factory form
 
-export function renderFullWidget(registry: JobRegistry, fg: Fg): string[] {
+export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): string[] {
   const now = Date.now();
+  const maxWidth = Math.max(1, Math.floor(width));
   const running = registry.running();
   const completed = registry.pendingCompleted();
 
@@ -29,12 +30,14 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg): string[] {
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
     const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
     const title = job.title ? `: ${job.title}` : "";
-    lines.push(
+    lines.push(truncateToWidth(
       fg("accent", `◐ ${job.agent}`) +
         fg("muted", ` (${elapsed}s${metadata ? ` ${metadata}` : ""})`) +
         (title ? fg("dim", title) : ""),
-    );
-    lines.push(fg("muted", `  ${shortLabel(undefined, job.progress ?? job.task, 40)}`));
+      maxWidth,
+      "",
+    ));
+    lines.push(truncateToWidth(fg("muted", `  ${shortLabel(undefined, job.progress ?? job.task, 40)}`), maxWidth, ""));
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
@@ -42,15 +45,17 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg): string[] {
     const icon = job.status === "completed" ? "✓" : "✗";
     const color = job.status === "completed" ? "success" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
-    lines.push(
+    lines.push(truncateToWidth(
       fg(color, `${icon} ${job.agent}`) +
         fg("muted", ` (${duration}s${metadata ? ` ${metadata}` : ""})`) +
         fg("dim", label),
-    );
+      maxWidth,
+      "",
+    ));
   }
   if (lines.length > MAX_WIDGET_LINES) {
     lines.length = MAX_WIDGET_LINES - 1;
-    lines.push(fg("muted", "... (widget truncated)"));
+    lines.push(truncateToWidth(fg("muted", "... (widget truncated)"), maxWidth, ""));
   }
   return lines;
 }
@@ -67,7 +72,7 @@ export function refreshUi(ctx: UiContext, registry: JobRegistry): void {
       // Factory form so lines can use theme colors; re-set on every tick,
       // so the factory re-runs with the current theme.
       ctx.ui.setWidget(WIDGET_KEY, (_tui: TUI, theme: Theme) => ({
-        render: () => renderFullWidget(registry, (color, text) => theme.fg(color, text)),
+        render: (width) => renderFullWidget(registry, (color, text) => theme.fg(color, text), width),
         invalidate: () => {},
       }));
     } else {

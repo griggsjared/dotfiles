@@ -44,7 +44,7 @@ const SubagentParams = Type.Object({
   })),
   execution: Type.Optional(StringEnum(["async", "sync"] as const, {
     default: "async",
-    description: "Return immediately (async) or wait for results (sync)",
+    description: "Async (default, preferred): return immediately; results arrive as follow-up messages. Sync: wait for the result before continuing",
   })),
   concurrency: Type.Optional(Type.Integer({
     minimum: 1,
@@ -104,7 +104,7 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     agentGuidance,
     "For code reviews, tell the reviewer to use the peer-review skill when available.",
     "For ANY task requiring reading or exploring multiple files or directories — use a subagent. Do not do broad exploration yourself.",
-    "Use the subagent tool with execution:'sync' when you need results before continuing; use execution:'async' for independent work that can finish later. Async is the default.",
+    "Prefer execution:'async' (the default) for every subagent call: launch it, then end your turn or continue with independent work; results arrive as follow-up messages. Use execution:'sync' only when the very next step in this turn cannot be produced without the subagent's result — never to avoid ending the turn or because waiting inline feels more reliable.",
     "The subagent tool's async jobs return immediately and deliver results via follow-up messages; do not block or poll for them.",
     "After launching async subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
     "Use subagent_status only when you need a snapshot of running or recent subagents; async completion is automatic, so do not poll for normal completion.",
@@ -238,7 +238,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
   return {
     name: "subagent",
     label: "Subagent",
-    description: "Delegate work to specialized subagents; choose async or sync execution.",
+    description: "Delegate work to specialized subagents; prefer async (default), sync only when the result is needed before continuing.",
     parameters: SubagentParams,
     promptGuidelines: buildGuidelines(deps.agents),
 

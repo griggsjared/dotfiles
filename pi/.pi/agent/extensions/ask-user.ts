@@ -703,8 +703,9 @@ export default function (pi: ExtensionAPI) {
 					parts.push(`  ${theme.fg("muted", question.description)}`);
 				}
 				const labels = question.options.map((option) => option.label);
-				if (question.allowOther) labels.push("Other");
-				const flags = [question.multiple ? "multi" : "", question.allowOther ? "other" : ""]
+				const allowOther = question.allowOther !== false;
+				if (allowOther) labels.push("Other");
+				const flags = [question.multiple ? "multi" : "", allowOther ? "other" : ""]
 					.filter(Boolean)
 					.join("+");
 				const list = labels.join(", ");

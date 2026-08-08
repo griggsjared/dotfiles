@@ -8,7 +8,7 @@ import { createJobRegistry } from "../registry.ts";
 import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
 import { ENTRY_TYPE } from "../types.ts";
-import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent } from "./fake-child.ts";
+import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent, type SpawnCall } from "./fake-child.ts";
 
 const AGENT: AgentConfig = {
   name: "scout",
@@ -168,7 +168,10 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
 
 // --- createSubagentTool.execute ----------------------------------------------
 
-function makeTool(spawnOverride?: { spawnFn: typeof spawn }) {
+function makeTool(
+  spawnOverride?: { spawnFn: typeof spawn },
+  settings = { defaults: {}, agents: {} },
+) {
   const registry = createJobRegistry();
   const sendMessage = spy();
   const sendUserMessage = spy();
@@ -179,6 +182,7 @@ function makeTool(spawnOverride?: { spawnFn: typeof spawn }) {
   const tool = createSubagentTool({
     pi,
     agents: [AGENT],
+    settings,
     discover: async () => [AGENT],
     registry,
     activeProcs,
@@ -195,6 +199,52 @@ function makeTool(spawnOverride?: { spawnFn: typeof spawn }) {
   } as unknown as ExtensionContext;
   return { tool, registry, sendMessage, sendUserMessage, activeTickers, activeProcs, child, ctx };
 }
+
+test("execute: local settings set child model and thinking level", async () => {
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const spawnFn = ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+    calls.push({ cmd, args, options: options ?? {} });
+    return child;
+  }) as unknown as typeof spawn;
+  const { tool, ctx } = makeTool(
+    { spawnFn },
+    { defaults: { model: "default-model", thinkingLevel: "low" }, agents: { scout: { model: "local-model", thinkingLevel: "high" } } },
+  );
+  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+
+  await sleep(10);
+  child.stdout.emit("data", Buffer.from(endEvent("done")));
+  child.finish(0);
+  await pending;
+
+  const args = calls[0]?.args ?? [];
+  assert.equal(args[args.indexOf("--model") + 1], "local-model");
+  assert.equal(args[args.indexOf("--thinking") + 1], "high");
+});
+
+test("execute: default settings set child model and thinking level", async () => {
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const spawnFn = ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+    calls.push({ cmd, args, options: options ?? {} });
+    return child;
+  }) as unknown as typeof spawn;
+  const { tool, ctx } = makeTool(
+    { spawnFn },
+    { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} },
+  );
+  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+
+  await sleep(10);
+  child.stdout.emit("data", Buffer.from(endEvent("done")));
+  child.finish(0);
+  await pending;
+
+  const args = calls[0]?.args ?? [];
+  assert.equal(args[args.indexOf("--model") + 1], "default-model");
+  assert.equal(args[args.indexOf("--thinking") + 1], "low");
+});
 
 test("execute: sync single drives the child and returns completed details", async () => {
   const { tool, registry, sendMessage, activeTickers, activeProcs, child, ctx } = makeTool();

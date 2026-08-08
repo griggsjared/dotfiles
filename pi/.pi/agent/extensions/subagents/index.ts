@@ -1,6 +1,6 @@
 import { type ChildProcess } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { discoverAgents } from "./agents.ts";
+import { discoverAgents, loadSubagentSettings } from "./agents.ts";
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
 import { killProcess } from "./runner.ts";
@@ -9,7 +9,10 @@ import { createSubagentTool } from "./tools.ts";
 import { STATUS_KEY, WIDGET_KEY } from "./types.ts";
 
 export default async function (pi: ExtensionAPI) {
-  const agents = await discoverAgents(__dirname);
+  const [agents, settings] = await Promise.all([
+    discoverAgents(__dirname),
+    loadSubagentSettings(),
+  ]);
   const registry = createJobRegistry();
   const activeProcs = new Set<ChildProcess>();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
@@ -20,6 +23,7 @@ export default async function (pi: ExtensionAPI) {
   pi.registerTool(createSubagentTool({
     pi,
     agents,
+    settings,
     discover: () => discoverAgents(__dirname),
     registry,
     activeProcs,

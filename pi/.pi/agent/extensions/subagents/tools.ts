@@ -7,7 +7,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import type { AgentConfig } from "./agents.ts";
+import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
 import { capOutput, formatResultOutput, normalizeTitle, shortLabel } from "./format.ts";
 import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
@@ -226,6 +226,8 @@ export interface SubagentToolDeps {
   pi: ExtensionAPI;
   /** Agents discovered at load time; used for the prompt guidelines roster. */
   agents: AgentConfig[];
+  /** Machine-local settings loaded when the extension initializes. */
+  settings: SubagentSettings;
   /** Re-discovered on every execute so agent file edits take effect immediately. */
   discover: () => Promise<AgentConfig[]>;
   registry: JobRegistry;
@@ -246,7 +248,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     promptGuidelines: buildGuidelines(deps.agents),
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const agents = await deps.discover();
+      const agents = (await deps.discover()).map((agent) => resolveAgentSettings(agent, deps.settings));
       const { registry, activeProcs, activeTickers } = deps;
       const agentByName = new Map(agents.map((a) => [a.name, a]));
       const available = agents.map((a) => a.name).join(", ") || "none";
@@ -265,7 +267,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         try {
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
             signal,
-            thinkingLevel: ctx.thinkingLevel,
+            thinkingLevel: agent.thinkingLevel ?? ctx.thinkingLevel,
             title,
             spawnFn: deps.spawnFn,
             onUpdate: (update) => {

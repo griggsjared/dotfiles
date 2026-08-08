@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Read-only code and change review focused on correctness and risk
+description: Read-only code review for correctness, risks, and missing tests; no edits or commits
 tools: read, grep, find, ls, bash
 ---
 

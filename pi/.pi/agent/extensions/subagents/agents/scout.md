@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Fast read-only codebase reconnaissance
+description: Fast, read-only codebase reconnaissance; report relevant files and patterns without editing or implementing
 tools: read, grep, find, ls, bash
 ---
 

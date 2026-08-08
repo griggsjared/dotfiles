@@ -1,8 +1,8 @@
 /**
  * Custom footer that mimics the Claude Code statusline format.
  *
- * Shows mode, model name, thinking level, context usage, session cost, and
- * provider — all in a compact Claude-style layout.
+ * Shows mode, model name, thinking level, context usage, session cost or Codex
+ * rate limits, and provider — all in a compact Claude-style layout.
  */
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -50,15 +50,19 @@ export default function (pi: ExtensionAPI) {
 						line += ` ${theme.fg("borderAccent", `${used}/${total}`)}`;
 					}
 
-					//Cost
-					let cost = 0;
-					for (const e of ctx.sessionManager.getBranch()) {
-						if (e.type === "message" && e.message.role === "assistant") {
-							cost += (e.message as AssistantMessage).usage.cost.total;
+					const codexUsage = model?.provider === "openai-codex" ? statuses.get("codex-usage") : undefined;
+					if (model?.provider === "openai-codex") {
+						line += ` ${theme.fg("dim", codexUsage ?? "quota:?")}`;
+					} else {
+						let cost = 0;
+						for (const e of ctx.sessionManager.getBranch()) {
+							if (e.type === "message" && e.message.role === "assistant") {
+								cost += (e.message as AssistantMessage).usage.cost.total;
+							}
 						}
-					}
-					if (cost > 0) {
-						line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;
+						if (cost > 0) {
+							line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;
+						}
 					}
 
 					// ── Provider (right-aligned) ──
@@ -71,7 +75,7 @@ export default function (pi: ExtensionAPI) {
 
 					// ── Show remaining extension statuses on subsequent lines ──
 					const rest = Array.from(statuses.entries())
-						.filter(([key]) => key !== "modes")
+						.filter(([key]) => key !== "modes" && key !== "codex-usage")
 						.sort(([a], [b]) => a.localeCompare(b))
 						.map(([, text]) => text);
 					if (rest.length > 0) {

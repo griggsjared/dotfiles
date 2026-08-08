@@ -682,39 +682,13 @@ export default function (pi: ExtensionAPI) {
 		],
 		parameters: AskUserParams,
 		renderCall(args, theme, _context) {
-			const questions = (args.questions ?? []) as {
-				question: string;
-				title?: string;
-				description?: string;
-				options: { label: string }[];
-				multiple?: boolean;
-				allowOther?: boolean;
-			}[];
-			const parts = [
+			const questionCount = (args.questions ?? []).length;
+			return new Text(
 				theme.fg("toolTitle", theme.bold("ask_user ")) +
-					theme.fg("muted", `${questions.length} question${questions.length > 1 ? "s" : ""}`),
-			];
-			for (const question of questions) {
-				if (question.title) {
-					parts.push(`  ${theme.fg("accent", theme.bold(question.title))}`);
-				}
-				parts.push(`  ${theme.fg("toolOutput", question.question)}`);
-				if (question.description) {
-					parts.push(`  ${theme.fg("muted", question.description)}`);
-				}
-				const labels = question.options.map((option) => option.label);
-				const allowOther = question.allowOther !== false;
-				if (allowOther) labels.push("Other");
-				const flags = [question.multiple ? "multi" : "", allowOther ? "other" : ""]
-					.filter(Boolean)
-					.join("+");
-				const list = labels.join(", ");
-				parts.push(
-					`  ${theme.fg("muted", list.length > 80 ? `${list.slice(0, 80)}…` : list)}` +
-						(flags ? theme.fg("dim", ` [${flags}]`) : ""),
-				);
-			}
-			return new Text(parts.join("\n"), 0, 0);
+					theme.fg("muted", `${questionCount} question${questionCount > 1 ? "s" : ""}`),
+				0,
+				0,
+			);
 		},
 
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {

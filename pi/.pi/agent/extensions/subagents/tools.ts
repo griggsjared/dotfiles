@@ -170,6 +170,7 @@ export class Batch {
     const status = result.exitCode === 0 ? "completed" : "failed";
     const icon = status === "completed" ? "✓" : "✗";
     const details: SubagentMessageDetails = {
+      jobId,
       agent: result.agent,
       task: result.task,
       title: result.title,
@@ -197,8 +198,10 @@ export class Batch {
     title: string | undefined,
     err: unknown,
     metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+    jobId?: number,
   ): void {
     const details: SubagentMessageDetails = {
+      jobId,
       agent,
       task,
       title,
@@ -226,7 +229,7 @@ export class Batch {
     const lines = this.completed.map((j) => {
       const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
       const icon = j.status === "completed" ? "✓" : "✗";
-      return `${icon} ${j.agent} (${duration}s): ${j.title ?? j.task}`;
+      return `${icon} #${j.id} ${j.agent} (${duration}s): ${j.title ?? j.task}`;
     });
     lines.unshift("**Subagents complete:**");
     this.deps.registry.markCleared(this.jobIds);
@@ -323,7 +326,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           try {
             if (ctx.hasUI) {
               const status = subagentResult.exitCode === 0 ? "completed" : "failed";
-              ctx.ui.notify(`${agent.name} subagent ${status}`, status === "completed" ? "info" : "error");
+              ctx.ui.notify(`#${jobId} ${agent.name} subagent ${status}`, status === "completed" ? "info" : "error");
             }
           } catch { /* session torn down mid-run */ }
           batch.recordCompletion(jobId);
@@ -374,7 +377,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           })
           .catch((err) => {
             stopTicker();
-            batch.sendError(agent.name, single.task, single.title, err, agent);
+            batch.sendError(agent.name, single.task, single.title, err, agent, jobId);
             batch.summary();
           });
 
@@ -437,7 +440,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           const result = failedResult(task.agent, task.task, task.title, err, agent);
           results[index] = result;
           if (execution === "async") {
-            batch.sendError(task.agent, task.task, task.title, err, agent);
+            batch.sendError(task.agent, task.task, task.title, err, agent, jobId);
             batch.summary();
           }
         }

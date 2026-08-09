@@ -30,7 +30,7 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
     const title = job.title ? `: ${job.title}` : "";
     lines.push(truncateToWidth(
-      fg("accent", `◐ ${job.agent}`) +
+      fg("accent", `◐ #${job.id} ${job.agent}`) +
         fg("muted", ` (${elapsed}s)`) +
         (title ? fg("dim", title) : ""),
       maxWidth,
@@ -44,7 +44,7 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
     const color = job.status === "completed" ? "success" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
     lines.push(truncateToWidth(
-      fg(color, `${icon} ${job.agent}`) +
+      fg(color, `${icon} #${job.id} ${job.agent}`) +
         fg("muted", ` (${duration}s)`) +
         fg("dim", label),
       maxWidth,
@@ -85,7 +85,8 @@ export function registerRenderers(pi: ExtensionAPI): void {
     if (!details) return new Text(typeof message.content === "string" ? message.content : "", 0, 0);
 
     const color = details.status === "completed" ? "success" : "error";
-    const prefix = theme.fg(color, details.icon + " " + details.agent);
+    const jobLabel = details.jobId === undefined ? details.agent : `#${details.jobId} ${details.agent}`;
+    const prefix = theme.fg(color, details.icon + " " + jobLabel);
     const usageStr = formatUsageStats(details.usage, details.model, details.thinkingLevel);
     const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
     const taskFallback = details.title ? "" : `: ${theme.fg("dim", shortLabel(undefined, details.task, 60))}`;

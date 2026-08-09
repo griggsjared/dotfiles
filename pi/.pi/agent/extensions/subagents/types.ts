@@ -65,6 +65,7 @@ export interface SubagentToolDetails {
 
 /** details payload of sendMessage()ed result entries (rendered by the message renderer). */
 export interface SubagentMessageDetails {
+  jobId?: number;
   agent: string;
   task: string;
   title?: string;

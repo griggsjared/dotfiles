@@ -39,6 +39,7 @@ export interface JobRegistry {
   pendingCompleted(): Job[];
   running(): Job[];
   recent(limit?: number): Job[];
+  get(id: number): Job | undefined;
 }
 
 export function createJobRegistry(options: { now?: () => number } = {}) {
@@ -127,5 +128,7 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
       .sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0))
       .slice(0, limit);
 
-  return { scope, jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent };
+  const get = (id: number): Job | undefined => jobs.get(id);
+
+  return { scope, jobs, add, updateLive, complete, markCleared, pendingCompleted, running, recent, get };
 }

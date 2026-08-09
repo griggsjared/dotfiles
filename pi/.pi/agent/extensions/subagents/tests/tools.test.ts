@@ -8,7 +8,7 @@ import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
 import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
-import { createStatusTool } from "../status-tools.ts";
+import { createStatusTool, registerStatusCommands } from "../status-tools.ts";
 import { EMPTY_USAGE, ENTRY_TYPE } from "../types.ts";
 import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent, type SpawnCall } from "./fake-child.ts";
 
@@ -91,8 +91,8 @@ test("Batch: summary fires exactly once when the last job completes", () => {
   assert.equal(options.deliverAs, "steer");
   const lines = message.content;
   assert.equal(lines.split("\n")[0], "**Subagents complete:**");
-  assert.match(lines, /✓ a \(.*\): t1/);
-  assert.match(lines, /✗ b \(.*\): t2/);
+  assert.match(lines, /✓ #1 a \(.*\): t1/);
+  assert.match(lines, /✗ #2 b \(.*\): t2/);
   // markCleared ran: nothing pending for display anymore
   assert.equal(registry.pendingCompleted().length, 0);
 });
@@ -160,13 +160,14 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
   });
   assert.equal(sendMessage.calls.length, 1);
   const [message, options] = sendMessage.calls[0] as [
-    { customType: string; content: string; details: { status: string; icon: string; agent: string; model?: string; thinkingLevel?: string } },
+    { customType: string; content: string; details: { status: string; icon: string; jobId?: number; agent: string; model?: string; thinkingLevel?: string } },
     { deliverAs: string },
   ];
   assert.equal(message.customType, ENTRY_TYPE);
   assert.equal(message.content.length, 20002); // 20000 + "\n…"
   assert.equal(message.details.status, "completed");
   assert.equal(message.details.icon, "✓");
+  assert.equal(message.details.jobId, id);
   assert.equal(message.details.model, "openai-codex/gpt-5.6-luna");
   assert.equal(message.details.thinkingLevel, "high");
   assert.equal(options.deliverAs, "steer");
@@ -192,8 +193,69 @@ test("subagent status includes compact model and effort", async () => {
   const tool = createStatusTool({ registry });
   const result = await tool.execute("call1", {}, undefined, undefined, {} as never);
   const text = (result.content[0] as { text: string }).text;
-  assert.match(text, /◐ scout .*openai-codex\/gpt-5\.6-luna:minimal/);
+  assert.match(text, /◐ #1 scout .*openai-codex\/gpt-5\.6-luna:minimal/);
   assert.match(text, /openai-codex\/gpt-5\.6-luna:high/);
+});
+
+test("subagent status supports individual and unknown job IDs", async () => {
+  const registry = createJobRegistry();
+  const runningId = registry.add("scout", "running task");
+  registry.updateLive(runningId, {
+    text: "latest output",
+    progress: "reading files",
+    usage: { ...EMPTY_USAGE, turns: 1 },
+    toolCalls: [{ name: "read", args: { path: "src/index.ts" } }],
+    model: "p/m",
+    thinkingLevel: "minimal",
+  });
+  const completedId = registry.add("worker", "completed task");
+  registry.complete(completedId, {
+    agent: "worker",
+    task: "completed task",
+    text: "done",
+    exitCode: 0,
+    error: "",
+  });
+  const tool = createStatusTool({ registry });
+
+  const individual = await tool.execute("call1", { jobId: runningId }, undefined, undefined, {} as never);
+  const individualText = (individual.content[0] as { text: string }).text;
+  assert.match(individualText, new RegExp(`Subagent #${runningId}`));
+  assert.match(individualText, /State: running/);
+  assert.match(individualText, /Progress: reading files/);
+  assert.match(individualText, /Usage: 1 turn p\/m:minimal/);
+  assert.match(individualText, /Tool calls \(1\):\n- read src\/index\.ts/);
+  assert.match(individualText, /Latest output:\nlatest output/);
+  assert.doesNotMatch(individualText, new RegExp(`#${completedId} worker`));
+
+  const unknown = await tool.execute("call2", { jobId: 999 }, undefined, undefined, {} as never);
+  assert.equal((unknown.content[0] as { text: string }).text, "Unknown subagent job ID: 999");
+});
+
+test("/subagent-status shares the status formatter", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "running task");
+  const notices: string[] = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand(name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) {
+      commands.set(name, command);
+    },
+  } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, { registry, activeProcs: new Set() });
+  const command = commands.get("subagent-status");
+  assert.ok(command);
+  const ctx = {
+    hasUI: true,
+    ui: { notify: (text: string) => notices.push(text) },
+  };
+
+  await command.handler("", ctx);
+  assert.match(notices.at(-1) ?? "", new RegExp(`#${id} scout`));
+  await command.handler(String(id), ctx);
+  assert.match(notices.at(-1) ?? "", new RegExp(`Subagent #${id}`));
+  await command.handler("nope", ctx);
+  assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
 });
 
 // --- createSubagentTool.execute ----------------------------------------------
@@ -441,6 +503,7 @@ test("renderFullWidget: shows progress when no tool call is active", () => {
   const lines = renderFullWidget(registry, (_color, text) => text, 80);
   const output = lines.join("\n");
   assert.ok(lines.every((line) => visibleWidth(line) <= 80));
+  assert.match(output, new RegExp(`◐ #${id} scout`));
   assert.match(output, /reading files/);
   assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
@@ -521,6 +584,7 @@ test("message renderer: renders with details and falls back without them", () =>
     {
       content: "out",
       details: {
+        jobId: 7,
         agent: "a",
         task: "t",
         status: "completed",
@@ -536,6 +600,7 @@ test("message renderer: renders with details and falls back without them", () =>
   );
   assert.ok(renderable(withDetails));
   const compactText = renderText(withDetails);
+  assert.match(compactText, /✓ #7 a/);
   assert.match(compactText, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(compactText, /\bout\b/);
   assert.match(compactText, /Ctrl\+O to expand/);

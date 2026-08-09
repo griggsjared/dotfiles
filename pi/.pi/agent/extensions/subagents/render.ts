@@ -28,11 +28,10 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
   const lines: string[] = [];
   for (const job of running) {
     const elapsed = ((now - job.startTime) / 1000).toFixed(1);
-    const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
     const title = job.title ? `: ${job.title}` : "";
     lines.push(truncateToWidth(
       fg("accent", `◐ ${job.agent}`) +
-        fg("muted", ` (${elapsed}s${metadata ? ` ${metadata}` : ""})`) +
+        fg("muted", ` (${elapsed}s)`) +
         (title ? fg("dim", title) : ""),
       maxWidth,
       "",
@@ -41,13 +40,12 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
-    const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
     const icon = job.status === "completed" ? "✓" : "✗";
     const color = job.status === "completed" ? "success" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
     lines.push(truncateToWidth(
       fg(color, `${icon} ${job.agent}`) +
-        fg("muted", ` (${duration}s${metadata ? ` ${metadata}` : ""})`) +
+        fg("muted", ` (${duration}s)`) +
         fg("dim", label),
       maxWidth,
       "",

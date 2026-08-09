@@ -442,7 +442,7 @@ test("renderFullWidget: shows progress when no tool call is active", () => {
   const output = lines.join("\n");
   assert.ok(lines.every((line) => visibleWidth(line) <= 80));
   assert.match(output, /reading files/);
-  assert.match(output, /openai-codex\/gpt-5\.6-luna:high/);
+  assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
 });
 

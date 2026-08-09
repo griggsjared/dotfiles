@@ -171,6 +171,28 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
   assert.equal(message.details.model, "openai-codex/gpt-5.6-luna");
   assert.equal(message.details.thinkingLevel, "high");
   assert.equal(options.deliverAs, "steer");
+  // Complete the first batch member before adding the second one so the
+  // summary bookkeeping represents both jobs.
+  batch.summary();
+
+  const cancelledId = registry.add("b", "cancelled");
+  batch.addJob(cancelledId);
+  registry.cancel(cancelledId, "timeout");
+  registry.complete(cancelledId, {
+    agent: "b", task: "cancelled", title: "cancelled", text: "", exitCode: 130,
+    error: "Cancelled (timeout).", cancelled: true, cancellationReason: "timeout",
+  });
+  batch.recordCompletion(cancelledId);
+  batch.deliverResult(cancelledId, {
+    agent: "b", task: "cancelled", text: "", exitCode: 130, error: "Cancelled (timeout).",
+    cancelled: true, cancellationReason: "timeout",
+  });
+  const cancelledMessage = sendMessage.calls[1]?.[0] as { details: { status: string; icon: string; cancellationReason?: string } };
+  assert.equal(cancelledMessage.details.status, "cancelled");
+  assert.equal(cancelledMessage.details.icon, "⊘");
+  assert.equal(cancelledMessage.details.cancellationReason, "timeout");
+  batch.summary();
+  assert.match((sendMessage.calls[2]?.[0] as { content: string }).content, /cancelled \(timeout\)/);
 });
 
 test("subagent status includes compact model and effort", async () => {
@@ -256,6 +278,26 @@ test("/subagent-status shares the status formatter", async () => {
   assert.match(notices.at(-1) ?? "", new RegExp(`Subagent #${id}`));
   await command.handler("nope", ctx);
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
+});
+
+test("/subagent-cancel validates and targets numeric job IDs", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "task");
+  let cancelled = 0;
+  registry.registerCancellation(id, { cancel: () => { cancelled += 1; } });
+  const notices: string[] = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = { registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command) } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, { registry });
+  const command = commands.get("subagent-cancel")!;
+  const ctx = { ui: { notify: (text: string) => notices.push(text) } };
+  await command.handler("abc", ctx);
+  assert.match(notices.at(-1) ?? "", /Usage: \/subagent-cancel/);
+  await command.handler("\\\\1", ctx);
+  assert.match(notices.at(-1) ?? "", /Usage: \/subagent-cancel/);
+  await command.handler(String(id), ctx);
+  assert.match(notices.at(-1) ?? "", /Cancelling 1/);
+  assert.equal(cancelled, 1);
 });
 
 // --- createSubagentTool.execute ----------------------------------------------
@@ -432,6 +474,98 @@ test("execute: partial-unknown sync batch returns failed with skipped count", as
   const text = (result.content[0] as { text: string }).text;
   assert.match(text, /Unknown agent "ghost"/);
   assert.match(text, /scouted/);
+});
+
+test("execute: queued cancellation does not spawn and reports its reason", async () => {
+  const children = [new FakeChild(), new FakeChild()];
+  const { spawnFn, calls } = fakeSpawnChildren(children);
+  const { tool, registry, sendMessage, ctx } = makeTool({ spawnFn });
+  const notices: string[] = [];
+  (ctx as unknown as { hasUI: boolean; ui: { notify: (text: string) => void } }).hasUI = true;
+  (ctx as unknown as { ui: { notify: (text: string) => void } }).ui = { notify: (text) => notices.push(text) };
+  await tool.execute("call1", {
+    tasks: [{ agent: "scout", task: "one" }, { agent: "scout", task: "two" }],
+      execution: "async", concurrency: 1,
+  }, undefined, undefined, ctx);
+  assert.equal(registry.cancel(2, "timeout"), true);
+  // Let the first async launch finish setup and attach its close listener.
+  await sleep(10);
+  children[0]!.finish(0);
+  await sleep(30);
+  assert.equal(calls.length, 1, "the queued cancelled job must not spawn");
+  const resultMessage = sendMessage.calls.find((call) => (call[0] as { details?: { jobId?: number } }).details?.jobId === 2);
+  assert.equal((resultMessage?.[0] as { details: { status: string; cancellationReason?: string } }).details.status, "cancelled");
+  assert.equal((resultMessage?.[0] as { details: { cancellationReason?: string } }).details.cancellationReason, "timeout");
+  assert.ok(notices.some((notice) => notice.includes("cancelled (timeout)")));
+  assert.match((sendMessage.calls.at(-1)?.[0] as { content: string }).content, /cancelled \(timeout\)/);
+});
+
+test("execute: parent-abort cancels queued sync jobs without spawning", async () => {
+  const children = [new FakeChild(), new FakeChild()];
+  const { spawnFn, calls } = fakeSpawnChildren(children);
+  const { tool, registry, ctx } = makeTool({ spawnFn });
+  const controller = new AbortController();
+  const pending = tool.execute("call1", {
+    tasks: [{ agent: "scout", task: "one" }, { agent: "scout", task: "two" }],
+    execution: "sync", concurrency: 1,
+  }, controller.signal, undefined, ctx);
+  await sleep(10);
+  controller.abort();
+  const result = await pending;
+  assert.equal(calls.length, 1);
+  assert.deepEqual(result.details.status, "cancelled");
+  assert.deepEqual(result.details.cancellationReason, "parent-abort");
+  assert.equal(registry.get(1)?.cancellationReason, "parent-abort");
+  assert.equal(registry.get(2)?.cancellationReason, "parent-abort");
+  const text = (result.content[0] as { text: string }).text;
+  assert.equal((text.match(/Cancelled \(parent-abort\)\./g) ?? []).length, 2);
+});
+
+test("execute: registry cancellation reason wins over runner reason", async () => {
+  const { tool, registry, child, ctx } = makeTool();
+  const controller = new AbortController();
+  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, controller.signal, undefined, ctx);
+  await sleep(10);
+  assert.equal(registry.cancel(1, "manual"), true);
+  controller.abort();
+  child.finish(143);
+  const result = await pending;
+  assert.equal(result.details.status, "cancelled");
+  assert.equal(result.details.cancellationReason, "manual");
+  assert.match((result.content[0] as { text: string }).text, /Cancelled \(manual\)\./);
+  const details = (registry.get(1) as { cancellationReason?: string });
+  assert.equal(details.cancellationReason, "manual");
+});
+
+test("execute: setup cancellation reports cancellation instead of failure", async () => {
+  let registry: ReturnType<typeof createJobRegistry> | undefined;
+  const spawnFn = (() => {
+    assert.ok(registry);
+    registry.cancel(1, "session-shutdown");
+    throw new Error("setup failed");
+  }) as typeof spawn;
+  const made = makeTool({ spawnFn });
+  registry = made.registry;
+  const result = await made.tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, made.ctx);
+  assert.equal(result.details.status, "cancelled");
+  assert.equal(result.details.cancellationReason, "session-shutdown");
+  const details = (made.sendMessage.calls[0]?.[0] as { details: { status: string; cancellationReason?: string } }).details;
+  assert.equal(details.status, "cancelled");
+  assert.equal(details.cancellationReason, "session-shutdown");
+});
+
+test("execute: async jobs outlive the tool-call abort signal", async () => {
+  const controller = new AbortController();
+  const { tool, child, ctx } = makeTool();
+  const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "async" }, controller.signal, undefined, ctx);
+  assert.equal(result.details.status, "launched");
+
+  controller.abort();
+  await sleep(10);
+  assert.equal(child.killed, null, "the caller's abort signal must not cancel an async job");
+
+  child.stdout.emit("data", Buffer.from(endEvent("scouted")));
+  child.finish(0);
 });
 
 test("execute: async parallel batch delivers per-job results and one summary", async () => {

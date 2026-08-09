@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import type { AgentConfig } from "./agents.ts";
 import { normalizeTitle, toolCallLabel } from "./format.ts";
 import { accumulateEvent, createStreamState, extractFinalText } from "./jsonl.ts";
-import type { SubagentResult, SubagentUpdate } from "./types.ts";
+import type { CancellationReason, SubagentResult, SubagentUpdate } from "./types.ts";
 
 const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
@@ -73,7 +73,7 @@ export async function runSubagent(
   cwd: string,
   defaultModel: string | undefined,
   options: RunSubagentOptions = {},
-): Promise<{ proc: ChildProcess; result: Promise<SubagentResult> }> {
+ ): Promise<{ proc: ChildProcess; result: Promise<SubagentResult>; cancel: (reason: CancellationReason) => void }> {
   const tmpDir = await mkdtemp(join(tmpdir(), "subagents-"));
   const promptFile = join(tmpDir, "agent.md");
   try {
@@ -125,12 +125,14 @@ export async function runSubagent(
     throw err;
   }
 
+  let cancelJob: (reason: CancellationReason) => void = () => {};
   const result = new Promise<SubagentResult>((resolve) => {
     let stdout = "";
     let stderr = "";
     let pending = "";
     let lastStreamAt = 0;
     const state = createStreamState(model ?? "");
+    let settled = false;
     const cleanup = () => {
       unlink(promptFile).catch(() => {});
       rmdir(tmpDir).catch(() => {});
@@ -169,6 +171,52 @@ export async function runSubagent(
       maybeStream();
     };
 
+    const finalize = (code: number | null, signal: NodeJS.Signals | null, processError = false) => {
+      if (settled) return;
+      settled = true;
+      removeAbortListener();
+      if (timeoutId) clearTimeout(timeoutId);
+      // Flush any final line that arrived without a trailing newline.
+      if (pending.trim()) handleLine(pending);
+      const text = state.finalText || state.streamedText || state.finalThinking || extractFinalText(stdout);
+      cleanup();
+      safeUpdate({
+        text,
+        usage: { ...state.usage },
+        toolCalls: [...state.toolCalls],
+        model: state.model,
+        thinkingLevel: options.thinkingLevel,
+      });
+      if (!text && stdout.length > 0 && !processError) {
+        const snippet = stdout.length > 2000
+          ? `...(truncated)\n${stdout.slice(-2000)}`
+          : stdout;
+        stderr += `\n[subagents] No text extracted from ${stdout.split("\n").length} JSONL lines. Last lines:\n${snippet}`;
+      }
+      if (cancelled) {
+        stderr = stderr ? `${stderr}\n` : "";
+        stderr += `Cancelled (${cancellationReason ?? "manual"}).`;
+      } else if (!processError && signal) {
+        stderr += `\n[subagents] Killed by ${signal}`;
+      } else if (!processError && code != null && code >= 128) {
+        stderr += `\n[subagents] Killed by signal ${code - 128}`;
+      }
+      resolve({
+        agent: agent.name,
+        task,
+        title,
+        text,
+        exitCode: cancelled ? 130 : processError ? 1 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
+        error: processError ? stderr || "failed to spawn subagent" : stderr,
+        cancelled,
+        cancellationReason,
+        usage: { ...state.usage },
+        toolCalls: state.toolCalls,
+        model: state.model,
+        thinkingLevel: options.thinkingLevel,
+      });
+    };
+
     proc.stdout?.on("data", (data) => {
       // The capped stdout buffer is only a parse fallback for close; live
       // state (final text, tool calls, usage) is parsed incrementally from
@@ -200,14 +248,16 @@ export async function runSubagent(
 
     const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? 0;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let timedOut = false;
-    const onAbort = () => {
+    let cancellationReason: CancellationReason | undefined;
+    let cancelled = false;
+    cancelJob = (reason) => {
+      if (settled || cancelled) return;
+      cancelled = true;
+      cancellationReason = reason;
       killProcess(proc, options.killDelayMs);
     };
-    const onTimeout = () => {
-      timedOut = true;
-      onAbort();
-    };
+    const onAbort = () => cancelJob("parent-abort");
+    const onTimeout = () => cancelJob("timeout");
     const removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
 
     if (timeoutMs > 0) {
@@ -216,71 +266,17 @@ export async function runSubagent(
 
     if (options.signal) {
       if (options.signal.aborted) {
-        onAbort();
+        cancelJob("parent-abort");
       } else {
         options.signal.addEventListener("abort", onAbort, { once: true });
       }
     }
 
-    proc.on("close", (code, signal) => {
-      removeAbortListener();
-      if (timeoutId) clearTimeout(timeoutId);
-      // Flush any final line that arrived without a trailing newline.
-      if (pending.trim()) handleLine(pending);
-      cleanup();
-      const text = state.finalText || state.streamedText || state.finalThinking || extractFinalText(stdout);
-      safeUpdate({
-        text,
-        usage: { ...state.usage },
-        toolCalls: [...state.toolCalls],
-        model: state.model,
-        thinkingLevel: options.thinkingLevel,
-      });
-      if (!text && stdout.length > 0) {
-        const snippet = stdout.length > 2000
-          ? `...(truncated)\n${stdout.slice(-2000)}`
-          : stdout;
-        stderr += `\n[subagents] No text extracted from ${stdout.split("\n").length} JSONL lines. Last lines:\n${snippet}`;
-      }
-      if (timedOut) {
-        stderr += `\n[subagents] Timed out after ${timeoutMs / 1000}s`;
-      } else if (signal) {
-        stderr += `\n[subagents] Killed by ${signal}`;
-      } else if (code != null && code >= 128) {
-        stderr += `\n[subagents] Killed by signal ${code - 128}`;
-      }
-      resolve({
-        agent: agent.name,
-        task,
-        title,
-        text,
-        exitCode: timedOut ? 124 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
-        error: stderr,
-        usage: { ...state.usage },
-        toolCalls: state.toolCalls,
-        model: state.model,
-        thinkingLevel: options.thinkingLevel,
-      });
-    });
-
-    proc.on("error", () => {
-      removeAbortListener();
-      if (timeoutId) clearTimeout(timeoutId);
-      cleanup();
-      resolve({
-        agent: agent.name,
-        task,
-        title,
-        text: "",
-        exitCode: 1,
-        error: stderr || "failed to spawn subagent",
-        model: state.model,
-        thinkingLevel: options.thinkingLevel,
-      });
-    });
+    proc.on("close", (code, signal) => finalize(code, signal));
+    proc.on("error", () => finalize(null, null, true));
   });
 
-  return { proc, result };
+  return { proc, result, cancel: cancelJob };
 }
 
 export async function runWithConcurrencyLimit<T, R>(

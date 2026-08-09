@@ -102,6 +102,33 @@ function failedResult(
   };
 }
 
+function cancelledResult(
+  agent: string,
+  task: string,
+  title: string | undefined,
+  reason: NonNullable<Job["cancellationReason"]>,
+  metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+): SubagentResult {
+  return {
+    agent,
+    task,
+    title,
+    text: "",
+    exitCode: 130,
+    error: `Cancelled (${reason}).`,
+    cancelled: true,
+    cancellationReason: reason,
+    model: metadata?.model,
+    thinkingLevel: metadata?.thinkingLevel,
+  };
+}
+
+function normalizeCancellation(result: SubagentResult, job: Job | undefined): SubagentResult {
+  const reason = job?.cancellationReason;
+  if (!reason) return result;
+  return { ...result, exitCode: 130, error: `Cancelled (${reason}).`, cancelled: true, cancellationReason: reason };
+}
+
 function startTicker(tickers: Set<ReturnType<typeof setInterval>>, fn: () => void): () => void {
   const id = setInterval(fn, 1000);
   tickers.add(id);
@@ -167,11 +194,12 @@ export class Batch {
   }
 
   deliverResult(jobId: number, result: SubagentResult): void {
-    const capped = capOutput(formatResultOutput(result), 20000);
     const job = this.deps.registry.jobs.get(jobId);
+    result = normalizeCancellation(result, job);
+    const capped = capOutput(formatResultOutput(result), 20000);
     const duration = job?.endTime ? `${((job.endTime - job.startTime) / 1000).toFixed(1)}s` : "?";
-    const status = result.exitCode === 0 ? "completed" : "failed";
-    const icon = status === "completed" ? "✓" : "✗";
+    const status = result.cancelled ? "cancelled" : result.exitCode === 0 ? "completed" : "failed";
+    const icon = status === "completed" ? "✓" : status === "cancelled" ? "⊘" : "✗";
     const details: SubagentMessageDetails = {
       jobId,
       agent: result.agent,
@@ -184,6 +212,7 @@ export class Batch {
       toolCalls: result.toolCalls,
       model: result.model,
       thinkingLevel: result.thinkingLevel,
+      cancellationReason: result.cancellationReason,
     };
     try {
       this.deps.pi.sendMessage(
@@ -231,8 +260,11 @@ export class Batch {
     if (this.completed.length === 0) return;
     const lines = this.completed.map((j) => {
       const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
-      const icon = j.status === "completed" ? "✓" : "✗";
-      return `${icon} #${j.id} ${j.agent} (${duration}s): ${j.title ?? j.task}`;
+      const icon = j.status === "completed" ? "✓" : j.status === "cancelled" ? "⊘" : "✗";
+      const cancellation = j.status === "cancelled" && j.cancellationReason
+        ? ` — cancelled (${j.cancellationReason})`
+        : "";
+      return `${icon} #${j.id} ${j.agent} (${duration}s): ${j.title ?? j.task}${cancellation}`;
     });
     lines.unshift("**Subagents complete:**");
     this.deps.registry.markCleared(this.jobIds);
@@ -261,7 +293,7 @@ export interface SubagentToolDeps {
   /** Re-discovered on every execute so agent file edits take effect immediately. */
   discover: () => Promise<AgentConfig[]>;
   registry: JobRegistry;
-  activeProcs: Set<ChildProcess>;
+  activeProcs?: Set<ChildProcess>; // retained for dependency compatibility; cancellation is registry-scoped
   activeTickers: Set<ReturnType<typeof setInterval>>;
   onUiContext: (ctx: ExtensionContext) => void;
   refresh: (ctx: ExtensionContext) => void;
@@ -288,7 +320,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           thinkingLevel: resolved.thinkingLevel ?? parentThinkingLevel,
         };
       });
-      const { registry, activeProcs, activeTickers } = deps;
+      const { registry, activeTickers } = deps;
       const agentByName = new Map(agents.map((a) => [a.name, a]));
       const available = agents.map((a) => a.name).join(", ") || "none";
       const execution: ExecutionMode = params.execution ?? "async";
@@ -301,10 +333,31 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       // Failures are returned as failed results, except spawn-level failures
       // which reject and are recorded here.
       const launchOne = async (agent: AgentConfig, task: string, jobId: number, title?: string): Promise<SubagentResult> => {
-        let proc: ChildProcess | undefined;
         try {
+          // A parent-aborted sync job may still be waiting for a concurrency
+          // slot. Mark it cancelled before checking whether to spawn it.
+          if (execution === "sync" && signal?.aborted) {
+            registry.cancel(jobId, "parent-abort");
+          }
+          // A cancelled job may have been waiting for a concurrency slot. Do
+          // not spawn it just to discover the cancellation after launch.
+          const cancellationReason = registry.get(jobId)?.cancellationReason;
+          if (cancellationReason) {
+            const result = cancelledResult(agent.name, task, title, cancellationReason, agent);
+            registry.complete(jobId, result);
+            batch.recordCompletion(jobId);
+            try {
+              if (ctx.hasUI) ctx.ui.notify(`#${jobId} ${agent.name} subagent cancelled (${cancellationReason})`, "warning");
+            } catch { /* session torn down mid-run */ }
+            return result;
+          }
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
-            signal,
+            // The tool-call signal belongs to the synchronous invocation. An
+            // async tool returns before its child completes, so retaining it
+            // would let the host abort signal cancel a job immediately after
+            // launch. Async jobs are cancelled explicitly via subagent_cancel
+            // or /subagent-cancel instead.
+            signal: execution === "sync" ? signal : undefined,
             thinkingLevel: agent.thinkingLevel,
             title,
             spawnFn: deps.spawnFn,
@@ -320,22 +373,33 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
               refresh();
             },
           });
-          proc = launched.proc;
-          activeProcs.add(proc);
-          const subagentResult = await launched.result;
-          activeProcs.delete(proc);
+          registry.registerCancellation(jobId, launched);
+          let subagentResult = await launched.result;
           registry.complete(jobId, subagentResult);
+          subagentResult = normalizeCancellation(subagentResult, registry.jobs.get(jobId));
+          // Cancellation may race the child's final close/update. The registry
+          // reason is authoritative for every downstream representation.
           refresh();
           try {
             if (ctx.hasUI) {
-              const status = subagentResult.exitCode === 0 ? "completed" : "failed";
-              ctx.ui.notify(`#${jobId} ${agent.name} subagent ${status}`, status === "completed" ? "info" : "error");
+              const status = subagentResult.cancelled ? "cancelled" : subagentResult.exitCode === 0 ? "completed" : "failed";
+              const cancellation = subagentResult.cancelled && subagentResult.cancellationReason
+                ? ` (${subagentResult.cancellationReason})`
+                : "";
+              ctx.ui.notify(`#${jobId} ${agent.name} subagent ${status}${cancellation}`, status === "completed" ? "info" : status === "cancelled" ? "warning" : "error");
             }
           } catch { /* session torn down mid-run */ }
           batch.recordCompletion(jobId);
           return subagentResult;
         } catch (err) {
-          if (proc) activeProcs.delete(proc);
+          const cancellationReason = registry.get(jobId)?.cancellationReason;
+          if (cancellationReason) {
+            const result = cancelledResult(agent.name, task, title, cancellationReason, agent);
+            registry.complete(jobId, result);
+            batch.recordCompletion(jobId);
+            refresh();
+            return result;
+          }
           registry.complete(jobId, failedResult(agent.name, task, title, err, agent));
           batch.recordCompletion(jobId);
           refresh();
@@ -359,16 +423,27 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           try {
             result = await launchOne(agent, single.task, jobId, single.title);
           } catch (err) {
-            result = failedResult(agent.name, single.task, single.title, err, agent);
+            const cancellationReason = registry.get(jobId)?.cancellationReason;
+            result = cancellationReason
+              ? cancelledResult(agent.name, single.task, single.title, cancellationReason, agent)
+              : failedResult(agent.name, single.task, single.title, err, agent);
+            if (cancellationReason) registry.complete(jobId, result);
           }
           stopTicker();
           batch.deliverResult(jobId, result);
           batch.markCleared();
           refresh();
-          const status = result.exitCode === 0 ? "completed" : "failed";
+          const status = result.cancelled ? "cancelled" : result.exitCode === 0 ? "completed" : "failed";
           return {
             content: [{ type: "text", text: capOutput(formatResultOutput(result), 20000) }],
-            details: { agent: agent.name, status, execution, jobIds: [jobId], jobScope: registry.scope },
+            details: {
+              agent: agent.name,
+              status,
+              execution,
+              jobIds: [jobId],
+              jobScope: registry.scope,
+              ...(result.cancellationReason ? { cancellationReason: result.cancellationReason } : {}),
+            },
           };
         }
 
@@ -380,7 +455,15 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           })
           .catch((err) => {
             stopTicker();
-            batch.sendError(agent.name, single.task, single.title, err, agent, jobId);
+            const cancellationReason = registry.get(jobId)?.cancellationReason;
+            if (cancellationReason) {
+              const result = cancelledResult(agent.name, single.task, single.title, cancellationReason, agent);
+              registry.complete(jobId, result);
+              batch.recordCompletion(jobId);
+              batch.deliverResult(jobId, result);
+            } else {
+              batch.sendError(agent.name, single.task, single.title, err, agent, jobId);
+            }
             batch.summary();
           });
 
@@ -416,12 +499,15 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         if (jobId === undefined) return; // unreachable: index is bounded by the concurrency loop
         const agent = agentByName.get(task.agent);
         if (!agent) {
-          const result = failedResult(
-            task.agent,
-            task.task,
-            task.title,
-            `Unknown agent "${task.agent}". Available: ${available}`,
-          );
+          const cancellationReason = registry.get(jobId)?.cancellationReason;
+          const result = cancellationReason
+            ? cancelledResult(task.agent, task.task, task.title, cancellationReason)
+            : failedResult(
+              task.agent,
+              task.task,
+              task.title,
+              `Unknown agent "${task.agent}". Available: ${available}`,
+            );
           results[index] = result;
           registry.complete(jobId, result);
           batch.recordCompletion(jobId);
@@ -440,10 +526,19 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             batch.summary();
           }
         } catch (err) {
-          const result = failedResult(task.agent, task.task, task.title, err, agent);
+          const cancellationReason = registry.get(jobId)?.cancellationReason;
+          const result = cancellationReason
+            ? cancelledResult(task.agent, task.task, task.title, cancellationReason, agent)
+            : failedResult(task.agent, task.task, task.title, err, agent);
           results[index] = result;
+          if (cancellationReason) registry.complete(jobId, result);
           if (execution === "async") {
-            batch.sendError(task.agent, task.task, task.title, err, agent, jobId);
+            if (cancellationReason) {
+              batch.recordCompletion(jobId);
+              batch.deliverResult(jobId, result);
+            } else {
+              batch.sendError(task.agent, task.task, task.title, err, agent, jobId);
+            }
             batch.summary();
           }
         }
@@ -474,10 +569,13 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           details: {
             count: tasks.length - unknownCount,
             skipped: unknownCount,
-            status: failed ? "failed" : "completed",
+            status: results.some((result) => result?.cancelled) ? "cancelled" : failed ? "failed" : "completed",
             execution,
             jobIds,
             jobScope: registry.scope,
+            ...(results.find((result) => result?.cancelled)?.cancellationReason
+              ? { cancellationReason: results.find((result) => result?.cancelled)?.cancellationReason }
+              : {}),
           },
         };
       }
@@ -532,9 +630,10 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const status = result.details?.status;
       if (status === "launched" || result.details?.jobIds?.length) return new Text("", 0, 0);
       const failed = status === "failed";
+      const cancelled = status === "cancelled";
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg(failed ? "error" : "success", `${failed ? "✗" : "✓"} ${summary}`),
+          theme.fg(cancelled ? "warning" : failed ? "error" : "success", `${cancelled ? "⊘" : failed ? "✗" : "✓"} ${summary}`),
         0,
         0,
       );

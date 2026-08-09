@@ -1,12 +1,10 @@
-import type { ChildProcess } from "node:child_process";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { capOutput, formatUsageStats, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
-import { killProcess } from "./runner.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
-const EmptyParams = Type.Object({});
+const CancelParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })), all: Type.Optional(Type.Boolean()) });
 
 const MAX_STATUS_OUTPUT = 4000;
 const MAX_STATUS_TOOL_CALLS = 8;
@@ -21,7 +19,7 @@ function formatJob(job: StatusJob, now: number): string {
     return `- ◐ #${job.id} ${job.agent} (${elapsed}s${metadata ? ` ${metadata}` : ""}): ${job.title ?? job.task}${progress}`;
   }
   const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
-  const icon = job.status === "completed" ? "✓" : "✗";
+  const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
   const usage = formatUsageStats(job.usage, job.model, job.thinkingLevel);
   return `- ${icon} #${job.id} ${job.agent} (${duration}s${usage ? ` ${usage}` : ""}): ${job.title ?? job.task}`;
 }
@@ -45,6 +43,7 @@ function formatDetailedStatus(job: Job, now: number): string {
     }
   }
   if (job.text) lines.push(`Latest output:\n${capOutput(job.text, MAX_STATUS_OUTPUT)}`);
+  if (job.cancellationReason) lines.push(`Cancellation: ${job.cancellationReason}`);
   if (job.error) lines.push(`Error:\n${capOutput(job.error, MAX_STATUS_OUTPUT)}`);
   return lines.join("\n");
 }
@@ -63,12 +62,6 @@ export function formatStatus(registry: JobRegistry, jobId?: number, now = Date.n
   return lines.join("\n");
 }
 
-function cancelAll(procs: Set<ChildProcess>): number {
-  const count = procs.size;
-  for (const proc of procs) killProcess(proc);
-  return count;
-}
-
 export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinition<typeof StatusParams, Record<string, never>> {
   return {
     name: "subagent_status",
@@ -81,24 +74,22 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
   };
 }
 
-export function createCancelTool(deps: { registry: JobRegistry; activeProcs: Set<ChildProcess> }): ToolDefinition<typeof EmptyParams, Record<string, never>> {
+export function createCancelTool(deps: { registry: JobRegistry; activeProcs?: unknown }): ToolDefinition<typeof CancelParams, Record<string, never>> {
   return {
     name: "subagent_cancel",
     label: "Cancel Subagents",
-    description: "Cancel all running subagents. Use this to abort long-running or stalled subagents.",
-    parameters: EmptyParams,
-    async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
-      const running = deps.registry.running();
-      if (running.length === 0) {
-        return { content: [{ type: "text", text: "No subagents are running." }], details: {} };
-      }
-      const count = cancelAll(deps.activeProcs);
+    description: "Cancel one subagent by jobId, or all running subagents.",
+    parameters: CancelParams,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      if (params.all && params.jobId !== undefined) throw new Error("Specify either jobId or all, not both.");
+      const count = params.all || params.jobId === undefined ? deps.registry.cancelAll() : (deps.registry.cancel(params.jobId) ? 1 : 0);
+      if (count === 0) return { content: [{ type: "text", text: params.jobId ? `No running subagent #${params.jobId}.` : "No subagents are running." }], details: {} };
       return { content: [{ type: "text", text: `Cancelling ${count} subagent${count > 1 ? "s" : ""}.` }], details: {} };
     },
   };
 }
 
-export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRegistry; activeProcs: Set<ChildProcess> }): void {
+export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRegistry; activeProcs?: unknown }): void {
   pi.registerCommand("subagent-status", {
     description: "Show running and recent subagent status or inspect a job by ID",
     handler: async (args, ctx) => {
@@ -117,16 +108,15 @@ export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRe
     },
   });
 
-  pi.registerCommand("cancel-subagents", {
-    description: "Cancel all running subagents",
-    handler: async (_args, ctx) => {
-      const running = deps.registry.running();
-      if (running.length === 0) {
-        ctx.ui.notify("No subagents are running", "info");
-        return;
+  pi.registerCommand("subagent-cancel", {
+    description: "Cancel one subagent by ID, or all running subagents",
+    handler: async (args, ctx) => {
+      const value = args.trim().toLowerCase();
+      if (!value || (value !== "all" && (!/^\d+$/.test(value) || Number(value) < 1))) {
+        ctx.ui.notify("Usage: /subagent-cancel <numeric-job-id|all>", "error"); return;
       }
-      const count = cancelAll(deps.activeProcs);
-      ctx.ui.notify(`Cancelling ${count} subagent${count > 1 ? "s" : ""}`, "info");
+      const count = value === "all" ? deps.registry.cancelAll() : (deps.registry.cancel(Number(value)) ? 1 : 0);
+      ctx.ui.notify(count ? `Cancelling ${count} subagent${count > 1 ? "s" : ""}` : "No matching running subagent", "info");
     },
   });
 }

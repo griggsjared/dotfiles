@@ -85,3 +85,52 @@ test("registry: recent sorts by endTime descending and limits", () => {
   assert.deepEqual(registry.recent(1).map((j) => j.agent), ["b"]);
   assert.deepEqual(registry.recent().map((j) => j.agent), ["b", "a"]);
 });
+
+test("registry: cancellation before registration is delivered once", () => {
+  const registry = createJobRegistry();
+  const id = registry.add("worker", "task");
+  assert.equal(registry.cancel(id, "session-shutdown"), true);
+  const reasons: string[] = [];
+  registry.registerCancellation(id, { cancel: (reason) => reasons.push(reason) });
+  assert.deepEqual(reasons, ["session-shutdown"]);
+  registry.complete(id, result());
+  assert.equal(registry.get(id)?.status, "cancelled");
+  assert.equal(registry.get(id)?.cancellationReason, "session-shutdown");
+});
+
+test("registry: unknown, terminal, and duplicate handles cannot become unreachable", () => {
+  const registry = createJobRegistry();
+  const unknown: string[] = [];
+  registry.registerCancellation(999, { cancel: (reason) => unknown.push(reason) });
+  assert.deepEqual(unknown, ["manual"]);
+
+  const id = registry.add("worker", "task");
+  const first: string[] = [];
+  const duplicate: string[] = [];
+  registry.registerCancellation(id, { cancel: (reason) => first.push(reason) });
+  registry.registerCancellation(id, { cancel: (reason) => duplicate.push(reason) });
+  assert.deepEqual(duplicate, ["manual"]);
+  registry.cancel(id, "timeout");
+  assert.deepEqual(first, ["timeout"]);
+  assert.deepEqual(duplicate, ["manual"]);
+
+  registry.complete(id, result({ cancelled: true, cancellationReason: "timeout", exitCode: 130 }));
+  const terminal: string[] = [];
+  registry.registerCancellation(id, { cancel: (reason) => terminal.push(reason) });
+  assert.deepEqual(terminal, ["timeout"]);
+});
+
+test("registry: cancellation reasons are first-wins for all lifecycle causes", () => {
+  for (const reason of ["manual", "timeout", "parent-abort", "session-shutdown"] as const) {
+    const registry = createJobRegistry();
+    const id = registry.add("worker", "task");
+    const seen: string[] = [];
+    registry.registerCancellation(id, { cancel: (value) => seen.push(value) });
+    registry.cancel(id, reason);
+    registry.cancel(id, "manual");
+    registry.complete(id, result());
+    assert.equal(registry.get(id)?.status, "cancelled");
+    assert.equal(registry.get(id)?.cancellationReason, reason);
+    assert.deepEqual(seen, [reason]);
+  }
+});

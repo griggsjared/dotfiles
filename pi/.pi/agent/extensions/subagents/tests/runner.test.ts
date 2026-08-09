@@ -115,8 +115,10 @@ test("runSubagent: timeout kills the child and reports exit code 124", async () 
     killDelayMs: 10,
   });
   const r = await result;
-  assert.equal(r.exitCode, 124);
-  assert.match(r.error, /Timed out after 0\.05s/);
+  assert.equal(r.exitCode, 130);
+  assert.equal(r.cancelled, true);
+  assert.equal(r.cancellationReason, "timeout");
+  assert.match(r.error, /Cancelled \(timeout\)/);
   assert.equal(child.killed, "SIGTERM");
 });
 
@@ -130,9 +132,10 @@ test("runSubagent: pre-aborted signal kills the child (real contract: exit 143)"
     killDelayMs: 10,
   });
   const r = await result;
-  assert.equal(r.exitCode, 1);
-  // The child handles SIGTERM and exits 128 + 15, so the parent sees code 143.
-  assert.match(r.error, /Killed by signal 15/);
+  assert.equal(r.exitCode, 130);
+  assert.equal(r.cancelled, true);
+  assert.equal(r.cancellationReason, "parent-abort");
+  assert.match(r.error, /Cancelled \(parent-abort\)/);
   assert.equal(child.killed, "SIGTERM");
 });
 
@@ -190,8 +193,10 @@ test("runSubagent: escalates SIGTERM to SIGKILL when the child ignores it", asyn
   });
   const r = await result;
   assert.equal(child.killed, "SIGKILL", "escalation fired after SIGTERM was ignored");
-  assert.equal(r.exitCode, 124);
-  assert.match(r.error, /Timed out/);
+  assert.equal(r.exitCode, 130);
+  assert.equal(r.cancelled, true);
+  assert.equal(r.cancellationReason, "timeout");
+  assert.match(r.error, /Cancelled \(timeout\)/);
 });
 
 test("runSubagent: spawn failure rejects", async () => {
@@ -205,13 +210,46 @@ test("runSubagent: spawn failure rejects", async () => {
   );
 });
 
-test("runSubagent: process error event resolves with exit code 1", async () => {
+test("runSubagent: process error preserves partial JSONL output", async () => {
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "t", "/tmp", "m", {
     spawnFn: fakeSpawn(child),
   });
+  child.stdout.emit("data", Buffer.from(JSON.stringify({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [
+        { type: "text", text: "partial answer" },
+        { type: "toolCall", name: "read", arguments: { path: "README.md" } },
+      ],
+      usage: { input: 5, output: 3, totalTokens: 8, cost: 0.0001 },
+    },
+  })));
   child.emit("error");
+
   const r = await result;
   assert.equal(r.exitCode, 1);
+  assert.equal(r.text, "partial answer");
+  assert.deepEqual(r.usage, {
+    turns: 1, input: 5, output: 3, cacheRead: 0, cacheWrite: 0, cost: 0.0001, contextTokens: 8,
+  });
+  assert.deepEqual(r.toolCalls, [{ name: "read", args: { path: "README.md" } }]);
   assert.equal(r.error, "failed to spawn subagent");
+});
+
+test("runSubagent: cancellation survives process error and later close", async () => {
+  const child = new FakeChild();
+  const { result, cancel } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+  });
+  cancel("manual");
+  child.emit("error");
+  child.emit("close", 1, null);
+
+  const r = await result;
+  assert.equal(r.exitCode, 130);
+  assert.equal(r.cancelled, true);
+  assert.equal(r.cancellationReason, "manual");
+  assert.match(r.error, /Cancelled \(manual\)/);
 });

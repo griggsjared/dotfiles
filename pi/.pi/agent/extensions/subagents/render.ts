@@ -40,8 +40,8 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
   }
   for (const job of completed) {
     const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
-    const icon = job.status === "completed" ? "✓" : "✗";
-    const color = job.status === "completed" ? "success" : "error";
+    const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
+    const color = job.status === "completed" ? "success" : job.status === "cancelled" ? "warning" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
     lines.push(truncateToWidth(
       fg(color, `${icon} #${job.id} ${job.agent}`) +
@@ -84,13 +84,16 @@ export function registerRenderers(pi: ExtensionAPI): void {
     const details = message.details;
     if (!details) return new Text(typeof message.content === "string" ? message.content : "", 0, 0);
 
-    const color = details.status === "completed" ? "success" : "error";
+    const color = details.status === "completed" ? "success" : details.status === "cancelled" ? "warning" : "error";
     const jobLabel = details.jobId === undefined ? details.agent : `#${details.jobId} ${details.agent}`;
     const prefix = theme.fg(color, details.icon + " " + jobLabel);
     const usageStr = formatUsageStats(details.usage, details.model, details.thinkingLevel);
     const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
     const taskFallback = details.title ? "" : `: ${theme.fg("dim", shortLabel(undefined, details.task, 60))}`;
-    const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${title}${taskFallback}`;
+    const cancellation = details.status === "cancelled" && details.cancellationReason
+      ? theme.fg("warning", ` — cancelled (${details.cancellationReason})`)
+      : "";
+    const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${title}${taskFallback}${cancellation}`;
     const statsLine = usageStr ? theme.fg("dim", usageStr) : undefined;
     const mdTheme = getMarkdownTheme();
     const output = typeof message.content === "string" ? message.content : "";

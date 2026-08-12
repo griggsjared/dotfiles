@@ -30,7 +30,11 @@ abbrev() {
 }
 
 if [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
-    out="$out $(printf "\033[34m%s/%s\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")")"
+    context_color="\033[34m"
+    if [ "$total_in" -ge 200000 ]; then
+        context_color="\033[5;31m"
+    fi
+    out="$out $(printf "${context_color}%s/%s\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")")"
 fi
 
 if [ -n "$mode" ] && [ "$mode" != "null" ] && [ "$mode" != "default" ]; then
@@ -60,14 +64,14 @@ if [ -n "$five_pct" ]; then
     if [ -n "$five_reset" ]; then
         five_str="$five_str ($(fmt_remaining "$five_reset"))"
     fi
-    out="$out $(printf "\033[36m%s\033[0m" "$five_str")"
+    out="$out $(printf "\033[38;2;114;114;113m%s\033[0m" "$five_str")"
 fi
 if [ -n "$week_pct" ]; then
     week_str="$(printf '%.0f' "$week_pct")%"
     if [ -n "$week_reset" ]; then
         week_str="$week_str ($(fmt_remaining "$week_reset"))"
     fi
-    out="$out $(printf "\033[91m%s\033[0m" "$week_str")"
+    out="$out $(printf "\033[38;2;114;114;113m%s\033[0m" "$week_str")"
 fi
 
 printf "%s" "$out"

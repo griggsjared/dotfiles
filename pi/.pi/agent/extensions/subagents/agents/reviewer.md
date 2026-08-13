@@ -1,6 +1,7 @@
 ---
 name: reviewer
 description: Read-only review for explicit requests or justified broad/high-risk verification; correctness, risks, and missing tests; no edits or commits
+thinkingLevel: max
 tools: read, grep, find, ls, bash
 ---
 

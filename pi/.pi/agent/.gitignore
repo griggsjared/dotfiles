@@ -1,12 +1,11 @@
-# whitelist: only track theme and statusline; everything else is machine-local
+# whitelist: only track shared Pi configuration; everything else is machine-local
 *
 !*/
 !.gitignore
 !themes/**
 !extensions/package.json
 !extensions/header.ts
-!extensions/statusline.ts
-!extensions/codex-usage.ts
+!extensions/statusline/**
 !extensions/working-indicator.ts
 !extensions/web-search.ts
 !extensions/ask-user.ts

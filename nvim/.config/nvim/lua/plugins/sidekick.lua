@@ -136,7 +136,7 @@ end
 local function cycle_clis()
 	local State = require("sidekick.cli.state")
 	local clis = vim.tbl_filter(function(s)
-		return s.attached and not s.external and s.terminal
+		return not s.external and s.terminal
 	end, State.get())
 	if #clis == 0 then
 		open_cli()

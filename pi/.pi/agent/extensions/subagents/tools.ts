@@ -144,11 +144,11 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     : "Use the subagent tool with an available agent discovered from the agents directory.";
   return [
     agentGuidance,
-    "For code reviews, tell the reviewer to use the peer-review skill when available.",
-    "For reviews of broad changes, run parallel read-only reviewers with separate lenses (for example lifecycle/races, API/UX, and tests/regressions), then synthesize their findings.",
+    "Use the reviewer agent only for explicit user requests to review code or changes, or for clearly broad/high-risk changes where independent verification is warranted; do not use it merely because implementation finished or a commit was requested. Tell the reviewer to use the peer-review skill when available; use scout for general exploration or investigation.",
+    "For broad/high-risk reviews, use parallel read-only reviewers with separate lenses (for example lifecycle/races, API/UX, and tests/regressions) only when the scope justifies it; otherwise use one reviewer and synthesize its findings.",
     "For tasks spanning multiple independent concerns or more than three files, split the work into parallel, non-overlapping subagent tasks; assign explicit file ownership and use an integration pass for shared APIs.",
     "Do not split tightly coupled changes or small tasks; avoid having multiple workers edit the same files.",
-    "For ANY task requiring reading or exploring multiple files or directories — use a subagent. Do not do broad exploration yourself.",
+    "For substantial or broad exploration across multiple files or directories, use the scout agent; handle routine small investigations directly.",
     "Prefer execution:'async' (the default) for every subagent call: launch it, then end your turn or continue with independent work; results arrive as follow-up messages. Use execution:'sync' only when the very next step in this turn cannot be produced without the subagent's result — never to avoid ending the turn or because waiting inline feels more reliable.",
     "The subagent tool's async jobs return immediately and deliver results via follow-up messages; do not block or poll for them.",
     "After launching async subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",

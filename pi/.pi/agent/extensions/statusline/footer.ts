@@ -112,7 +112,7 @@ export function registerStatusline(pi: ExtensionAPI) {
 					if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
 						const used = formatTokens(contextUsage.tokens);
 						const total = formatTokens(contextUsage.contextWindow);
-						line += ` ${theme.fg("borderAccent", `${used}/${total}`)}`;
+						line += ` ${theme.fg(contextUsage.tokens >= 200000 ? "error" : "borderAccent", `${used}/${total}`)}`;
 					}
 
 					const usage = decodeFooterUsageStatus(statuses.get(USAGE_STATUS_KEY));

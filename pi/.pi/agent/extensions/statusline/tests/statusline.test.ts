@@ -69,19 +69,23 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 	let rendered: any;
 	const statuses = new Map([["provider-usage", JSON.stringify({ provider: "openai-codex", state: "ready", capturedAtMs: 0, windows: [{ kind: "rolling", label: "5h", usedPercent: 42, resetAtMs: 0 }] })]]);
 	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	let contextTokens = 1000;
 	const context = {
 		model: { name: "a-very-long-model-name", provider: "openai-codex" }, thinkingLevel: "off",
-		getContextUsage: () => ({ tokens: 1000, contextWindow: 10000 }),
+		getContextUsage: () => ({ tokens: contextTokens, contextWindow: 1000000 }),
 		sessionManager: { getLeafId: () => null, getBranch: () => [] },
 		ui: { setFooter(callback: any) { footer = callback; } },
 	};
 	try {
 		handlers.get("session_start")?.({}, context);
 		const ansi = (color: string, value: string) => {
-			const codes: Record<string, number> = { success: 32, warning: 33, borderAccent: 34, dim: 2, muted: 90 };
+			const codes: Record<string, number> = { success: 32, error: 31, warning: 33, borderAccent: 34, dim: 2, muted: 90 };
 			return `\x1b[${codes[color] ?? 37}m${value}\x1b[0m`;
 		};
 		rendered = footer({ invalidate() {} }, { fg: ansi, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		assert.match(rendered.render(120)[0], /\x1b\[34m1\.0k\/1m\x1b\[0m/);
+		contextTokens = 200000;
+		assert.match(rendered.render(120)[0], /\x1b\[31m200k\/1m\x1b\[0m/);
 		const lines = rendered.render(20);
 		assert.equal(lines.length, 1);
 		assert.ok([...lines[0]].length >= 0);

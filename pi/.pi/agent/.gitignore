@@ -6,7 +6,7 @@
 !extensions/package.json
 !extensions/header.ts
 !extensions/statusline/**
-!extensions/working-indicator.ts
+!extensions/working-indicator/**
 !extensions/web-search.ts
 !extensions/ask-user.ts
 !extensions/modes.ts

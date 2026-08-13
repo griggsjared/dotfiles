@@ -166,6 +166,17 @@ const SPINNER_SYMBOLS = ["✻", "✽", "✻", "✾"];
 // between session_shutdown and the fresh runtime would never be cleared by its
 // own handlers. The fresh runtime clears the registry on session_start.
 const TIMER_REGISTRY_KEY = "__pi_working_indicator_timers__";
+const WORKING_GENERATION_KEY = "__pi_working_indicator_generation__";
+
+function beginWorkingGeneration(): symbol {
+	const generation = Symbol();
+	(globalThis as Record<string, unknown>)[WORKING_GENERATION_KEY] = generation;
+	return generation;
+}
+
+function isCurrentWorkingGeneration(generation: symbol): boolean {
+	return (globalThis as Record<string, unknown>)[WORKING_GENERATION_KEY] === generation;
+}
 
 function liveTimers(): Set<ReturnType<typeof setInterval>> {
 	const g = globalThis as Record<string, unknown>;
@@ -189,7 +200,7 @@ function patternColor(
 	colors: PaletteColor[],
 	intensityDirection: IntensityDirection,
 ): PatternColor {
-	const color = colors[0]!;
+	const color = colors[0] ?? "accent";
 	const intensity = (value: ColorIntensity): ColorIntensity => {
 		if (intensityDirection === "brighten") return value;
 		return value === "dim" ? "bright" : "normal";
@@ -230,10 +241,10 @@ function patternColor(
 			return index === first ? primary : index === second ? secondary : base;
 		}
 		case "rainbow":
-			return { color: colors[(index + offset) % colors.length]!, intensity: "normal" };
+			return { color: colors[(index + offset) % colors.length] ?? color, intensity: "normal" };
 		case "palettePulse": {
 			const colorIndex = Math.floor(offset * COLOR_INTERVAL_MS / PALETTE_PULSE_INTERVAL_MS) % colors.length;
-			return { color: colors[colorIndex]!, intensity: "normal" };
+			return { color: colors[colorIndex] ?? color, intensity: "normal" };
 		}
 	}
 }
@@ -248,7 +259,16 @@ function formatTokens(count: number): string {
 function formatDuration(milliseconds: number): string {
 	const seconds = Math.floor(milliseconds / 1000);
 	const minutes = Math.floor(seconds / 60);
-	return minutes > 0 ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
+	return minutes > 0 ? `${minutes}m${seconds % 60}s` : `${seconds}s`;
+}
+
+function messageCharacters(content: readonly { type: string; text?: string; thinking?: string; arguments?: unknown }[]): number {
+	return content.reduce((total, block) => {
+		if (block.type === "text") return total + (block.text?.length ?? 0);
+		if (block.type === "thinking") return total + (block.thinking?.length ?? 0);
+		if (block.type === "toolCall") return total + JSON.stringify(block.arguments ?? {}).length;
+		return total;
+	}, 0);
 }
 
 function styleWorkingText(
@@ -267,11 +287,13 @@ function styleWorkingText(
 
 export default function (pi: ExtensionAPI) {
 	let workingRunId = 0;
+	let runtimeGeneration: symbol | undefined;
 	let startedAt = 0;
 	// Task totals, kept across agent runs (reset on each new user prompt):
 	// usage of completed messages plus the message currently streaming.
 	let settledTokens = 0;
 	let inFlightTokens = 0;
+	let inFlightCharacters = 0;
 	let outputTokens = 0;
 	let renderWorkingMessage: (() => void) | undefined;
 	let currentPhase: Phase = "thinking";
@@ -296,11 +318,13 @@ export default function (pi: ExtensionAPI) {
 		let index = Math.floor(Math.random() * words.length);
 		while (words.length > 1 && index === last) index = (index + 1) % words.length;
 		lastWordIndexByBucket[bucket] = index;
-		return words[index]!;
+		return words[index] ?? words[0] ?? "Working";
 	};
 
 	pi.on("agent_start", (_event, ctx) => {
+		if (runtimeGeneration === undefined || !isCurrentWorkingGeneration(runtimeGeneration)) return;
 		clearAllWorkingTimers();
+		const generation = runtimeGeneration;
 		const runId = ++workingRunId;
 		if (startedAt === 0) startedAt = Date.now();
 		currentPhase = "thinking";
@@ -309,8 +333,8 @@ export default function (pi: ExtensionAPI) {
 
 		const firstPatternIndex = Math.floor(Math.random() * WORKING_PATTERNS.length);
 		const plans = Array.from({ length: 12 }, (_, index) => {
-			const pattern = WORKING_PATTERNS[(firstPatternIndex + index) % WORKING_PATTERNS.length];
-			const color = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)]!;
+			const pattern = WORKING_PATTERNS[(firstPatternIndex + index) % WORKING_PATTERNS.length] ?? "shimmer";
+			const color = THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)] ?? "accent";
 			const randomizeIntensity = pattern === "shimmer"
 				|| pattern === "bounce"
 				|| pattern === "ripple"
@@ -336,17 +360,23 @@ export default function (pi: ExtensionAPI) {
 			return Array.from({ length: spinnerFramesPerWord }, (_, frameIndex) => {
 				const symbolIndex = frameIndex % symbols.length;
 				const colorOffset = Math.floor(frameIndex * SPINNER_INTERVAL_MS / COLOR_INTERVAL_MS);
+				const symbol = symbols[symbolIndex] ?? symbols[0] ?? "✻";
 				return styleColor(
 					patternColor(pattern, symbolIndex, symbols.length, colorOffset, colors, intensityDirection),
-					symbols[symbolIndex],
+					symbol,
 				);
 			});
 		});
 		let lastWordCycle = -1;
 		let lastBucket = "";
 		let currentWord = "";
+		let lastWorkingMessage = "";
+		let lastWorkingSecond = -1;
+		let lastWorkingBucket = "";
+		let lastWorkingTokens = "";
+		let lastWorkingColorFrame = -1;
 		renderWorkingMessage = () => {
-			if (runId !== workingRunId) return;
+			if (runId !== workingRunId || !isCurrentWorkingGeneration(generation)) return;
 			const elapsed = Date.now() - startedAt;
 			const cycle = Math.floor(elapsed / WORD_INTERVAL_MS);
 			const bucket = bucketFor(currentPhase, currentTool);
@@ -355,17 +385,31 @@ export default function (pi: ExtensionAPI) {
 				lastWordCycle = cycle;
 				currentWord = pickWord(bucket);
 			}
-			const { pattern, colors, intensityDirection } = plans[cycle % plans.length];
+			const plan = plans[cycle % plans.length];
+			if (!plan) return;
+			const second = Math.floor(elapsed / 1000);
+			const tokenDisplay = formatTokens(outputTokens);
+			const colorFrame = Math.floor(elapsed / COLOR_INTERVAL_MS);
+			if (second === lastWorkingSecond && bucket === lastWorkingBucket && tokenDisplay === lastWorkingTokens && colorFrame === lastWorkingColorFrame) return;
+			lastWorkingSecond = second;
+			lastWorkingBucket = bucket;
+			lastWorkingTokens = tokenDisplay;
+			lastWorkingColorFrame = colorFrame;
+			const { pattern, colors, intensityDirection } = plan;
 			const message = styleWorkingText(
 				`${currentWord}…`,
 				(style, character) => styleColor(style, character),
 				pattern,
-				Math.floor(elapsed / COLOR_INTERVAL_MS),
+				colorFrame,
 				colors,
 				intensityDirection,
 			);
-			const details = `(${formatDuration(elapsed)} · ↓ ${formatTokens(outputTokens)} tokens)`;
-			ctx.ui.setWorkingMessage(`${message} ${ctx.ui.theme.fg("dim", details)}`);
+			const details = `(${formatDuration(elapsed)} · ↓ ${tokenDisplay} tokens)`;
+			const workingMessage = `${message} ${ctx.ui.theme.fg("dim", details)}`;
+			if (workingMessage !== lastWorkingMessage) {
+				lastWorkingMessage = workingMessage;
+				ctx.ui.setWorkingMessage(workingMessage);
+			}
 		};
 		renderWorkingMessage();
 		ctx.ui.setWorkingVisible(true);
@@ -381,7 +425,7 @@ export default function (pi: ExtensionAPI) {
 		let timer: ReturnType<typeof setInterval>;
 		let lastCycle = startCycle;
 		timer = setInterval(() => {
-			if (runId !== workingRunId) {
+			if (runId !== workingRunId || !isCurrentWorkingGeneration(generation)) {
 				clearInterval(timer);
 				liveTimers().delete(timer);
 				return;
@@ -393,14 +437,16 @@ export default function (pi: ExtensionAPI) {
 			}
 			renderWorkingMessage?.();
 		}, COLOR_INTERVAL_MS);
+		timer.unref?.();
 		liveTimers().add(timer);
 	});
 
 	pi.on("input", (event) => {
-		if (event.source !== "interactive") return;
+		if (event.streamingBehavior === "steer" || event.streamingBehavior === "followUp") return;
 		startedAt = Date.now();
 		settledTokens = 0;
 		inFlightTokens = 0;
+		inFlightCharacters = 0;
 		outputTokens = 0;
 		renderWorkingMessage?.();
 	});
@@ -411,23 +457,21 @@ export default function (pi: ExtensionAPI) {
 		if (event.message.usage.output > 0) {
 			inFlightTokens = event.message.usage.output;
 		} else {
-			const characters = event.message.content.reduce((total, block) => {
-				if (block.type === "text") return total + block.text.length;
-				if (block.type === "thinking") return total + block.thinking.length;
-				if (block.type === "toolCall") return total + JSON.stringify(block.arguments).length;
-				return total;
-			}, 0);
-			const estimate = Math.ceil(characters / 4);
-			if (estimate > inFlightTokens) {
-				inFlightTokens = estimate;
+			const update = event.assistantMessageEvent;
+			if ("delta" in update && typeof update.delta === "string") {
+				inFlightCharacters += update.delta.length;
 			}
+			if (update.type === "thinking_end" || update.type === "text_end" || update.type === "toolcall_end") {
+				inFlightCharacters = Math.max(inFlightCharacters, messageCharacters(event.message.content));
+			}
+			const estimate = Math.ceil(inFlightCharacters / 4);
+			if (estimate > inFlightTokens) inFlightTokens = estimate;
 		}
 		outputTokens = settledTokens + inFlightTokens;
-		for (let index = event.message.content.length - 1; index >= 0; index--) {
-			const block = event.message.content[index]!;
-			if (block.type === "thinking") { currentPhase = "thinking"; break; }
-			if (block.type === "text") { currentPhase = "writing"; break; }
-			if (block.type === "toolCall") break;
+		switch (event.assistantMessageEvent.type) {
+			case "thinking_start": case "thinking_delta": case "thinking_end": currentPhase = "thinking"; break;
+			case "text_start": case "text_delta": case "text_end": currentPhase = "writing"; break;
+			case "toolcall_start": case "toolcall_delta": case "toolcall_end": currentPhase = "tooling"; break;
 		}
 		renderWorkingMessage?.();
 	});
@@ -437,6 +481,7 @@ export default function (pi: ExtensionAPI) {
 		const usageOutput = event.message.usage.output;
 		settledTokens += usageOutput > 0 ? usageOutput : inFlightTokens;
 		inFlightTokens = 0;
+		inFlightCharacters = 0;
 		outputTokens = settledTokens;
 		renderWorkingMessage?.();
 	});
@@ -474,7 +519,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("agent_settled", (_event, ctx) => {
-		if (!ctx.isIdle()) return;
+		if (runtimeGeneration === undefined || !isCurrentWorkingGeneration(runtimeGeneration) || !ctx.isIdle()) return;
 		workingRunId++;
 		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
@@ -484,23 +529,39 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
+		if (runtimeGeneration === undefined || !isCurrentWorkingGeneration(runtimeGeneration)) return;
+		runtimeGeneration = undefined;
 		workingRunId++;
 		clearAllWorkingTimers();
 		renderWorkingMessage = undefined;
 		startedAt = 0;
 		settledTokens = 0;
 		inFlightTokens = 0;
+		inFlightCharacters = 0;
 		outputTokens = 0;
 		ctx.ui.setWorkingMessage();
 		ctx.ui.setWorkingIndicator();
 		ctx.ui.setWorkingVisible(false);
 	});
 
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event, ctx) => {
+		if (ctx.hasUI === false) return;
+		// Invalidate callbacks from a runtime being replaced during reload. A
+		// callback can already be queued even after its timer was cleared.
+		runtimeGeneration = beginWorkingGeneration();
+		workingRunId++;
 		clearAllWorkingTimers();
+		renderWorkingMessage = undefined;
+		currentPhase = "thinking";
+		currentTool = undefined;
+		activeTools.clear();
 		startedAt = Date.now();
 		settledTokens = 0;
 		inFlightTokens = 0;
+		inFlightCharacters = 0;
 		outputTokens = 0;
+		ctx.ui.setWorkingMessage();
+		ctx.ui.setWorkingIndicator();
+		ctx.ui.setWorkingVisible(false);
 	});
 }

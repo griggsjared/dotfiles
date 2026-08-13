@@ -2,6 +2,7 @@
 *
 !*/
 !.gitignore
+!settings.shared.json
 !themes/**
 !extensions/package.json
 !extensions/header.ts

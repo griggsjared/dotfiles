@@ -1,0 +1,146 @@
+#!/bin/zsh
+
+agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+shared="$agent_dir/settings.shared.json"
+local_settings="$agent_dir/settings.local.json"
+settings="$agent_dir/settings.json"
+snapshot="$agent_dir/.settings.snapshot.json"
+wrapper_path="${0:A}"
+real_pi=""
+
+for dir in "${path[@]}"; do
+  candidate="${dir:-.}/pi"
+  if [[ -f "$candidate" && -x "$candidate" && "${candidate:A}" != "$wrapper_path" ]]; then
+    real_pi="${candidate:A}"
+    break
+  fi
+done
+
+if [[ -z "$real_pi" ]]; then
+  echo "pi: could not find the underlying Pi executable" >&2
+  exit 1
+fi
+
+if [[ ! -f "$shared" ]]; then
+  exec "$real_pi" "$@"
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "pi: jq not found; starting Pi without layered settings" >&2
+  exec "$real_pi" "$@"
+fi
+
+for config in "$shared" "$local_settings" "$settings" "$snapshot"; do
+  if [[ -f "$config" ]] && ! jq -e 'type == "object"' "$config" >/dev/null 2>&1; then
+    echo "pi: invalid settings file: $config" >&2
+    exit 1
+  fi
+done
+
+if [[ ! -f "$local_settings" ]]; then
+  tmp="$(mktemp "$agent_dir/.settings.local.XXXXXX")" || exit 1
+  if [[ -f "$settings" ]]; then
+    jq '.' "$settings" > "$tmp"
+  else
+    printf '{}\n' > "$tmp"
+  fi
+
+  if [[ $? -ne 0 ]] || ! mv "$tmp" "$local_settings"; then
+    rm -f "$tmp"
+    echo "pi: failed to initialize local settings" >&2
+    exit 1
+  fi
+fi
+
+if [[ -f "$snapshot" && -f "$settings" ]]; then
+  tmp="$(mktemp "$agent_dir/.settings.local.XXXXXX")" || exit 1
+  if ! jq -s '
+    def apply_changes($local; $before; $after):
+      if $before == $after then
+        $local
+      elif (($before | type) == "object" and ($after | type) == "object") then
+        reduce (((($before | keys_unsorted) + ($after | keys_unsorted)) | unique)[]) as $key
+          (if ($local | type) == "object" then $local else {} end;
+            if ($after | has($key) | not) then
+              del(.[$key])
+            elif ($before | has($key) | not) then
+              .[$key] = $after[$key]
+            elif $before[$key] == $after[$key] then
+              .
+            else
+              .[$key] = apply_changes(.[$key]; $before[$key]; $after[$key])
+            end)
+      else
+        $after
+      end;
+
+    .[0] as $local
+    | .[1] as $before
+    | .[2] as $after
+    | apply_changes($local; $before; $after)
+  ' "$local_settings" "$snapshot" "$settings" > "$tmp"; then
+    rm -f "$tmp"
+    echo "pi: failed to reconcile local settings" >&2
+    exit 1
+  fi
+
+  if ! mv "$tmp" "$local_settings"; then
+    rm -f "$tmp"
+    echo "pi: failed to save local settings" >&2
+    exit 1
+  fi
+fi
+
+tmp="$(mktemp "$agent_dir/.settings.local.XXXXXX")" || exit 1
+if ! jq -s '
+  def sparse($shared; $local):
+    reduce ($local | keys_unsorted[]) as $key
+      ({};
+        if (($shared | type) == "object" and ($shared | has($key))) then
+          if (($local[$key] | type) == "object" and ($shared[$key] | type) == "object") then
+            sparse($shared[$key]; $local[$key]) as $nested
+            | if ($nested | length) > 0 then .[$key] = $nested else . end
+          elif $local[$key] != $shared[$key] then
+            .[$key] = $local[$key]
+          else
+            .
+          end
+        else
+          .[$key] = $local[$key]
+        end);
+
+  sparse(.[0]; .[1])
+' "$shared" "$local_settings" > "$tmp"; then
+  rm -f "$tmp"
+  echo "pi: failed to normalize local settings" >&2
+  exit 1
+fi
+
+if ! mv "$tmp" "$local_settings"; then
+  rm -f "$tmp"
+  echo "pi: failed to save local settings" >&2
+  exit 1
+fi
+
+tmp="$(mktemp "$agent_dir/.settings.XXXXXX")" || exit 1
+if ! jq -s 'reduce .[] as $item ({}; . * $item)' \
+  "$shared" "$local_settings" > "$tmp"; then
+  rm -f "$tmp"
+  echo "pi: failed to merge settings" >&2
+  exit 1
+fi
+
+if ! mv "$tmp" "$settings"; then
+  rm -f "$tmp"
+  echo "pi: failed to save merged settings" >&2
+  exit 1
+fi
+
+tmp="$(mktemp "$agent_dir/.settings.snapshot.XXXXXX")" || exit 1
+if ! cp "$settings" "$tmp" || ! mv "$tmp" "$snapshot"; then
+  rm -f "$tmp"
+  echo "pi: failed to save settings snapshot" >&2
+  exit 1
+fi
+
+exec "$real_pi" "$@"

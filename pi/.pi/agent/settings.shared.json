@@ -1,0 +1,9 @@
+{
+  "theme": "rpg",
+  "markdown": {
+    "codeBlockIndent": ""
+  },
+  "quietStartup": true,
+  "enableInstallTelemetry": false,
+  "enableSkillCommands": true
+}

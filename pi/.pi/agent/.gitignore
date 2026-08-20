@@ -10,5 +10,4 @@
 !extensions/working-indicator/**
 !extensions/web-search.ts
 !extensions/ask-user.ts
-!extensions/modes.ts
 !extensions/subagents/**

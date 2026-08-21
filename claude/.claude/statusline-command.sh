@@ -62,14 +62,14 @@ fmt_remaining() {
 if [ -n "$five_pct" ]; then
     five_str="$(printf '%.0f' "$five_pct")%"
     if [ -n "$five_reset" ]; then
-        five_str="$five_str ($(fmt_remaining "$five_reset"))"
+        five_str="$five_str($(fmt_remaining "$five_reset"))"
     fi
     out="$out $(printf "\033[38;2;114;114;113m%s\033[0m" "$five_str")"
 fi
 if [ -n "$week_pct" ]; then
     week_str="$(printf '%.0f' "$week_pct")%"
     if [ -n "$week_reset" ]; then
-        week_str="$week_str ($(fmt_remaining "$week_reset"))"
+        week_str="$week_str($(fmt_remaining "$week_reset"))"
     fi
     out="$out $(printf "\033[38;2;114;114;113m%s\033[0m" "$week_str")"
 fi

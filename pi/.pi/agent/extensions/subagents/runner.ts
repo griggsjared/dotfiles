@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentConfig } from "./agents.ts";
 import { normalizeTitle, toolCallLabel } from "./format.ts";
@@ -87,6 +87,8 @@ export async function runSubagent(
   const model = agent.model || defaultModel;
   const tools = (agent.tools ?? DEFAULT_TOOLS).join(",");
   const title = normalizeTitle(options.title);
+  const guardExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
+  const hasGuardExtension = !!guardExtension && isAbsolute(guardExtension);
   const args = [
     ...base.args,
     "--mode",
@@ -94,6 +96,7 @@ export async function runSubagent(
     "-p",
     "--no-session",
     "--no-extensions",
+    ...(hasGuardExtension ? ["--extension", guardExtension] : []),
     "--no-context-files",
     ...(model ? ["--model", model] : []),
     ...(options.thinkingLevel ? ["--thinking", options.thinkingLevel] : []),
@@ -113,10 +116,13 @@ export async function runSubagent(
     const nodeOptions = process.env.NODE_OPTIONS
       ? `${process.env.NODE_OPTIONS} --max-old-space-size=8192`
       : "--max-old-space-size=8192";
+    const childEnv: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: nodeOptions };
+    delete childEnv.PI_WORKSPACE_GUARD_CHILD;
+    if (hasGuardExtension) childEnv.PI_WORKSPACE_GUARD_CHILD = "1";
     proc = (options.spawnFn ?? spawn)(base.cmd, args, {
       cwd,
       shell: false,
-      env: { ...process.env, NODE_OPTIONS: nodeOptions },
+      env: childEnv,
     });
     proc.stdin?.end(); // close stdin so child doesn't wait for pipe input
   } catch (err) {

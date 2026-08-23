@@ -177,10 +177,83 @@ test("runSubagent: spawns the child with the full pi CLI contract", async () => 
   assert.ok(flags.includes("--append-system-prompt"));
   assert.ok(flags.some((a) => a === "Title: my title"));
   assert.ok(flags.some((a) => a === "Task: do it"));
+  assert.equal(options.cwd, "/tmp");
   assert.match(
     String((options.env as { NODE_OPTIONS?: string } | undefined)?.NODE_OPTIONS),
     /--max-old-space-size=8192/,
   );
+});
+
+test("runSubagent: loads the workspace guard extension without enabling recursive extensions", async () => {
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const previousExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
+  const previousChild = process.env.PI_WORKSPACE_GUARD_CHILD;
+  process.env.PI_WORKSPACE_GUARD_EXTENSION = "/workspace/guard-extension.ts";
+  process.env.PI_WORKSPACE_GUARD_CHILD = "parent";
+  try {
+    const { result } = await runSubagent(agent, "do it", "/tmp", "m", {
+      spawnFn: ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+        calls.push({ cmd, args, options: options ?? {} });
+        return child;
+      }) as unknown as typeof spawn,
+    });
+    child.finish(0);
+    await result;
+  } finally {
+    if (previousExtension === undefined) delete process.env.PI_WORKSPACE_GUARD_EXTENSION;
+    else process.env.PI_WORKSPACE_GUARD_EXTENSION = previousExtension;
+    if (previousChild === undefined) delete process.env.PI_WORKSPACE_GUARD_CHILD;
+    else process.env.PI_WORKSPACE_GUARD_CHILD = previousChild;
+  }
+
+  const { args, options } = calls[0]!;
+  const flags = args.slice(1);
+  const extensionIndex = flags.indexOf("--extension");
+  assert.deepEqual(flags.slice(extensionIndex, extensionIndex + 2), ["--extension", "/workspace/guard-extension.ts"]);
+  assert.ok(flags.includes("--no-extensions"));
+  assert.equal(options.cwd, "/tmp");
+  assert.equal((options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, "1");
+  assert.match(String((options.env as { NODE_OPTIONS?: string }).NODE_OPTIONS), /--max-old-space-size=8192/);
+});
+
+test("runSubagent: ignores absent, empty, and relative workspace guard extension paths", async () => {
+  const previousExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
+  const previousChild = process.env.PI_WORKSPACE_GUARD_CHILD;
+  const previousOther = process.env.PI_WORKSPACE_GUARD_OTHER;
+  process.env.PI_WORKSPACE_GUARD_CHILD = "parent";
+  process.env.PI_WORKSPACE_GUARD_OTHER = "keep";
+  try {
+    for (const extension of [undefined, "", "relative/guard-extension.ts"]) {
+      if (extension === undefined) delete process.env.PI_WORKSPACE_GUARD_EXTENSION;
+      else process.env.PI_WORKSPACE_GUARD_EXTENSION = extension;
+      const child = new FakeChild();
+      let call: SpawnCall | undefined;
+      const { result } = await runSubagent(agent, "do it", "/tmp", "m", {
+        spawnFn: ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+          call = { cmd, args, options: options ?? {} };
+          return child;
+        }) as unknown as typeof spawn,
+      });
+      child.finish(0);
+      await result;
+
+      assert.ok(call);
+      const flags = call.args.slice(1);
+      assert.equal(flags.includes("--extension"), false);
+      assert.equal((call.options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, undefined);
+      assert.equal((call.options.env as { PI_WORKSPACE_GUARD_OTHER?: string }).PI_WORKSPACE_GUARD_OTHER, "keep");
+      assert.equal(call.options.cwd, "/tmp");
+      assert.match(String((call.options.env as { NODE_OPTIONS?: string }).NODE_OPTIONS), /--max-old-space-size=8192/);
+    }
+  } finally {
+    if (previousExtension === undefined) delete process.env.PI_WORKSPACE_GUARD_EXTENSION;
+    else process.env.PI_WORKSPACE_GUARD_EXTENSION = previousExtension;
+    if (previousChild === undefined) delete process.env.PI_WORKSPACE_GUARD_CHILD;
+    else process.env.PI_WORKSPACE_GUARD_CHILD = previousChild;
+    if (previousOther === undefined) delete process.env.PI_WORKSPACE_GUARD_OTHER;
+    else process.env.PI_WORKSPACE_GUARD_OTHER = previousOther;
+  }
 });
 
 test("runSubagent: escalates SIGTERM to SIGKILL when the child ignores it", async () => {

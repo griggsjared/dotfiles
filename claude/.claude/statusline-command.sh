@@ -2,7 +2,6 @@
 input=$(cat)
 model=$(echo "$input" | jq -r '.model.display_name')
 model="${model% (*}"
-mode=$(echo "$input" | jq -r '.output_style.name // empty')
 total_in=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
 ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
 effort=$(echo "$input" | jq -r '.effort.level // empty')
@@ -35,10 +34,6 @@ if [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
         context_color="\033[5;31m"
     fi
     out="$out $(printf "${context_color}%s/%s\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")")"
-fi
-
-if [ -n "$mode" ] && [ "$mode" != "null" ] && [ "$mode" != "default" ]; then
-    out="$out $(printf "\033[35mmode: %s\033[0m" "$mode")"
 fi
 
 if [ "$tasks" -gt 0 ]; then

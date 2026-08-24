@@ -97,14 +97,14 @@ export function registerStatusline(pi: ExtensionAPI) {
 					//Model name
 					const model = ctx.model;
 					const modelName = model?.name || model?.id || "no-model";
-					let line = theme.fg("success", modelName);
+					let line = theme.fg("customMessageLabel", modelName);
 					if (modeStatus) {
 						line = `${modeStatus} ${line}`;
 					}
 
 					//Thinking level / effort
 					if (ctx.thinkingLevel && ctx.thinkingLevel !== "off") {
-						line += theme.fg("warning", ` ${ctx.thinkingLevel}`);
+						line += theme.fg("success", ` ${ctx.thinkingLevel}`);
 					}
 
 					//Context usage

@@ -11,10 +11,10 @@ five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 week_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
 
-out=$(printf "\033[32m%s\033[0m" "$model")
+out=$(printf "\033[35m%s\033[0m" "$model")
 
 if [ -n "$effort" ]; then
-    out="$out $(printf "\033[33m%s\033[0m" "$effort")"
+    out="$out $(printf "\033[32m%s\033[0m" "$effort")"
 fi
 
 abbrev() {

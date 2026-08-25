@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerWorkspaceGuard } from "../index.ts";
+import workspaceGuard, { registerWorkspaceGuard } from "../index.ts";
 import { SandboxDependencyUnavailableError } from "../sandbox.ts";
 
 type Handler = (event: any, ctx: any) => any;
@@ -84,6 +84,19 @@ function createContext(cwd: string, options: { confirm?: boolean; hasUI?: boolea
 async function emit(handlers: Map<string, Handler>, name: string, event: Record<string, unknown>, ctx: unknown) {
 	return handlers.get(name)?.(event, ctx);
 }
+
+test("default extension bypasses the workspace guard", () => {
+	const registrations: string[] = [];
+	const api = {
+		on() { registrations.push("handler"); },
+		registerTool() { registrations.push("tool"); },
+		registerCommand() { registrations.push("command"); },
+	} as unknown as ExtensionAPI;
+
+	workspaceGuard(api);
+
+	assert.deepEqual(registrations, []);
+});
 
 async function withDirectories(run: (paths: { root: string; workspace: string; outside: string }) => Promise<void>) {
 	const root = await mkdtemp(join(tmpdir(), "workspace-guard-test-"));

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { capOutput, formatUsageStats, toolCallLabel } from "./format.ts";
+import { capOutput, formatDuration, formatUsageStats, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
@@ -13,26 +13,26 @@ type StatusJob = Job;
 
 function formatJob(job: StatusJob, now: number): string {
   if (job.status === "running") {
-    const elapsed = ((now - job.startTime) / 1000).toFixed(1);
+    const elapsed = formatDuration(now - job.startTime);
     const progress = job.progress ? ` — ${job.progress}` : "";
     const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
-    return `- ◐ #${job.id} ${job.agent} (${elapsed}s${metadata ? ` ${metadata}` : ""}): ${job.title ?? job.task}${progress}`;
+    return `- ◐ #${job.id} ${job.agent} (${elapsed}${metadata ? ` ${metadata}` : ""}): ${job.title ?? job.task}${progress}`;
   }
-  const duration = job.endTime ? ((job.endTime - job.startTime) / 1000).toFixed(1) : "?";
+  const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
   const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
   const usage = formatUsageStats(job.usage, job.model, job.thinkingLevel);
-  return `- ${icon} #${job.id} ${job.agent} (${duration}s${usage ? ` ${usage}` : ""}): ${job.title ?? job.task}`;
+  return `- ${icon} #${job.id} ${job.agent} (${duration}${usage ? ` ${usage}` : ""}): ${job.title ?? job.task}`;
 }
 
 function formatDetailedStatus(job: Job, now: number): string {
-  const duration = ((job.endTime ?? now) - job.startTime) / 1000;
+  const duration = formatDuration((job.endTime ?? now) - job.startTime);
   const metadata = formatUsageStats(job.usage, job.model, job.thinkingLevel);
   const lines = [
     `**Subagent #${job.id}**`,
     `State: ${job.status}`,
     `Agent: ${job.agent}`,
     `Task: ${job.title ?? job.task}`,
-    `Elapsed: ${duration.toFixed(1)}s`,
+    `Elapsed: ${duration}`,
   ];
   if (metadata) lines.push(`Usage: ${metadata}`);
   if (job.progress) lines.push(`Progress: ${job.progress}`);

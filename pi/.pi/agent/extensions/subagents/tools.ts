@@ -8,7 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
-import { capOutput, formatResultOutput, normalizeTitle, shortLabel } from "./format.ts";
+import { capOutput, formatDuration, formatResultOutput, normalizeTitle, shortLabel } from "./format.ts";
 import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
 import {
@@ -197,7 +197,7 @@ export class Batch {
     const job = this.deps.registry.jobs.get(jobId);
     result = normalizeCancellation(result, job);
     const capped = capOutput(formatResultOutput(result), 20000);
-    const duration = job?.endTime ? `${((job.endTime - job.startTime) / 1000).toFixed(1)}s` : "?";
+    const duration = job?.endTime ? formatDuration(job.endTime - job.startTime) : "?";
     const status = result.cancelled ? "cancelled" : result.exitCode === 0 ? "completed" : "failed";
     const icon = status === "completed" ? "✓" : status === "cancelled" ? "⊘" : "✗";
     const details: SubagentMessageDetails = {
@@ -259,12 +259,12 @@ export class Batch {
     if (this.pending !== 0) return;
     if (this.completed.length === 0) return;
     const lines = this.completed.map((j) => {
-      const duration = j.endTime ? ((j.endTime - j.startTime) / 1000).toFixed(1) : "?";
+      const duration = j.endTime ? formatDuration(j.endTime - j.startTime) : "?";
       const icon = j.status === "completed" ? "✓" : j.status === "cancelled" ? "⊘" : "✗";
       const cancellation = j.status === "cancelled" && j.cancellationReason
         ? ` — cancelled (${j.cancellationReason})`
         : "";
-      return `${icon} #${j.id} ${j.agent} (${duration}s): ${j.title ?? j.task}${cancellation}`;
+      return `${icon} #${j.id} ${j.agent} (${duration}): ${j.title ?? j.task}${cancellation}`;
     });
     lines.unshift("**Subagents complete:**");
     this.deps.registry.markCleared(this.jobIds);

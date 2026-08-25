@@ -21,6 +21,12 @@ export function formatTokens(count: number): string {
   return `${(count / 1000000).toFixed(1)}M`;
 }
 
+export function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(1, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return minutes > 0 ? `${minutes}m${seconds % 60}s` : `${seconds}s`;
+}
+
 export function formatUsageStats(usage: SubagentUsage | undefined, model?: string, thinkingLevel?: string): string {
   if (!usage && !model && !thinkingLevel) return "";
   const parts: string[] = [];

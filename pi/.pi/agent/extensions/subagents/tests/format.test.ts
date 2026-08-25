@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   capOutput,
+  formatDuration,
   formatResultOutput,
   formatTokens,
   formatUsageStats,
@@ -19,6 +20,16 @@ test("formatTokens", () => {
   assert.equal(formatTokens(10000), "10k");
   assert.equal(formatTokens(999999), "1000k");
   assert.equal(formatTokens(1000000), "1.0M");
+});
+
+test("formatDuration uses whole seconds and compact minutes", () => {
+  assert.equal(formatDuration(0), "1s");
+  assert.equal(formatDuration(999), "1s");
+  assert.equal(formatDuration(1999), "1s");
+  assert.equal(formatDuration(2000), "2s");
+  assert.equal(formatDuration(59999), "59s");
+  assert.equal(formatDuration(60000), "1m0s");
+  assert.equal(formatDuration(92000), "1m32s");
 });
 
 test("formatUsageStats keeps metadata without usage", () => {

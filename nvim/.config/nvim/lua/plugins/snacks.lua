@@ -49,6 +49,28 @@ local keys = {
 		mode = { "n", "v" },
 	},
 	{
+		"<leader>fn",
+		function()
+			local dirs = vim.fs.find({ "_notes", ".notes" }, {
+				path = vim.fn.getcwd(),
+				type = "directory",
+				limit = math.huge,
+			})
+			if #dirs == 0 then
+				vim.notify("No notes directories found", vim.log.levels.INFO)
+				return
+			end
+			Snacks.picker.files({
+				title = "Find Notes",
+				dirs = dirs,
+				hidden = true,
+				ignored = true,
+			})
+		end,
+		desc = "Find notes",
+		mode = { "n", "v" },
+	},
+	{
 		"<leader>fg",
 		function()
 			Snacks.picker.grep({

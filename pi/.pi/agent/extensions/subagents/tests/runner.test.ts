@@ -107,6 +107,50 @@ test("runSubagent: zero maxRuntimeMs disables the timeout", async () => {
   assert.equal((await result).exitCode, 0);
 });
 
+test("runSubagent: final message alone does not trigger the shutdown watchdog", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    shutdownGraceMs: 20,
+  });
+  child.stdout.emit("data", Buffer.from(endEvent("final answer")));
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(child.killed, null);
+  child.finish(0);
+  assert.equal((await result).exitCode, 0);
+});
+
+test("runSubagent: cancels the shutdown watchdog when the child closes", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    shutdownGraceMs: 20,
+  });
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+  child.finish(0);
+  assert.equal((await result).exitCode, 0);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.equal(child.killed, null);
+});
+
+test("runSubagent: terminates a child that stays open after agent_settled", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    shutdownGraceMs: 20,
+    killDelayMs: 10,
+  });
+  child.stdout.emit("data", Buffer.from(endEvent("final answer")));
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+
+  const r = await result;
+  assert.equal(child.killed, "SIGTERM");
+  assert.equal(r.text, "final answer");
+  assert.equal(r.exitCode, 0);
+  assert.equal(r.cancelled, false);
+  assert.equal(r.error, "");
+});
+
 test("runSubagent: timeout kills the child and reports exit code 124", async () => {
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "t", "/tmp", "m", {

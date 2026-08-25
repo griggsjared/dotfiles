@@ -11,6 +11,7 @@ const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
 const MAX_CHILD_ERROR = 1024 * 1024; // keep only the tail of child stderr
 const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
+const SHUTDOWN_GRACE_MS = 10000;
 
 /**
  * Resolve how to invoke pi from this (extension) process. Children are spawned
@@ -60,6 +61,7 @@ export interface RunSubagentOptions {
   title?: string;
   spawnFn?: typeof spawn;
   killDelayMs?: number;
+  shutdownGraceMs?: number;
 }
 
 /**
@@ -139,6 +141,8 @@ export async function runSubagent(
     let lastStreamAt = 0;
     const state = createStreamState(model ?? "");
     let settled = false;
+    let completionWatchdogFired = false;
+    let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       unlink(promptFile).catch(() => {});
       rmdir(tmpDir).catch(() => {});
@@ -175,6 +179,16 @@ export async function runSubagent(
     const handleLine = (line: string) => {
       accumulateEvent(state, line);
       maybeStream();
+      if (shutdownTimer || settled) return;
+      try {
+        if ((JSON.parse(line) as { type?: unknown }).type !== "agent_settled") return;
+      } catch {
+        return;
+      }
+      shutdownTimer = setTimeout(() => {
+        completionWatchdogFired = true;
+        killProcess(proc, options.killDelayMs);
+      }, options.shutdownGraceMs ?? SHUTDOWN_GRACE_MS);
     };
 
     const finalize = (code: number | null, signal: NodeJS.Signals | null, processError = false) => {
@@ -182,6 +196,7 @@ export async function runSubagent(
       settled = true;
       removeAbortListener();
       if (timeoutId) clearTimeout(timeoutId);
+      if (shutdownTimer) clearTimeout(shutdownTimer);
       // Flush any final line that arrived without a trailing newline.
       if (pending.trim()) handleLine(pending);
       const text = state.finalText || state.streamedText || state.finalThinking || extractFinalText(stdout);
@@ -202,9 +217,9 @@ export async function runSubagent(
       if (cancelled) {
         stderr = stderr ? `${stderr}\n` : "";
         stderr += `Cancelled (${cancellationReason ?? "manual"}).`;
-      } else if (!processError && signal) {
+      } else if (!completionWatchdogFired && !processError && signal) {
         stderr += `\n[subagents] Killed by ${signal}`;
-      } else if (!processError && code != null && code >= 128) {
+      } else if (!completionWatchdogFired && !processError && code != null && code >= 128) {
         stderr += `\n[subagents] Killed by signal ${code - 128}`;
       }
       resolve({
@@ -212,7 +227,7 @@ export async function runSubagent(
         task,
         title,
         text,
-        exitCode: cancelled ? 130 : processError ? 1 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
+        exitCode: cancelled ? 130 : completionWatchdogFired ? 0 : processError ? 1 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
         error: processError ? stderr || "failed to spawn subagent" : stderr,
         cancelled,
         cancellationReason,

@@ -4,8 +4,13 @@ import { Type } from "typebox";
 const USER_AGENT =
 	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const CACHE_TTL_MS = 30_000;
+const TAVILY_ENDPOINT = "https://api.tavily.com/search";
+const TAVILY_MAX_RESULTS = 10;
+const TAVILY_TIMEOUT_MS = 15_000;
 
 type SearchResult = { title: string; url: string; snippet: string };
+type SearchBackend = "duckduckgo-lite" | "tavily";
+type SearchResponse = { backend: SearchBackend; results: SearchResult[] };
 type FetchedPage = {
 	url: string;
 	title: string;
@@ -96,6 +101,21 @@ export function parseDuckDuckGoLite(html: string): SearchResult[] {
 	return results;
 }
 
+export function parseTavilyResponse(body: unknown): SearchResult[] | undefined {
+	if (!body || typeof body !== "object") return undefined;
+	const rawResults = (body as { results?: unknown }).results;
+	if (!Array.isArray(rawResults)) return undefined;
+
+	return rawResults.flatMap((rawResult): SearchResult[] => {
+		if (!rawResult || typeof rawResult !== "object") return [];
+		const result = rawResult as Record<string, unknown>;
+		const title = typeof result.title === "string" ? result.title.trim() : "";
+		const url = typeof result.url === "string" ? result.url.trim() : "";
+		const snippet = typeof result.content === "string" ? result.content.trim() : "";
+		return title && url ? [{ title, url, snippet }] : [];
+	});
+}
+
 export function looksLikeErrorPage(body: string): boolean {
 	const text = body.toLowerCase();
 	return (
@@ -124,6 +144,18 @@ export function classifySearchFailure(status: number, body: string): string {
 	}
 	if (status >= 400) return `DuckDuckGo request failed with HTTP ${status}.`;
 	return "DuckDuckGo returned an unreadable response.";
+}
+
+export function classifyTavilyFailure(status: number, body: string): string {
+	const text = body.toLowerCase();
+	if (status === 401 || status === 403 || text.includes("api key")) {
+		return "Tavily rejected the API key. Check TAVILY_API_KEY.";
+	}
+	if (status === 429 || text.includes("rate limit") || text.includes("credit")) {
+		return "Tavily rate limit or credit limit reached.";
+	}
+	if (status >= 400) return `Tavily request failed with HTTP ${status}.`;
+	return "Tavily returned an unreadable response.";
 }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -160,20 +192,86 @@ async function searchDuckDuckGo(query: string, signal?: AbortSignal): Promise<Se
 	throw new Error("DuckDuckGo request failed after retries.");
 }
 
-const cache = new Map<string, { expires: number; results: SearchResult[] }>();
+async function searchTavily(query: string, signal?: AbortSignal): Promise<SearchResult[]> {
+	const apiKey = process.env.TAVILY_API_KEY?.trim();
+	if (!apiKey) throw new Error("TAVILY_API_KEY is not set.");
 
-function getCached(query: string): SearchResult[] | undefined {
+	const timeoutSignal = AbortSignal.timeout(TAVILY_TIMEOUT_MS);
+	const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+	let response: Response;
+	try {
+		response = await fetch(TAVILY_ENDPOINT, {
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				query,
+				search_depth: "basic",
+				max_results: TAVILY_MAX_RESULTS,
+			}),
+			signal: combined,
+		});
+	} catch (error) {
+		if (signal?.aborted) throw new Error("Search cancelled.");
+		const err = error as Error;
+		if (err.name === "TimeoutError") throw new Error(`Tavily request timed out after ${TAVILY_TIMEOUT_MS / 1000} seconds.`);
+		throw new Error(`Tavily request failed: ${err.message}`);
+	}
+
+	const body = await response.text();
+	if (!response.ok) throw new Error(classifyTavilyFailure(response.status, body));
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		throw new Error("Tavily returned invalid JSON.");
+	}
+	const results = parseTavilyResponse(parsed);
+	if (!results) throw new Error("Tavily returned an unreadable response.");
+	return results;
+}
+
+async function searchWithFallback(query: string, signal?: AbortSignal): Promise<SearchResponse> {
+	if (process.env.PI_WEB_SEARCH_BACKEND?.trim().toLowerCase() === "tavily") {
+		return { backend: "tavily", results: await searchTavily(query, signal) };
+	}
+
+	try {
+		return { backend: "duckduckgo-lite", results: await searchDuckDuckGo(query, signal) };
+	} catch (duckDuckGoError) {
+		if (signal?.aborted) throw duckDuckGoError;
+		if (!process.env.TAVILY_API_KEY?.trim()) throw duckDuckGoError;
+
+		try {
+			return { backend: "tavily", results: await searchTavily(query, signal) };
+		} catch (tavilyError) {
+			if (signal?.aborted) throw tavilyError;
+			const primary = duckDuckGoError instanceof Error ? duckDuckGoError.message : String(duckDuckGoError);
+			const fallback = tavilyError instanceof Error ? tavilyError.message : String(tavilyError);
+			throw new Error(`Search failed. DuckDuckGo: ${primary} Tavily: ${fallback}`);
+		}
+	}
+}
+
+type CachedSearch = SearchResponse & { expires: number };
+const cache = new Map<string, CachedSearch>();
+
+function getCached(query: string): SearchResponse | undefined {
 	const entry = cache.get(query);
 	if (!entry) return undefined;
 	if (entry.expires < Date.now()) {
 		cache.delete(query);
 		return undefined;
 	}
-	return entry.results;
+	return { backend: entry.backend, results: entry.results };
 }
 
-function setCached(query: string, results: SearchResult[]): void {
-	cache.set(query, { expires: Date.now() + CACHE_TTL_MS, results });
+function setCached(query: string, response: SearchResponse): void {
+	cache.set(query, { ...response, expires: Date.now() + CACHE_TTL_MS });
 }
 
 function formatResults(query: string, results: SearchResult[]): string {
@@ -350,7 +448,7 @@ export default function (pi: ExtensionAPI) {
 		name: "web_search",
 		label: "Web Search",
 		description:
-			"Search the web via DuckDuckGo (no API key) and return ranked results with titles, URLs, and snippets. Use for current, external, or factual information not in the conversation or codebase.",
+			"Search the web via DuckDuckGo and return ranked results with titles, URLs, and snippets. If TAVILY_API_KEY is set, retry through Tavily when DuckDuckGo is blocked or unavailable. Set PI_WEB_SEARCH_BACKEND=tavily to force Tavily. Use for current, external, or factual information not in the conversation or codebase.",
 		promptSnippet: "Search the web for current or external information",
 		promptGuidelines: [
 			"Use web_search for questions needing current, external, or factual information that is not in the conversation or codebase.",
@@ -364,11 +462,11 @@ export default function (pi: ExtensionAPI) {
 			const query = params.query.trim();
 			if (!query) throw new Error("Query must not be empty.");
 			const cached = getCached(query);
-			const results = cached ?? (await searchDuckDuckGo(query, signal));
-			if (!cached) setCached(query, results);
+			const response = cached ?? (await searchWithFallback(query, signal));
+			if (!cached) setCached(query, response);
 			return {
-				content: [{ type: "text", text: formatResults(query, results) }],
-				details: { backend: "duckduckgo-lite", query, results },
+				content: [{ type: "text", text: formatResults(query, response.results) }],
+				details: { backend: response.backend, query, results: response.results },
 			};
 		},
 	});

@@ -321,6 +321,68 @@ test("/subagent-cancel validates and targets numeric job IDs", async () => {
   assert.equal(cancelled, 1);
 });
 
+test("/subagent-send parses steering and follow-up messages", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "task");
+  const sent: Array<{ message: string; deliverAs: string }> = [];
+  registry.registerControl(id, {
+    cancel: () => {},
+    send: async (message, deliverAs) => { sent.push({ message, deliverAs }); },
+    reply: async () => {},
+  });
+  const notices: Array<{ text: string; level: string }> = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+  } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, { registry });
+  const command = commands.get("subagent-send");
+  assert.ok(command);
+  const ctx = {
+    hasUI: true,
+    ui: { notify: (text: string, level: string) => notices.push({ text, level }) },
+  };
+
+  await command.handler(`${id} steer Narrow the scope`, ctx);
+  await command.handler(`${id} followup Queue a second pass`, ctx);
+  assert.deepEqual(sent, [
+    { message: "Narrow the scope", deliverAs: "steer" },
+    { message: "Queue a second pass", deliverAs: "followUp" },
+  ]);
+  assert.deepEqual(notices, [
+    { text: "Sent steering message to subagent #1.", level: "info" },
+    { text: "Sent follow-up message to subagent #1.", level: "info" },
+  ]);
+
+  await command.handler("bad steer message", ctx);
+  assert.match(notices.at(-1)?.text ?? "", /Usage: \/subagent-send/);
+  assert.equal(notices.at(-1)?.level, "error");
+});
+
+test("/subagent-send reports rejected messages", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "task");
+  registry.registerControl(id, {
+    cancel: () => {},
+    send: async () => { throw new Error("RPC prompt rejected"); },
+    reply: async () => {},
+  });
+  const notices: Array<{ text: string; level: string }> = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+  } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, { registry });
+  const command = commands.get("subagent-send");
+  assert.ok(command);
+
+  await command.handler(`${id} steer This will fail`, {
+    hasUI: true,
+    ui: { notify: (text: string, level: string) => notices.push({ text, level }) },
+  });
+  assert.deepEqual(notices, [{ text: "RPC prompt rejected", level: "error" }]);
+});
+
 // --- createSubagentTool.execute ----------------------------------------------
 
 function makeTool(

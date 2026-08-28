@@ -206,4 +206,30 @@ export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRe
       ctx.ui.notify(count ? `Cancelling ${count} subagent${count > 1 ? "s" : ""}` : "No matching running subagent", "info");
     },
   });
+
+  pi.registerCommand("subagent-send", {
+    description: "Send a steering or follow-up message to a running subagent",
+    handler: async (args, ctx) => {
+      if (!ctx.hasUI) return;
+      const match = args.trim().match(/^(\d+)\s+(\S+)(?:\s+([\s\S]*))?$/);
+      const mode = match?.[2]?.toLowerCase();
+      const message = match?.[3]?.trim();
+      if (!match || !message || (mode !== "steer" && mode !== "followup")) {
+        ctx.ui.notify("Usage: /subagent-send <numeric-job-id> <steer|followup> <message>", "error");
+        return;
+      }
+      const jobId = Number(match[1]);
+      if (!Number.isInteger(jobId) || jobId < 1) {
+        ctx.ui.notify("Usage: /subagent-send <numeric-job-id> <steer|followup> <message>", "error");
+        return;
+      }
+      const deliverAs = mode === "steer" ? "steer" : "followUp";
+      try {
+        await deps.registry.send(jobId, message, deliverAs);
+        ctx.ui.notify(`Sent ${mode === "steer" ? "steering" : "follow-up"} message to subagent #${jobId}.`, "info");
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+      }
+    },
+  });
 }

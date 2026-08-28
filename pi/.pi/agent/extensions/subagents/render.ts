@@ -11,8 +11,10 @@ import { formatDuration, formatUsageStats, shortLabel, toolCallLabel } from "./f
 import type { JobRegistry } from "./registry.ts";
 import {
   ENTRY_TYPE,
+  QUESTION_ENTRY_TYPE,
   WIDGET_KEY,
   type SubagentMessageDetails,
+  type SubagentQuestionMessageDetails,
 } from "./types.ts";
 
 export type Fg = (color: ThemeColor, text: string) => string;
@@ -36,7 +38,8 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
       maxWidth,
       "",
     ));
-    lines.push(truncateToWidth(fg("muted", `  ${shortLabel(undefined, job.progress ?? job.task, 40)}`), maxWidth, ""));
+    const progress = job.pendingQuestions.length > 0 ? "waiting for parent" : job.progress ?? job.task;
+    lines.push(truncateToWidth(fg("muted", `  ${shortLabel(undefined, progress, 40)}`), maxWidth, ""));
   }
   for (const job of completed) {
     const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
@@ -121,6 +124,24 @@ export function registerRenderers(pi: ExtensionAPI): void {
     box.addChild(new Text(headLine, 0, 0));
     if (statsLine) box.addChild(new Text(statsLine, 1, 0));
     if (output) box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), 1, 0));
+    return box;
+  });
+
+  pi.registerMessageRenderer<SubagentQuestionMessageDetails>(QUESTION_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
+    const details = message.details;
+    if (!details) return new Text(typeof message.content === "string" ? message.content : "", 0, 0);
+
+    const summary = theme.fg("warning", `? #${details.jobId} ${details.agent}`) +
+      theme.fg("dim", `: ${shortLabel(undefined, details.question, 80)}`);
+    const box = new Box(outputPad, 1, (text) => theme.bg("customMessageBg", text));
+    box.addChild(new Text(summary, 0, 0));
+    if (expanded) {
+      if (details.context) {
+        box.addChild(new Spacer(1));
+        box.addChild(new Text(`Context: ${details.context}`, 0, 0));
+      }
+      box.addChild(new Text(theme.fg("muted", `Question ID: ${details.questionId}`), 0, 0));
+    }
     return box;
   });
 }

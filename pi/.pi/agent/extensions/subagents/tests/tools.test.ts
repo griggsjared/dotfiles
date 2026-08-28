@@ -8,9 +8,22 @@ import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
 import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
-import { createStatusTool, registerStatusCommands } from "../status-tools.ts";
-import { EMPTY_USAGE, ENTRY_TYPE } from "../types.ts";
-import { FakeChild, fakeSpawn, fakeSpawnChildren, endEvent, type SpawnCall } from "./fake-child.ts";
+import {
+  createReplyTool,
+  createSendTool,
+  createStatusTool,
+  registerStatusCommands,
+} from "../status-tools.ts";
+import { EMPTY_USAGE, ENTRY_TYPE, QUESTION_ENTRY_TYPE } from "../types.ts";
+import {
+  FakeChild,
+  fakeSpawn,
+  fakeSpawnChildren,
+  endEvent,
+  questionEvent,
+  responseEvent,
+  type SpawnCall,
+} from "./fake-child.ts";
 
 const AGENT: AgentConfig = {
   name: "scout",
@@ -250,7 +263,11 @@ test("subagent status supports individual and unknown job IDs", async () => {
   assert.match(individualText, /Latest output:\nlatest output/);
   assert.doesNotMatch(individualText, new RegExp(`#${completedId} worker`));
 
-  const unknown = await tool.execute("call2", { jobId: 999 }, undefined, undefined, {} as never);
+  registry.recordQuestion(runningId, { id: "question-1", question: "Which API?" });
+  const waiting = await tool.execute("call2", { jobId: runningId }, undefined, undefined, {} as never);
+  assert.match((waiting.content[0] as { text: string }).text, /Waiting for parent \(1\):\n- question-1: Which API\?/);
+
+  const unknown = await tool.execute("call3", { jobId: 999 }, undefined, undefined, {} as never);
   assert.equal((unknown.content[0] as { text: string }).text, "Unknown subagent job ID: 999");
 });
 
@@ -284,7 +301,11 @@ test("/subagent-cancel validates and targets numeric job IDs", async () => {
   const registry = createJobRegistry();
   const id = registry.add("scout", "task");
   let cancelled = 0;
-  registry.registerCancellation(id, { cancel: () => { cancelled += 1; } });
+  registry.registerControl(id, {
+    cancel: () => { cancelled += 1; },
+    send: async () => {},
+    reply: async () => {},
+  });
   const notices: string[] = [];
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
   const pi = { registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command) } as unknown as ExtensionAPI;
@@ -321,6 +342,7 @@ function makeTool(
     registry,
     activeProcs,
     activeTickers,
+    bridgeExtensionPath: "/extensions/child-bridge.ts",
     onUiContext: () => {},
     refresh: () => {},
     spawnFn: spawnOverride?.spawnFn ?? fakeSpawn(child),
@@ -450,6 +472,160 @@ test("execute: single returns launched, then delivers result + summary", async (
   assert.equal(summary.display, false);
   assert.equal(options.triggerTurn, true);
   assert.match(summary.content, /\*\*Subagents complete:\*\*/);
+});
+
+test("subagent_send delivers a correlated steering command to a running child", async () => {
+  const { tool, registry, child, ctx } = makeTool();
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  await sleep(10);
+  const initial = child.stdin.commands()[0];
+  assert.ok(initial);
+  child.stdout.emit("data", Buffer.from(responseEvent(initial)));
+
+  const sendTool = createSendTool({ registry });
+  const pending = sendTool.execute(
+    "call2",
+    { jobId: 1, message: "Check the error path", deliverAs: "steer" },
+    undefined,
+    undefined,
+    ctx,
+  );
+  const command = child.stdin.commands()[1];
+  assert.deepEqual(command, {
+    id: "subagent-2",
+    type: "prompt",
+    message: "Check the error path",
+    streamingBehavior: "steer",
+  });
+  child.stdout.emit("data", Buffer.from(responseEvent(command!)));
+  const sent = await pending;
+  assert.match((sent.content[0] as { text: string }).text, /Sent steer message to subagent #1/);
+
+  child.finish(0);
+  await sleep(20);
+});
+
+test("child questions trigger a parent turn and subagent_reply resolves them", async () => {
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  await sleep(10);
+  const initial = child.stdin.commands()[0];
+  assert.ok(initial);
+  child.stdout.emit("data", Buffer.from(responseEvent(initial)));
+  child.stdout.emit("data", Buffer.from(questionEvent("question-1", "Which API?", "Two choices")));
+
+  assert.deepEqual(registry.get(1)?.pendingQuestions.map((question) => question.id), ["question-1"]);
+  const [message, options] = sendMessage.calls[0] as [
+    { customType: string; content: string; display: boolean; details: { jobId: number; questionId: string } },
+    { deliverAs: string; triggerTurn: boolean },
+  ];
+  assert.equal(message.customType, QUESTION_ENTRY_TYPE);
+  assert.equal(message.display, true);
+  assert.equal(message.details.jobId, 1);
+  assert.equal(message.details.questionId, "question-1");
+  assert.match(message.content, /call ask_user first/);
+  assert.deepEqual(options, { deliverAs: "steer", triggerTurn: true });
+
+  const replyTool = createReplyTool({ registry });
+  const replied = await replyTool.execute(
+    "call2",
+    { jobId: 1, questionId: "question-1", answer: "Use the existing API." },
+    undefined,
+    undefined,
+    ctx,
+  );
+  assert.equal((replied.content[0] as { text: string }).text, "Answered subagent #1.");
+  assert.deepEqual(child.stdin.commands()[1], {
+    type: "extension_ui_response",
+    id: "question-1",
+    value: "Use the existing API.",
+  });
+  assert.deepEqual(registry.get(1)?.pendingQuestions, []);
+
+  child.stdout.emit("data", Buffer.from(endEvent("done")));
+  child.finish(0);
+  await sleep(20);
+  assert.equal(sendMessage.calls.length, 3, "question, result, and hidden summary sent once each");
+});
+
+test("cancelling a child waiting on the parent invalidates its question", async () => {
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  await sleep(10);
+  const initial = child.stdin.commands()[0];
+  assert.ok(initial);
+  child.stdout.emit("data", Buffer.from(responseEvent(initial)));
+  child.stdout.emit("data", Buffer.from(questionEvent("question-1", "Continue?")));
+  assert.deepEqual(registry.get(1)?.pendingQuestions.map((question) => question.id), ["question-1"]);
+
+  assert.equal(registry.cancel(1, "manual"), true);
+  assert.deepEqual(registry.get(1)?.pendingQuestions, []);
+  await sleep(20);
+  assert.equal(registry.get(1)?.status, "cancelled");
+  const resultMessage = sendMessage.calls.find((call) =>
+    (call[0] as { details?: { status?: string } }).details?.status === "cancelled");
+  assert.ok(resultMessage, "cancelled result delivered after the child closes");
+});
+
+test("subagent_reply renders a compact call and result", async () => {
+  const registry = createJobRegistry();
+  const jobId = registry.add("scout", "task");
+  registry.registerControl(jobId, {
+    cancel: () => {},
+    send: async () => {},
+    reply: async () => {},
+  });
+  registry.recordQuestion(jobId, { id: "f7455070-1bdd-4bf8-9806-2647a04b1eba", question: "Continue?" });
+  const tool = createReplyTool({ registry });
+  const theme = fakeTheme() as never;
+
+  const call = tool.renderCall!(
+    { jobId, questionId: "f7455070-1bdd-4bf8-9806-2647a04b1eba", answer: "yes" },
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(call).trim(), "reply #1");
+  assert.doesNotMatch(renderText(call), /f7455070/);
+
+  const result = await tool.execute(
+    "call1",
+    { jobId, questionId: "f7455070-1bdd-4bf8-9806-2647a04b1eba", answer: "yes" },
+    undefined,
+    undefined,
+    {} as never,
+  );
+  const renderedResult = renderText(tool.renderResult!(result, { expanded: false, isPartial: false }, theme, {} as never))
+    .split("\n").map((line) => line.trimEnd()).join("\n").trim();
+  assert.equal(renderedResult, "✓ reply delivered to #1\n  Q: Continue?\n  A: yes");
+});
+
+test("subagent messaging tools reject queued, stale, and empty inputs", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "task");
+  const sendTool = createSendTool({ registry });
+  const replyTool = createReplyTool({ registry });
+
+  await assert.rejects(
+    sendTool.execute("call1", { jobId: id, message: "message", deliverAs: "followUp" }, undefined, undefined, {} as never),
+    /has not started yet/,
+  );
+  await assert.rejects(
+    sendTool.execute("call2", { jobId: id, message: "   ", deliverAs: "steer" }, undefined, undefined, {} as never),
+    /cannot be empty/,
+  );
+  registry.registerControl(id, {
+    cancel: () => {},
+    send: async () => {},
+    reply: async () => {},
+  });
+  await assert.rejects(
+    replyTool.execute("call3", { jobId: id, questionId: "stale", answer: "answer" }, undefined, undefined, {} as never),
+    /Unknown or answered question stale/,
+  );
+  await assert.rejects(
+    replyTool.execute("call4", { jobId: id, questionId: "stale", answer: " " }, undefined, undefined, {} as never),
+    /cannot be empty/,
+  );
 });
 
 test("execute: all-unknown batch throws", async () => {
@@ -661,6 +837,9 @@ test("renderFullWidget: shows progress when no tool call is active", () => {
   assert.match(output, /reading files/);
   assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
+
+  registry.recordQuestion(id, { id: "question-1", question: "Which API?" });
+  assert.match(renderFullWidget(registry, (_color, text) => text, 80).join("\n"), /waiting for parent/);
 });
 
 test("renderResult: tolerates missing details (error results omit it)", () => {
@@ -721,15 +900,18 @@ test("renderCall: shows concurrency and every agent title", () => {
   assert.match(text, /worker.*Second task/);
 });
 
-test("message renderer: renders with details and falls back without them", () => {
-  let captured: ((message: unknown, options: unknown, theme: unknown) => unknown) | undefined;
+test("message renderer: renders results and parent questions", () => {
+  const renderers = new Map<string, (message: unknown, options: unknown, theme: unknown) => unknown>();
   const pi = {
-    registerMessageRenderer: (_type: string, fn: unknown) => {
-      captured = fn as never;
+    registerMessageRenderer: (type: string, fn: unknown) => {
+      renderers.set(type, fn as never);
     },
   } as unknown as ExtensionAPI;
   registerRenderers(pi);
-  assert.ok(captured, "renderer registered");
+  const captured = renderers.get(ENTRY_TYPE);
+  const questionRenderer = renderers.get(QUESTION_ENTRY_TYPE);
+  assert.ok(captured, "result renderer registered");
+  assert.ok(questionRenderer, "question renderer registered");
 
   const theme = fakeTheme() as never;
   const options = { expanded: false, outputPad: 2 };
@@ -793,4 +975,24 @@ test("message renderer: renders with details and falls back without them", () =>
   assert.match(renderText(expanded), /read src\/index\.ts:1-2/);
   assert.match(renderText(expanded), /\$ npm test/);
   assert.ok(backgroundCalls.includes("customMessageBg"));
+
+  const question = questionRenderer!(
+    {
+      content: "model-facing instructions",
+      details: {
+        jobId: 12,
+        agent: "worker",
+        questionId: "question-1",
+        question: "Which API should I use?",
+        context: "The code has two patterns.",
+      },
+    },
+    { ...options, expanded: true },
+    theme,
+  );
+  const questionText = renderText(question);
+  assert.match(questionText, /\? #12 worker: Which API should I use\?/);
+  assert.match(questionText, /Context:.*The code has two patterns/);
+  assert.match(questionText, /Question ID: question-1/);
+  assert.doesNotMatch(questionText, /model-facing instructions/);
 });

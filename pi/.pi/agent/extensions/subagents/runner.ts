@@ -4,8 +4,14 @@ import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentConfig } from "./agents.ts";
 import { normalizeTitle, toolCallLabel } from "./format.ts";
-import { accumulateEvent, createStreamState, extractFinalText } from "./jsonl.ts";
-import type { CancellationReason, SubagentResult, SubagentUpdate } from "./types.ts";
+import { accumulateEvent, createStreamState, extractFinalText, parseParentQuestion } from "./jsonl.ts";
+import type {
+  CancellationReason,
+  SubagentDelivery,
+  SubagentQuestion,
+  SubagentResult,
+  SubagentUpdate,
+} from "./types.ts";
 
 const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
@@ -56,12 +62,22 @@ export function killProcess(proc: ChildProcess, delayMs = 5000): void {
 export interface RunSubagentOptions {
   signal?: AbortSignal;
   onUpdate?: (update: SubagentUpdate) => void;
+  onQuestion?: (question: SubagentQuestion) => void;
   maxRuntimeMs?: number;
   thinkingLevel?: string;
   title?: string;
+  bridgeExtensionPath?: string;
   spawnFn?: typeof spawn;
   killDelayMs?: number;
   shutdownGraceMs?: number;
+}
+
+export interface SubagentRun {
+  proc: ChildProcess;
+  result: Promise<SubagentResult>;
+  cancel(reason: CancellationReason): void;
+  send(message: string, deliverAs: SubagentDelivery): Promise<void>;
+  reply(questionId: string, answer: string): Promise<void>;
 }
 
 /**
@@ -75,7 +91,7 @@ export async function runSubagent(
   cwd: string,
   defaultModel: string | undefined,
   options: RunSubagentOptions = {},
- ): Promise<{ proc: ChildProcess; result: Promise<SubagentResult>; cancel: (reason: CancellationReason) => void }> {
+ ): Promise<SubagentRun> {
   const tmpDir = await mkdtemp(join(tmpdir(), "subagents-"));
   const promptFile = join(tmpDir, "agent.md");
   try {
@@ -87,17 +103,22 @@ export async function runSubagent(
 
   const base = getPiCommand();
   const model = agent.model || defaultModel;
-  const tools = (agent.tools ?? DEFAULT_TOOLS).join(",");
   const title = normalizeTitle(options.title);
+  const bridgeExtension = options.bridgeExtensionPath;
+  const hasBridgeExtension = !!bridgeExtension && isAbsolute(bridgeExtension);
+  const tools = [...new Set([
+    ...(agent.tools ?? DEFAULT_TOOLS),
+    ...(hasBridgeExtension ? ["ask_parent"] : []),
+  ])].join(",");
   const guardExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
   const hasGuardExtension = !!guardExtension && isAbsolute(guardExtension);
   const args = [
     ...base.args,
     "--mode",
-    "json",
-    "-p",
+    "rpc",
     "--no-session",
     "--no-extensions",
+    ...(hasBridgeExtension ? ["--extension", bridgeExtension] : []),
     ...(hasGuardExtension ? ["--extension", guardExtension] : []),
     "--no-context-files",
     ...(model ? ["--model", model] : []),
@@ -106,8 +127,6 @@ export async function runSubagent(
     tools,
     "--append-system-prompt",
     promptFile,
-    ...(title ? [`Title: ${title}`] : []),
-    `Task: ${task}`,
   ];
 
   let proc: ChildProcess;
@@ -126,26 +145,117 @@ export async function runSubagent(
       shell: false,
       env: childEnv,
     });
-    proc.stdin?.end(); // close stdin so child doesn't wait for pipe input
+    if (!proc.stdin) {
+      killProcess(proc, options.killDelayMs);
+      throw new Error("Subagent RPC child has no stdin pipe");
+    }
   } catch (err) {
     await unlink(promptFile).catch(() => {});
     await rmdir(tmpDir).catch(() => {});
     throw err;
   }
 
+  const stdin = proc.stdin!;
   let cancelJob: (reason: CancellationReason) => void = () => {};
+  let sendMessage: (message: string, deliverAs: SubagentDelivery) => Promise<void> = async () => {
+    throw new Error("Subagent transport is not ready");
+  };
+  let replyToQuestion: (questionId: string, answer: string) => Promise<void> = async () => {
+    throw new Error("Subagent transport is not ready");
+  };
   const result = new Promise<SubagentResult>((resolve) => {
+    interface PendingCommand {
+      command: "prompt";
+      continuation: boolean;
+      resolve: () => void;
+      reject: (error: Error) => void;
+    }
+
     let stdout = "";
     let stderr = "";
     let pending = "";
     let lastStreamAt = 0;
     const state = createStreamState(model ?? "");
+    const commands = new Map<string, PendingCommand>();
+    const questions = new Map<string, SubagentQuestion>();
+    const answeringQuestions = new Set<string>();
+    let nextCommandId = 1;
     let settled = false;
+    let settling = false;
+    let accepting = true;
+    let inputEnded = false;
+    let cancelled = false;
+    let cancellationReason: CancellationReason | undefined;
+    let transportError: string | undefined;
     let completionWatchdogFired = false;
     let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       unlink(promptFile).catch(() => {});
       rmdir(tmpDir).catch(() => {});
+    };
+    const startShutdownWatchdog = () => {
+      if (shutdownTimer || settled) return;
+      shutdownTimer = setTimeout(() => {
+        completionWatchdogFired = true;
+        killProcess(proc, options.killDelayMs);
+      }, options.shutdownGraceMs ?? SHUTDOWN_GRACE_MS);
+    };
+    const rejectCommands = (error: Error) => {
+      for (const command of commands.values()) command.reject(error);
+      commands.clear();
+    };
+    const endInput = () => {
+      if (inputEnded) return;
+      inputEnded = true;
+      accepting = false;
+      try {
+        stdin.end();
+      } catch { /* child already closed */ }
+      startShutdownWatchdog();
+    };
+    const finishSettling = () => {
+      if (!settling || commands.size > 0 || questions.size > 0) return;
+      endInput();
+    };
+    const writePayload = (payload: Record<string, unknown>): Promise<void> => {
+      if (!accepting || settled || cancelled) {
+        return Promise.reject(new Error("Subagent is no longer accepting messages"));
+      }
+      return new Promise<void>((resolveWrite, rejectWrite) => {
+        try {
+          stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
+            if (error) rejectWrite(error);
+            else resolveWrite();
+          });
+        } catch (err) {
+          rejectWrite(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
+    };
+    const sendCommand = (
+      message: string,
+      continuation: boolean,
+      streamingBehavior?: SubagentDelivery,
+    ): Promise<void> => {
+      if (!accepting || settled || cancelled) {
+        return Promise.reject(new Error("Subagent is no longer accepting messages"));
+      }
+      const id = `subagent-${nextCommandId++}`;
+      return new Promise<void>((resolveCommand, rejectCommand) => {
+        commands.set(id, { command: "prompt", continuation, resolve: resolveCommand, reject: rejectCommand });
+        try {
+          stdin.write(`${JSON.stringify({ id, type: "prompt", message, ...(streamingBehavior ? { streamingBehavior } : {}) })}\n`, (error) => {
+            if (!error || !commands.delete(id)) return;
+            rejectCommand(error);
+            finishSettling();
+          });
+        } catch (err) {
+          commands.delete(id);
+          rejectCommand(err instanceof Error ? err : new Error(String(err)));
+          finishSettling();
+        }
+      });
     };
 
     let lastEmitKey = "";
@@ -156,6 +266,13 @@ export async function runSubagent(
         options.onUpdate?.(update);
       } catch (err) {
         console.error("subagents: update callback failed", err);
+      }
+    };
+    const safeQuestion = (question: SubagentQuestion) => {
+      try {
+        options.onQuestion?.(question);
+      } catch (err) {
+        console.error("subagents: question callback failed", err);
       }
     };
     const maybeStream = () => {
@@ -176,29 +293,61 @@ export async function runSubagent(
       });
     };
 
+    const handleResponse = (event: Record<string, unknown>): boolean => {
+      if (event.type !== "response" || typeof event.id !== "string") return false;
+      const command = commands.get(event.id);
+      if (!command) return true;
+      commands.delete(event.id);
+      if (event.success === true) {
+        command.resolve();
+        if (settling && command.continuation) settling = false;
+      } else {
+        command.reject(new Error(typeof event.error === "string" ? event.error : `${command.command} was rejected`));
+      }
+      finishSettling();
+      return true;
+    };
     const handleLine = (line: string) => {
+      let event: Record<string, unknown> | undefined;
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (parsed && typeof parsed === "object") event = parsed as Record<string, unknown>;
+      } catch { /* accumulateEvent ignores malformed lines */ }
+      if (event && handleResponse(event)) return;
+
+      if (!settled && accepting) {
+        const question = parseParentQuestion(line);
+        if (question && !questions.has(question.id)) {
+          questions.set(question.id, question);
+          safeQuestion(question);
+        }
+      }
+
       accumulateEvent(state, line);
       maybeStream();
-      if (shutdownTimer || settled) return;
-      try {
-        if ((JSON.parse(line) as { type?: unknown }).type !== "agent_settled") return;
-      } catch {
+      if (!event || settled) return;
+      if (event.type === "agent_start") {
+        settling = false;
         return;
       }
-      shutdownTimer = setTimeout(() => {
-        completionWatchdogFired = true;
-        killProcess(proc, options.killDelayMs);
-      }, options.shutdownGraceMs ?? SHUTDOWN_GRACE_MS);
+      if (event.type === "agent_settled") {
+        settling = true;
+        finishSettling();
+      }
     };
 
     const finalize = (code: number | null, signal: NodeJS.Signals | null, processError = false) => {
       if (settled) return;
+      // Flush any final line that arrived without a trailing newline before
+      // closing the transport state.
+      if (pending.trim()) handleLine(pending);
       settled = true;
+      accepting = false;
       removeAbortListener();
       if (timeoutId) clearTimeout(timeoutId);
       if (shutdownTimer) clearTimeout(shutdownTimer);
-      // Flush any final line that arrived without a trailing newline.
-      if (pending.trim()) handleLine(pending);
+      rejectCommands(new Error("Subagent process closed"));
+      questions.clear();
       const text = state.finalText || state.streamedText || state.finalThinking || extractFinalText(stdout);
       cleanup();
       safeUpdate({
@@ -208,18 +357,20 @@ export async function runSubagent(
         model: state.model,
         thinkingLevel: options.thinkingLevel,
       });
-      if (!text && stdout.length > 0 && !processError) {
+      const failedTransport = processError || transportError !== undefined;
+      if (!text && stdout.length > 0 && !failedTransport) {
         const snippet = stdout.length > 2000
           ? `...(truncated)\n${stdout.slice(-2000)}`
           : stdout;
         stderr += `\n[subagents] No text extracted from ${stdout.split("\n").length} JSONL lines. Last lines:\n${snippet}`;
       }
+      if (transportError) stderr += `${stderr ? "\n" : ""}[subagents] ${transportError}`;
       if (cancelled) {
         stderr = stderr ? `${stderr}\n` : "";
         stderr += `Cancelled (${cancellationReason ?? "manual"}).`;
-      } else if (!completionWatchdogFired && !processError && signal) {
+      } else if (!completionWatchdogFired && !failedTransport && signal) {
         stderr += `\n[subagents] Killed by ${signal}`;
-      } else if (!completionWatchdogFired && !processError && code != null && code >= 128) {
+      } else if (!completionWatchdogFired && !failedTransport && code != null && code >= 128) {
         stderr += `\n[subagents] Killed by signal ${code - 128}`;
       }
       resolve({
@@ -227,8 +378,8 @@ export async function runSubagent(
         task,
         title,
         text,
-        exitCode: cancelled ? 130 : completionWatchdogFired ? 0 : processError ? 1 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
-        error: processError ? stderr || "failed to spawn subagent" : stderr,
+        exitCode: cancelled ? 130 : failedTransport ? 1 : completionWatchdogFired ? 0 : (signal || (code != null && code >= 128) ? 1 : (code ?? 0)),
+        error: failedTransport ? stderr || "failed to run subagent RPC transport" : stderr,
         cancelled,
         cancellationReason,
         usage: { ...state.usage },
@@ -267,37 +418,52 @@ export async function runSubagent(
       if (stderr.length > MAX_CHILD_ERROR) stderr = stderr.slice(-MAX_CHILD_ERROR);
     });
 
-    const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? 0;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let cancellationReason: CancellationReason | undefined;
-    let cancelled = false;
     cancelJob = (reason) => {
       if (settled || cancelled) return;
       cancelled = true;
+      accepting = false;
       cancellationReason = reason;
+      rejectCommands(new Error(`Subagent cancelled (${reason})`));
+      questions.clear();
       killProcess(proc, options.killDelayMs);
     };
+    sendMessage = (message, deliverAs) => sendCommand(message, true, deliverAs);
+    replyToQuestion = async (questionId, answer) => {
+      if (!questions.has(questionId)) throw new Error(`Unknown or answered subagent question: ${questionId}`);
+      if (answeringQuestions.has(questionId)) throw new Error(`Subagent question is already being answered: ${questionId}`);
+      answeringQuestions.add(questionId);
+      try {
+        await writePayload({ type: "extension_ui_response", id: questionId, value: answer });
+        questions.delete(questionId);
+        finishSettling();
+      } finally {
+        answeringQuestions.delete(questionId);
+      }
+    };
+
+    const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? 0;
     const onAbort = () => cancelJob("parent-abort");
     const onTimeout = () => cancelJob("timeout");
     const removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
 
-    if (timeoutMs > 0) {
-      timeoutId = setTimeout(onTimeout, timeoutMs);
-    }
-
+    if (timeoutMs > 0) timeoutId = setTimeout(onTimeout, timeoutMs);
     if (options.signal) {
-      if (options.signal.aborted) {
-        cancelJob("parent-abort");
-      } else {
-        options.signal.addEventListener("abort", onAbort, { once: true });
-      }
+      if (options.signal.aborted) cancelJob("parent-abort");
+      else options.signal.addEventListener("abort", onAbort, { once: true });
     }
 
     proc.on("close", (code, signal) => finalize(code, signal));
     proc.on("error", () => finalize(null, null, true));
+
+    const initialPrompt = `${title ? `Title: ${title}\n` : ""}Task: ${task}`;
+    void sendCommand(initialPrompt, false).catch((err) => {
+      if (cancelled || settled) return;
+      transportError = `Initial RPC prompt failed: ${String(err)}`;
+      endInput();
+    });
   });
 
-  return { proc, result, cancel: cancelJob };
+  return { proc, result, cancel: cancelJob, send: sendMessage, reply: replyToQuestion };
 }
 
 export async function runWithConcurrencyLimit<T, R>(

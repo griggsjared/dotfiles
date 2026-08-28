@@ -1,8 +1,15 @@
+import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { discoverAgents, loadSubagentSettings } from "./agents.ts";
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
-import { createCancelTool, createStatusTool, registerStatusCommands } from "./status-tools.ts";
+import {
+  createCancelTool,
+  createReplyTool,
+  createSendTool,
+  createStatusTool,
+  registerStatusCommands,
+} from "./status-tools.ts";
 import { createSubagentTool } from "./tools.ts";
 import { STATUS_KEY, WIDGET_KEY } from "./types.ts";
 
@@ -24,6 +31,7 @@ export default async function (pi: ExtensionAPI) {
     discover: () => discoverAgents(__dirname),
     registry,
     activeTickers,
+    bridgeExtensionPath: join(__dirname, "child-bridge.ts"),
     onUiContext: ({ hasUI, ui }) => {
       // Only hasUI/ui are used later (session_shutdown widget clearing); keep
       // just that subset so the full context isn't pinned for the session.
@@ -33,6 +41,8 @@ export default async function (pi: ExtensionAPI) {
   }));
   pi.registerTool(createStatusTool({ registry }));
   pi.registerTool(createCancelTool({ registry }));
+  pi.registerTool(createSendTool({ registry }));
+  pi.registerTool(createReplyTool({ registry }));
   registerStatusCommands(pi, { registry });
 
   pi.on("session_shutdown", () => {

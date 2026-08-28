@@ -8,6 +8,7 @@ import {
   MAX_TOOL_CALLS,
   normalizeToolArgs,
   parseEventLine,
+  parseParentQuestion,
   sanitizeToolCallArgs,
   truncateStrings,
 } from "../jsonl.ts";
@@ -18,12 +19,55 @@ const end = (content: unknown, extra: Record<string, unknown> = {}) =>
 const update = (content: unknown) =>
   JSON.stringify({ type: "message_update", message: { role: "assistant", content } });
 
+const rpcDelta = (type: "text_delta" | "thinking_delta", delta: string) =>
+  JSON.stringify({ type: "message_update", assistantMessageEvent: { type, delta } });
+
 test("parseEventLine", () => {
   assert.ok(parseEventLine('{"type":"message_end","message":{"role":"assistant","content":"x"}}'));
   assert.equal(parseEventLine(""), undefined);
   assert.equal(parseEventLine("not json"), undefined);
   assert.equal(parseEventLine('{"type":"message_end","message":{"role":"user"}}'), undefined);
   assert.equal(parseEventLine('{"type":"message_end"}'), undefined);
+  assert.ok(parseEventLine(rpcDelta("text_delta", "x")));
+});
+
+test("parseParentQuestion recognizes only marked input requests", () => {
+  assert.deepEqual(parseParentQuestion(JSON.stringify({
+    type: "extension_ui_request",
+    id: "question-1",
+    method: "input",
+    title: "subagents:ask-parent: Which API? ",
+    placeholder: " Existing or new. ",
+  })), {
+    id: "question-1",
+    question: "Which API?",
+    context: "Existing or new.",
+  });
+  assert.deepEqual(parseParentQuestion(JSON.stringify({
+    type: "extension_ui_request",
+    id: "question-2",
+    method: "input",
+    title: "subagents:ask-parent:Continue?",
+  })), { id: "question-2", question: "Continue?", context: undefined });
+  assert.equal(parseParentQuestion("not json"), undefined);
+  assert.equal(parseParentQuestion(JSON.stringify({
+    type: "extension_ui_request",
+    id: "",
+    method: "input",
+    title: "subagents:ask-parent:Missing ID",
+  })), undefined);
+  assert.equal(parseParentQuestion(JSON.stringify({
+    type: "extension_ui_request",
+    id: "question-3",
+    method: "editor",
+    title: "subagents:ask-parent:Wrong method",
+  })), undefined);
+  assert.equal(parseParentQuestion(JSON.stringify({
+    type: "extension_ui_request",
+    id: "question-4",
+    method: "input",
+    title: "Ordinary extension input",
+  })), undefined);
 });
 
 test("assistantText", () => {
@@ -79,13 +123,22 @@ test("accumulateEvent: keeps only the most recent MAX_TOOL_CALLS", () => {
   assert.equal(state.toolCalls[MAX_TOOL_CALLS - 1]?.args.path, `/f${MAX_TOOL_CALLS + 4}.ts`);
 });
 
-test("accumulateEvent: message_update keeps the longest chunk", () => {
+test("accumulateEvent: message_update keeps the longest legacy chunk", () => {
   const state = createStreamState("m");
   accumulateEvent(state, update("short"));
   accumulateEvent(state, update("much longer streaming chunk"));
   accumulateEvent(state, update("medium"));
   assert.equal(state.streamedText, "much longer streaming chunk");
   assert.equal(state.finalText, "");
+});
+
+test("accumulateEvent: assembles RPC text and thinking deltas", () => {
+  const state = createStreamState("m");
+  accumulateEvent(state, rpcDelta("text_delta", "Hello"));
+  accumulateEvent(state, rpcDelta("text_delta", " world"));
+  accumulateEvent(state, rpcDelta("thinking_delta", "checking"));
+  assert.equal(state.streamedText, "Hello world");
+  assert.equal(state.finalThinking, "checking");
 });
 
 test("accumulateEvent: ignores non-assistant and malformed lines", () => {

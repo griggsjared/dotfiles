@@ -3,13 +3,29 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { getPiCommand, runSubagent, runWithConcurrencyLimit } from "../runner.ts";
 import type { AgentConfig } from "../agents.ts";
-import { FakeChild, fakeSpawn, endEvent, updateEvent, type SpawnCall } from "./fake-child.ts";
+import {
+  FakeChild,
+  fakeSpawn,
+  endEvent,
+  questionEvent,
+  responseEvent,
+  updateEvent,
+  type SpawnCall,
+} from "./fake-child.ts";
 
 const agent: AgentConfig = {
   name: "worker",
   description: "test agent",
   systemPrompt: "You are a worker.",
 };
+const BRIDGE_EXTENSION = "/extensions/child-bridge.ts";
+
+function respondToCommand(child: FakeChild, index = 0, success = true, error?: string) {
+  const command = child.stdin.commands()[index];
+  assert.ok(command, `missing child RPC command ${index}`);
+  child.stdout.emit("data", Buffer.from(responseEvent(command, success, error)));
+  return command;
+}
 
 test("getPiCommand", () => {
   // npm-installed pi: node + cli entry script
@@ -75,6 +91,86 @@ test("runSubagent: assembles result from streamed JSONL", async () => {
   await promise;
 });
 
+test("runSubagent: correlates steering and preserves a racing follow-up", async () => {
+  const child = new FakeChild();
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    bridgeExtensionPath: BRIDGE_EXTENSION,
+  });
+  respondToCommand(child);
+
+  const steering = launched.send("Check the failure path", "steer");
+  assert.deepEqual(child.stdin.commands()[1], {
+    id: "subagent-2",
+    type: "prompt",
+    message: "Check the failure path",
+    streamingBehavior: "steer",
+  });
+  respondToCommand(child, 1);
+  await steering;
+
+  const followUp = launched.send("Now run the focused tests", "followUp");
+  assert.deepEqual(child.stdin.commands()[2], {
+    id: "subagent-3",
+    type: "prompt",
+    message: "Now run the focused tests",
+    streamingBehavior: "followUp",
+  });
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+  assert.equal(child.stdin.ended, false, "an unacknowledged continuation keeps RPC open");
+  respondToCommand(child, 2);
+  await followUp;
+  assert.equal(child.stdin.ended, false, "an accepted continuation waits for its next settle");
+
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_start" })}\n`));
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+  assert.equal(child.stdin.ended, true);
+  await assert.rejects(launched.send("too late", "steer"), /no longer accepting messages/);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: forwards parent questions and writes the matching reply", async () => {
+  const child = new FakeChild();
+  const questions: unknown[] = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    bridgeExtensionPath: BRIDGE_EXTENSION,
+    onQuestion: (question) => questions.push(question),
+  });
+  respondToCommand(child);
+  child.stdout.emit("data", Buffer.from(questionEvent("question-1", "Which API?", "Two choices")));
+  assert.deepEqual(questions, [{ id: "question-1", question: "Which API?", context: "Two choices" }]);
+
+  await launched.reply("question-1", "Use the existing API.");
+  assert.deepEqual(child.stdin.commands()[1], {
+    type: "extension_ui_response",
+    id: "question-1",
+    value: "Use the existing API.",
+  });
+  await assert.rejects(launched.reply("question-1", "again"), /Unknown or answered/);
+
+  child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+  assert.equal(child.stdin.ended, true);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: a rejected initial prompt fails the transport", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+  });
+  respondToCommand(child, 0, false, "prompt rejected");
+  await Promise.resolve();
+  assert.equal(child.stdin.ended, true);
+  child.finish(0);
+
+  const completed = await result;
+  assert.equal(completed.exitCode, 1);
+  assert.match(completed.error, /Initial RPC prompt failed: Error: prompt rejected/);
+});
+
 test("runSubagent: reports live updates when state changes", async () => {
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "t", "/tmp", undefined, {
@@ -126,6 +222,7 @@ test("runSubagent: cancels the shutdown watchdog when the child closes", async (
     spawnFn: fakeSpawn(child),
     shutdownGraceMs: 20,
   });
+  respondToCommand(child);
   child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
   child.finish(0);
   assert.equal((await result).exitCode, 0);
@@ -140,6 +237,7 @@ test("runSubagent: terminates a child that stays open after agent_settled", asyn
     shutdownGraceMs: 20,
     killDelayMs: 10,
   });
+  respondToCommand(child);
   child.stdout.emit("data", Buffer.from(endEvent("final answer")));
   child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
 
@@ -205,6 +303,7 @@ test("runSubagent: spawns the child with the full pi CLI contract", async () => 
     }) as unknown as typeof spawn,
     thinkingLevel: "low",
     title: "my title",
+    bridgeExtensionPath: BRIDGE_EXTENSION,
   });
   child.finish(0);
   await result;
@@ -212,15 +311,25 @@ test("runSubagent: spawns the child with the full pi CLI contract", async () => 
   assert.equal(calls.length, 1);
   const { args, options } = calls[0]!;
   const flags = args.slice(1); // args[0] is the pi entry script from getPiCommand
-  assert.deepEqual(flags.slice(0, 4), ["--mode", "json", "-p", "--no-session"]);
+  assert.deepEqual(flags.slice(0, 4), ["--mode", "rpc", "--no-session", "--no-extensions"]);
+  assert.equal(flags.includes("-p"), false);
   assert.ok(flags.includes("--no-extensions"), "no recursive subagent spawns");
   assert.ok(flags.includes("--no-context-files"));
+  const extensionIdx = flags.indexOf("--extension");
+  assert.equal(flags[extensionIdx + 1], BRIDGE_EXTENSION);
+  const toolsIdx = flags.indexOf("--tools");
+  assert.match(flags[toolsIdx + 1] ?? "", /(?:^|,)ask_parent(?:,|$)/);
   const modelIdx = flags.indexOf("--model");
   assert.equal(flags[modelIdx + 1], "p/m");
   assert.ok(flags.includes("--thinking"));
   assert.ok(flags.includes("--append-system-prompt"));
-  assert.ok(flags.some((a) => a === "Title: my title"));
-  assert.ok(flags.some((a) => a === "Task: do it"));
+  assert.equal(flags.some((a) => a === "Title: my title"), false);
+  assert.equal(flags.some((a) => a === "Task: do it"), false);
+  assert.deepEqual(child.stdin.commands()[0], {
+    id: "subagent-1",
+    type: "prompt",
+    message: "Title: my title\nTask: do it",
+  });
   assert.equal(options.cwd, "/tmp");
   assert.match(
     String((options.env as { NODE_OPTIONS?: string } | undefined)?.NODE_OPTIONS),
@@ -241,6 +350,7 @@ test("runSubagent: loads the workspace guard extension without enabling recursiv
         calls.push({ cmd, args, options: options ?? {} });
         return child;
       }) as unknown as typeof spawn,
+      bridgeExtensionPath: BRIDGE_EXTENSION,
     });
     child.finish(0);
     await result;
@@ -253,8 +363,8 @@ test("runSubagent: loads the workspace guard extension without enabling recursiv
 
   const { args, options } = calls[0]!;
   const flags = args.slice(1);
-  const extensionIndex = flags.indexOf("--extension");
-  assert.deepEqual(flags.slice(extensionIndex, extensionIndex + 2), ["--extension", "/workspace/guard-extension.ts"]);
+  const extensionValues = flags.flatMap((flag, index) => flag === "--extension" ? [flags[index + 1]] : []);
+  assert.deepEqual(extensionValues, [BRIDGE_EXTENSION, "/workspace/guard-extension.ts"]);
   assert.ok(flags.includes("--no-extensions"));
   assert.equal(options.cwd, "/tmp");
   assert.equal((options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, "1");
@@ -278,13 +388,15 @@ test("runSubagent: ignores absent, empty, and relative workspace guard extension
           call = { cmd, args, options: options ?? {} };
           return child;
         }) as unknown as typeof spawn,
+        bridgeExtensionPath: BRIDGE_EXTENSION,
       });
       child.finish(0);
       await result;
 
       assert.ok(call);
       const flags = call.args.slice(1);
-      assert.equal(flags.includes("--extension"), false);
+      const extensionValues = flags.flatMap((flag, index) => flag === "--extension" ? [flags[index + 1]] : []);
+      assert.deepEqual(extensionValues, [BRIDGE_EXTENSION]);
       assert.equal((call.options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, undefined);
       assert.equal((call.options.env as { PI_WORKSPACE_GUARD_OTHER?: string }).PI_WORKSPACE_GUARD_OTHER, "keep");
       assert.equal(call.options.cwd, "/tmp");
@@ -352,7 +464,7 @@ test("runSubagent: process error preserves partial JSONL output", async () => {
     turns: 1, input: 5, output: 3, cacheRead: 0, cacheWrite: 0, cost: 0.0001, contextTokens: 8,
   });
   assert.deepEqual(r.toolCalls, [{ name: "read", args: { path: "README.md" } }]);
-  assert.equal(r.error, "failed to spawn subagent");
+  assert.equal(r.error, "failed to run subagent RPC transport");
 });
 
 test("runSubagent: cancellation survives process error and later close", async () => {

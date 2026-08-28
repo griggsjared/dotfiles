@@ -12,7 +12,10 @@ import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
 import {
   ENTRY_TYPE,
+  QUESTION_ENTRY_TYPE,
   type SubagentMessageDetails,
+  type SubagentQuestion,
+  type SubagentQuestionMessageDetails,
   type SubagentResult,
   type SubagentToolDetails,
 } from "./types.ts";
@@ -148,6 +151,9 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     "After launching subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
     "Use subagent_status only when you need a snapshot of running or recent subagents; completion is automatic, so do not poll for it.",
     "Use subagent_cancel with a jobId or all, or /subagent-cancel <id|all>, when running subagents are stalled or no longer needed; cancellation stops the selected jobs.",
+    "When a subagent asks a question, answer it with subagent_reply. Call ask_user first when the decision belongs to the user, then relay that answer to the child.",
+    "Use subagent_send to steer a running child or queue a follow-up. It cannot answer a pending ask_parent question; use subagent_reply for that.",
+    "Messages work only while a child is running; completed subagents are not resumable.",
     "Give each subagent a clear, self-contained task. Keep tasks scoped so they finish quickly.",
     "Pass a short display title for each task; it is used in results, the widget, and history.",
     "For delegated research or exploration, act as the orchestrator: do not duplicate an async subagent's investigation. If you continue working while it runs, do only independent, non-overlapping work; otherwise end the turn and use its result when it arrives to decide the next step.",
@@ -214,6 +220,32 @@ export class Batch {
       );
     } catch (err) {
       console.error("subagents: failed to deliver result message", err);
+    }
+  }
+
+  deliverQuestion(jobId: number, question: SubagentQuestion): void {
+    const job = this.deps.registry.get(jobId);
+    if (!job) return;
+    const details: SubagentQuestionMessageDetails = {
+      jobId,
+      agent: job.agent,
+      questionId: question.id,
+      question: question.question,
+      context: question.context,
+    };
+    const lines = [
+      `Subagent #${jobId} ${job.agent} asks:`,
+      question.question,
+      ...(question.context ? [`Context: ${question.context}`] : []),
+      `Reply with subagent_reply using jobId ${jobId} and questionId "${question.id}". If the decision belongs to the user, call ask_user first and relay the answer.`,
+    ];
+    try {
+      this.deps.pi.sendMessage(
+        { customType: QUESTION_ENTRY_TYPE, content: lines.join("\n\n"), display: true, details },
+        { deliverAs: "steer", triggerTurn: true },
+      );
+    } catch (err) {
+      console.error("subagents: failed to deliver parent question", err);
     }
   }
 
@@ -286,6 +318,7 @@ export interface SubagentToolDeps {
   activeTickers: Set<ReturnType<typeof setInterval>>;
   onUiContext: (ctx: ExtensionContext) => void;
   refresh: (ctx: ExtensionContext) => void;
+  bridgeExtensionPath: string;
   /** Test seam: replaces the real child-process spawner. */
   spawnFn?: typeof spawn;
 }
@@ -337,7 +370,13 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
             thinkingLevel: agent.thinkingLevel,
             title,
+            bridgeExtensionPath: deps.bridgeExtensionPath,
             spawnFn: deps.spawnFn,
+            onQuestion: (question) => {
+              if (!registry.recordQuestion(jobId, question)) return;
+              batch.deliverQuestion(jobId, question);
+              refresh();
+            },
             onUpdate: (update) => {
               registry.updateLive(jobId, {
                 text: update.text || undefined,
@@ -350,7 +389,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
               refresh();
             },
           });
-          registry.registerCancellation(jobId, launched);
+          registry.registerControl(jobId, launched);
           let subagentResult = await launched.result;
           registry.complete(jobId, subagentResult);
           subagentResult = normalizeCancellation(subagentResult, registry.jobs.get(jobId));

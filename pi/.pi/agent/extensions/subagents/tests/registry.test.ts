@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createJobRegistry } from "../registry.ts";
+import { createJobRegistry, type SubagentControl } from "../registry.ts";
 import { EMPTY_USAGE, type SubagentResult } from "../types.ts";
 
 function result(overrides: Partial<SubagentResult> = {}): SubagentResult {
@@ -11,6 +11,15 @@ function result(overrides: Partial<SubagentResult> = {}): SubagentResult {
     exitCode: 0,
     error: "",
     usage: { ...EMPTY_USAGE, turns: 1 },
+    ...overrides,
+  };
+}
+
+function control(overrides: Partial<SubagentControl> = {}): SubagentControl {
+  return {
+    cancel: () => {},
+    send: async () => {},
+    reply: async () => {},
     ...overrides,
   };
 }
@@ -91,7 +100,7 @@ test("registry: cancellation before registration is delivered once", () => {
   const id = registry.add("worker", "task");
   assert.equal(registry.cancel(id, "session-shutdown"), true);
   const reasons: string[] = [];
-  registry.registerCancellation(id, { cancel: (reason) => reasons.push(reason) });
+  registry.registerControl(id, control({ cancel: (reason) => reasons.push(reason) }));
   assert.deepEqual(reasons, ["session-shutdown"]);
   registry.complete(id, result());
   assert.equal(registry.get(id)?.status, "cancelled");
@@ -101,14 +110,14 @@ test("registry: cancellation before registration is delivered once", () => {
 test("registry: unknown, terminal, and duplicate handles cannot become unreachable", () => {
   const registry = createJobRegistry();
   const unknown: string[] = [];
-  registry.registerCancellation(999, { cancel: (reason) => unknown.push(reason) });
+  registry.registerControl(999, control({ cancel: (reason) => unknown.push(reason) }));
   assert.deepEqual(unknown, ["manual"]);
 
   const id = registry.add("worker", "task");
   const first: string[] = [];
   const duplicate: string[] = [];
-  registry.registerCancellation(id, { cancel: (reason) => first.push(reason) });
-  registry.registerCancellation(id, { cancel: (reason) => duplicate.push(reason) });
+  registry.registerControl(id, control({ cancel: (reason) => first.push(reason) }));
+  registry.registerControl(id, control({ cancel: (reason) => duplicate.push(reason) }));
   assert.deepEqual(duplicate, ["manual"]);
   registry.cancel(id, "timeout");
   assert.deepEqual(first, ["timeout"]);
@@ -116,7 +125,7 @@ test("registry: unknown, terminal, and duplicate handles cannot become unreachab
 
   registry.complete(id, result({ cancelled: true, cancellationReason: "timeout", exitCode: 130 }));
   const terminal: string[] = [];
-  registry.registerCancellation(id, { cancel: (reason) => terminal.push(reason) });
+  registry.registerControl(id, control({ cancel: (reason) => terminal.push(reason) }));
   assert.deepEqual(terminal, ["timeout"]);
 });
 
@@ -125,7 +134,7 @@ test("registry: cancellation reasons are first-wins for all lifecycle causes", (
     const registry = createJobRegistry();
     const id = registry.add("worker", "task");
     const seen: string[] = [];
-    registry.registerCancellation(id, { cancel: (value) => seen.push(value) });
+    registry.registerControl(id, control({ cancel: (value) => seen.push(value) }));
     registry.cancel(id, reason);
     registry.cancel(id, "manual");
     registry.complete(id, result());
@@ -133,4 +142,74 @@ test("registry: cancellation reasons are first-wins for all lifecycle causes", (
     assert.equal(registry.get(id)?.cancellationReason, reason);
     assert.deepEqual(seen, [reason]);
   }
+});
+
+test("registry: sends messages and resolves the matching pending question", async () => {
+  const registry = createJobRegistry({ now: () => 123 });
+  const id = registry.add("worker", "task");
+  const sends: unknown[][] = [];
+  const replies: unknown[][] = [];
+  registry.registerControl(id, control({
+    send: async (...args) => { sends.push(args); },
+    reply: async (...args) => { replies.push(args); },
+  }));
+
+  assert.equal(registry.recordQuestion(id, { id: "q1", question: "Which API?", context: "Two choices" }), true);
+  assert.equal(registry.recordQuestion(id, { id: "q1", question: "duplicate" }), false);
+  assert.deepEqual(registry.get(id)?.pendingQuestions, [{
+    id: "q1",
+    question: "Which API?",
+    context: "Two choices",
+    askedAt: 123,
+  }]);
+
+  await registry.send(id, "Use the existing pattern", "steer");
+  await registry.reply(id, "q1", "Use v2");
+  assert.deepEqual(sends, [["Use the existing pattern", "steer"]]);
+  assert.deepEqual(replies, [["q1", "Use v2"]]);
+  assert.deepEqual(registry.get(id)?.pendingQuestions, []);
+  await assert.rejects(registry.reply(id, "q1", "again"), /Unknown or answered question q1/);
+});
+
+test("registry: concurrent replies cannot answer the same question twice", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("worker", "task");
+  let release: (() => void) | undefined;
+  registry.registerControl(id, control({
+    reply: () => new Promise<void>((resolve) => { release = resolve; }),
+  }));
+  registry.recordQuestion(id, { id: "q1", question: "Continue?" });
+
+  const first = registry.reply(id, "q1", "yes");
+  await assert.rejects(registry.reply(id, "q1", "no"), /already being answered/);
+  release?.();
+  await first;
+  assert.deepEqual(registry.get(id)?.pendingQuestions, []);
+});
+
+test("registry: failed replies remain pending", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("worker", "task");
+  registry.registerControl(id, control({
+    reply: async () => { throw new Error("write failed"); },
+  }));
+  registry.recordQuestion(id, { id: "q1", question: "Continue?" });
+
+  await assert.rejects(registry.reply(id, "q1", "yes"), /write failed/);
+  assert.deepEqual(registry.get(id)?.pendingQuestions.map((question) => question.id), ["q1"]);
+});
+
+test("registry: messaging rejects unknown, queued, cancelling, and terminal jobs", async () => {
+  const registry = createJobRegistry();
+  await assert.rejects(registry.send(999, "message", "steer"), /Unknown subagent job ID: 999/);
+
+  const id = registry.add("worker", "task");
+  await assert.rejects(registry.send(id, "message", "steer"), /has not started yet/);
+  registry.recordQuestion(id, { id: "q1", question: "Continue?" });
+  registry.cancel(id, "manual");
+  assert.deepEqual(registry.get(id)?.pendingQuestions, []);
+  await assert.rejects(registry.send(id, "message", "followUp"), /is cancelling \(manual\)/);
+
+  registry.complete(id, result({ cancelled: true, cancellationReason: "manual", exitCode: 130 }));
+  await assert.rejects(registry.send(id, "message", "steer"), /is cancelled/);
 });

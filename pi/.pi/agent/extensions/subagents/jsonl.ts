@@ -1,4 +1,10 @@
-import { EMPTY_USAGE, type SubagentUsage, type ToolCallInfo } from "./types.ts";
+import {
+  ASK_PARENT_TITLE_PREFIX,
+  EMPTY_USAGE,
+  type SubagentQuestion,
+  type SubagentUsage,
+  type ToolCallInfo,
+} from "./types.ts";
 
 /** Keep only the most recent tool calls; a long-running agent can accumulate many. */
 export const MAX_TOOL_CALLS = 20;
@@ -21,6 +27,10 @@ export interface StreamEvent {
     usage?: UsageInfo;
     model?: string;
     responseModel?: string;
+  };
+  assistantMessageEvent?: {
+    type?: string;
+    delta?: string;
   };
 }
 
@@ -53,9 +63,41 @@ export function parseEventLine(line: string): StreamEvent | undefined {
     return undefined;
   }
   if (!event || typeof event !== "object") return undefined;
-  const message = (event as StreamEvent).message;
-  if (!message || message.role !== "assistant") return undefined;
-  return event as StreamEvent;
+  const parsed = event as StreamEvent;
+  if (parsed.type === "message_update" && parsed.assistantMessageEvent) return parsed;
+  if (!parsed.message || parsed.message.role !== "assistant") return undefined;
+  return parsed;
+}
+
+export function parseParentQuestion(line: string): SubagentQuestion | undefined {
+  let event: unknown;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return undefined;
+  }
+  if (!event || typeof event !== "object") return undefined;
+  const request = event as {
+    type?: unknown;
+    id?: unknown;
+    method?: unknown;
+    title?: unknown;
+    placeholder?: unknown;
+  };
+  if (
+    request.type !== "extension_ui_request" ||
+    request.method !== "input" ||
+    typeof request.id !== "string" ||
+    !request.id.trim() ||
+    typeof request.title !== "string" ||
+    !request.title.startsWith(ASK_PARENT_TITLE_PREFIX)
+  ) return undefined;
+  const question = request.title.slice(ASK_PARENT_TITLE_PREFIX.length).trim();
+  if (!question) return undefined;
+  const context = typeof request.placeholder === "string" && request.placeholder.trim()
+    ? request.placeholder.trim()
+    : undefined;
+  return { id: request.id, question, context };
 }
 
 interface ToolCallPart {
@@ -127,10 +169,10 @@ export function truncateStrings(value: unknown, max = 120): unknown {
 export function accumulateEvent(state: StreamState, line: string): void {
   const event = parseEventLine(line);
   if (!event) return;
-  const message = event.message!;
-  const content = message.content;
+  const message = event.message;
+  const content = message?.content;
 
-  if (event.type === "message_end") {
+  if (event.type === "message_end" && message) {
     const text = assistantText(content);
     if (text) state.finalText = text;
     const thinking = thinkingText(content);
@@ -161,8 +203,15 @@ export function accumulateEvent(state: StreamState, line: string): void {
       }
     }
   } else if (event.type === "message_update") {
-    const text = assistantText(content);
-    if (text.length > state.streamedText.length) state.streamedText = text;
+    const delta = event.assistantMessageEvent;
+    if (delta?.type === "text_delta" && typeof delta.delta === "string") {
+      state.streamedText += delta.delta;
+    } else if (delta?.type === "thinking_delta" && typeof delta.delta === "string") {
+      state.finalThinking += delta.delta;
+    } else {
+      const text = assistantText(content);
+      if (text.length > state.streamedText.length) state.streamedText = text;
+    }
   }
 }
 

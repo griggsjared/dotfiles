@@ -9,10 +9,40 @@ const SIGNAL_NUMBERS: Record<string, number> = { SIGTERM: 15, SIGHUP: 1, SIGINT:
  * process closes with (143, null); only unhandleable signals (SIGKILL) close
  * with (null, signal).
  */
+export class FakeStdin {
+  writes: string[] = [];
+  ended = false;
+  writeError: Error | undefined;
+
+  write(data: string | Uint8Array, callback?: (error?: Error | null) => void): boolean {
+    if (this.writeError) {
+      callback?.(this.writeError);
+      return false;
+    }
+    if (this.ended) {
+      callback?.(new Error("stdin is closed"));
+      return false;
+    }
+    this.writes.push(data.toString());
+    callback?.();
+    return true;
+  }
+
+  end(): void {
+    this.ended = true;
+  }
+
+  commands(): Array<Record<string, unknown>> {
+    return this.writes.flatMap((write) => write.trim().split("\n"))
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+  }
+}
+
 export class FakeChild extends EventEmitter {
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
-  stdin = { end: () => {} };
+  stdin = new FakeStdin();
   stdout = new EventEmitter();
   stderr = new EventEmitter();
   killed: string | null = null;
@@ -75,5 +105,32 @@ export function endEvent(text: string, extra: Record<string, unknown> = {}): str
 }
 
 export function updateEvent(text: string): string {
-  return JSON.stringify({ type: "message_update", message: { role: "assistant", content: text } }) + "\n";
+  return JSON.stringify({
+    type: "message_update",
+    assistantMessageEvent: { type: "text_delta", delta: text },
+  }) + "\n";
+}
+
+export function responseEvent(
+  command: Record<string, unknown>,
+  success = true,
+  error?: string,
+): string {
+  return JSON.stringify({
+    id: command.id,
+    type: "response",
+    command: command.type,
+    success,
+    ...(error ? { error } : {}),
+  }) + "\n";
+}
+
+export function questionEvent(id: string, question: string, context?: string): string {
+  return JSON.stringify({
+    type: "extension_ui_request",
+    id,
+    method: "input",
+    title: `subagents:ask-parent:${question}`,
+    ...(context ? { placeholder: context } : {}),
+  }) + "\n";
 }

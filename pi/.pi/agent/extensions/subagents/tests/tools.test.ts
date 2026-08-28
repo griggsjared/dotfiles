@@ -345,12 +345,12 @@ test("execute: local settings set child model and thinking level", async () => {
     { spawnFn },
     { defaults: { model: "default-model", thinkingLevel: "low" }, agents: { scout: { model: "local-model", thinkingLevel: "high" } } },
   );
-  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
 
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("done")));
   child.finish(0);
-  await pending;
+  await sleep(20);
 
   const args = calls[0]?.args ?? [];
   assert.equal(args[args.indexOf("--model") + 1], "local-model");
@@ -368,12 +368,12 @@ test("execute: default settings set child model and thinking level", async () =>
     { spawnFn },
     { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} },
   );
-  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
 
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("done")));
   child.finish(0);
-  await pending;
+  await sleep(20);
 
   const args = calls[0]?.args ?? [];
   assert.equal(args[args.indexOf("--model") + 1], "default-model");
@@ -384,46 +384,57 @@ test("execute: setup failures preserve inherited model and effort", async () => 
   const spawnFn = (() => {
     throw new Error("spawn failed");
   }) as typeof spawn;
-  const { tool, sendMessage, ctx } = makeTool({ spawnFn });
+  const { tool, registry, sendMessage, ctx } = makeTool({ spawnFn });
   (ctx as unknown as { thinkingLevel?: string }).thinkingLevel = "medium";
 
-  const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, ctx);
-  assert.equal(result.details.status, "failed");
+  const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  assert.equal(result.details.status, "launched");
+  await sleep(20);
+  assert.equal(registry.get(1)?.status, "failed");
   const [message] = sendMessage.calls[0] as [{ details: { model?: string; thinkingLevel?: string } }];
   assert.equal(message.details.model, "p/m");
   assert.equal(message.details.thinkingLevel, "medium");
 });
 
-test("execute: sync single drives the child and returns completed details", async () => {
+test("subagent schema has no execution mode", () => {
+  const { tool } = makeTool();
+  const properties = (tool.parameters as { properties: Record<string, unknown> }).properties;
+  assert.equal("execution" in properties, false);
+});
+
+test("execute: legacy sync input cannot make a single job block", async () => {
   const { tool, registry, sendMessage, activeTickers, activeProcs, child, ctx } = makeTool();
-  const updates: unknown[] = [];
-  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, () => updates.push(true), ctx);
+  const result = await tool.execute(
+    "call1",
+    { agent: "scout", task: "t", execution: "sync" } as never,
+    undefined,
+    undefined,
+    ctx,
+  );
+
+  assert.equal(result.details.status, "launched");
+  assert.equal(registry.running().length, 1);
+  assert.deepEqual(result.details, {
+    agent: "scout",
+    status: "launched",
+    jobIds: [1],
+    jobScope: registry.scope,
+  });
 
   await sleep(10); // let runSubagent attach stream listeners
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
   child.finish(0);
+  await sleep(20);
 
-  const result = await pending;
-  assert.equal(result.content[0]?.type, "text");
-  assert.equal((result.content[0] as { text: string }).text, "scouted");
-  assert.equal(updates.length, 0, "sync execution does not stream intermediate tool output");
-  assert.equal(sendMessage.calls.length, 1, "sync completion uses the custom result entry");
-  assert.deepEqual(result.details, {
-    agent: "scout",
-    status: "completed",
-    execution: "sync",
-    jobIds: [1],
-    jobScope: registry.scope,
-  });
-  const job = [...registry.running()];
-  assert.equal(job.length, 0);
-  assert.equal(activeTickers.size, 0, "ticker stopped after sync completion");
+  assert.equal(sendMessage.calls.length, 2, "completion sends the result and hidden summary");
+  assert.equal(registry.running().length, 0);
+  assert.equal(activeTickers.size, 0);
   assert.equal(activeProcs.size, 0);
 });
 
-test("execute: async single returns launched, then delivers result + summary", async () => {
+test("execute: single returns launched, then delivers result + summary", async () => {
   const { tool, registry, sendMessage, child, ctx } = makeTool();
-  const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "async" }, undefined, undefined, ctx);
+  const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
   assert.equal(result.details.status, "launched");
   assert.equal(result.details.jobScope, registry.scope);
   assert.deepEqual(result.details.jobIds, [1]);
@@ -441,12 +452,12 @@ test("execute: async single returns launched, then delivers result + summary", a
   assert.match(summary.content, /\*\*Subagents complete:\*\*/);
 });
 
-test("execute: all-unknown sync batch throws", async () => {
+test("execute: all-unknown batch throws", async () => {
   const { tool, ctx } = makeTool();
   await assert.rejects(
     tool.execute(
       "call1",
-      { tasks: [{ agent: "ghost", task: "t" }], execution: "sync" },
+      { tasks: [{ agent: "ghost", task: "t" }] },
       undefined,
       undefined,
       ctx,
@@ -455,23 +466,27 @@ test("execute: all-unknown sync batch throws", async () => {
   );
 });
 
-test("execute: partial-unknown sync batch returns failed with skipped count", async () => {
-  const { tool, child, ctx } = makeTool();
-  const pending = tool.execute(
+test("execute: partial-unknown batch launches known jobs and reports skipped count", async () => {
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
+  const result = await tool.execute(
     "call1",
-    { tasks: [{ agent: "ghost", task: "t" }, { agent: "scout", task: "t2" }], execution: "sync" },
+    { tasks: [{ agent: "ghost", task: "t" }, { agent: "scout", task: "t2" }] },
     undefined,
     undefined,
     ctx,
   );
+  assert.equal(result.details.status, "launched");
+  assert.equal(result.details.skipped, 1);
+  assert.equal(result.details.count, 1);
+
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
   child.finish(0);
-  const result = await pending;
-  assert.equal(result.details.status, "failed");
-  assert.equal(result.details.skipped, 1);
-  assert.equal(result.details.count, 1);
-  const text = (result.content[0] as { text: string }).text;
+  await sleep(20);
+
+  assert.equal(registry.get(1)?.status, "failed");
+  assert.equal(registry.get(2)?.status, "completed");
+  const text = sendMessage.calls.map((call) => (call[0] as { content: string }).content).join("\n");
   assert.match(text, /Unknown agent "ghost"/);
   assert.match(text, /scouted/);
 });
@@ -485,10 +500,10 @@ test("execute: queued cancellation does not spawn and reports its reason", async
   (ctx as unknown as { ui: { notify: (text: string) => void } }).ui = { notify: (text) => notices.push(text) };
   await tool.execute("call1", {
     tasks: [{ agent: "scout", task: "one" }, { agent: "scout", task: "two" }],
-      execution: "async", concurrency: 1,
+    concurrency: 1,
   }, undefined, undefined, ctx);
   assert.equal(registry.cancel(2, "timeout"), true);
-  // Let the first async launch finish setup and attach its close listener.
+  // Let the first launch finish setup and attach its close listener.
   await sleep(10);
   children[0]!.finish(0);
   await sleep(30);
@@ -500,40 +515,44 @@ test("execute: queued cancellation does not spawn and reports its reason", async
   assert.match((sendMessage.calls.at(-1)?.[0] as { content: string }).content, /cancelled \(timeout\)/);
 });
 
-test("execute: parent-abort cancels queued sync jobs without spawning", async () => {
+test("execute: parent abort does not cancel running or queued jobs", async () => {
   const children = [new FakeChild(), new FakeChild()];
   const { spawnFn, calls } = fakeSpawnChildren(children);
   const { tool, registry, ctx } = makeTool({ spawnFn });
   const controller = new AbortController();
-  const pending = tool.execute("call1", {
+  const result = await tool.execute("call1", {
     tasks: [{ agent: "scout", task: "one" }, { agent: "scout", task: "two" }],
-    execution: "sync", concurrency: 1,
+    concurrency: 1,
   }, controller.signal, undefined, ctx);
+  assert.equal(result.details.status, "launched");
+
   await sleep(10);
   controller.abort();
-  const result = await pending;
   assert.equal(calls.length, 1);
-  assert.deepEqual(result.details.status, "cancelled");
-  assert.deepEqual(result.details.cancellationReason, "parent-abort");
-  assert.equal(registry.get(1)?.cancellationReason, "parent-abort");
-  assert.equal(registry.get(2)?.cancellationReason, "parent-abort");
-  const text = (result.content[0] as { text: string }).text;
-  assert.equal((text.match(/Cancelled \(parent-abort\)\./g) ?? []).length, 2);
+  assert.equal(registry.get(1)?.cancellationReason, undefined);
+  assert.equal(registry.get(2)?.cancellationReason, undefined);
+
+  children[0]!.finish(0);
+  await sleep(20);
+  assert.equal(calls.length, 2);
+  children[1]!.finish(0);
+  await sleep(20);
+  assert.equal(registry.get(1)?.status, "completed");
+  assert.equal(registry.get(2)?.status, "completed");
 });
 
-test("execute: registry cancellation reason wins over runner reason", async () => {
-  const { tool, registry, child, ctx } = makeTool();
-  const controller = new AbortController();
-  const pending = tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, controller.signal, undefined, ctx);
+test("execute: registry cancellation reason wins over child completion", async () => {
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
+  const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  assert.equal(result.details.status, "launched");
   await sleep(10);
   assert.equal(registry.cancel(1, "manual"), true);
-  controller.abort();
   child.finish(143);
-  const result = await pending;
-  assert.equal(result.details.status, "cancelled");
-  assert.equal(result.details.cancellationReason, "manual");
-  assert.match((result.content[0] as { text: string }).text, /Cancelled \(manual\)\./);
-  const details = (registry.get(1) as { cancellationReason?: string });
+  await sleep(20);
+
+  assert.equal(registry.get(1)?.cancellationReason, "manual");
+  const details = (sendMessage.calls[0]?.[0] as { details: { status: string; cancellationReason?: string } }).details;
+  assert.equal(details.status, "cancelled");
   assert.equal(details.cancellationReason, "manual");
 });
 
@@ -546,35 +565,36 @@ test("execute: setup cancellation reports cancellation instead of failure", asyn
   }) as typeof spawn;
   const made = makeTool({ spawnFn });
   registry = made.registry;
-  const result = await made.tool.execute("call1", { agent: "scout", task: "t", execution: "sync" }, undefined, undefined, made.ctx);
-  assert.equal(result.details.status, "cancelled");
-  assert.equal(result.details.cancellationReason, "session-shutdown");
+  const result = await made.tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, made.ctx);
+  assert.equal(result.details.status, "launched");
+  await sleep(20);
   const details = (made.sendMessage.calls[0]?.[0] as { details: { status: string; cancellationReason?: string } }).details;
   assert.equal(details.status, "cancelled");
   assert.equal(details.cancellationReason, "session-shutdown");
 });
 
-test("execute: async jobs outlive the tool-call abort signal", async () => {
+test("execute: jobs outlive the tool-call abort signal", async () => {
   const controller = new AbortController();
   const { tool, child, ctx } = makeTool();
-  const result = await tool.execute("call1", { agent: "scout", task: "t", execution: "async" }, controller.signal, undefined, ctx);
+  const result = await tool.execute("call1", { agent: "scout", task: "t" }, controller.signal, undefined, ctx);
   assert.equal(result.details.status, "launched");
 
   controller.abort();
   await sleep(10);
-  assert.equal(child.killed, null, "the caller's abort signal must not cancel an async job");
+  assert.equal(child.killed, null, "the caller's abort signal must not cancel the job");
 
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
   child.finish(0);
+  await sleep(20);
 });
 
-test("execute: async parallel batch delivers per-job results and one summary", async () => {
+test("execute: parallel batch delivers per-job results and one summary", async () => {
   const children = [new FakeChild(), new FakeChild()];
   const { spawnFn, calls } = fakeSpawnChildren(children);
   const { tool, sendMessage, sendUserMessage, activeTickers, activeProcs, ctx } = makeTool({ spawnFn });
   const result = await tool.execute(
     "call1",
-    { tasks: [{ agent: "scout", task: "t1" }, { agent: "scout", task: "t2" }], execution: "async" },
+    { tasks: [{ agent: "scout", task: "t1" }, { agent: "scout", task: "t2" }] },
     undefined,
     undefined,
     ctx,
@@ -680,7 +700,7 @@ test("renderResult: renders launched/failed/completed summaries", () => {
   assert.equal(renderText(completedWithJob).trim(), "");
 });
 
-test("renderCall: shows mode and every agent title", () => {
+test("renderCall: shows concurrency and every agent title", () => {
   const { tool } = makeTool();
   const theme = fakeTheme() as never;
   const rendered = tool.renderCall!(
@@ -689,7 +709,6 @@ test("renderCall: shows mode and every agent title", () => {
         { agent: "scout", task: "task one", title: "First task" },
         { agent: "worker", task: "task two", title: "Second task" },
       ],
-      execution: "async",
     } as never,
     theme,
     {} as never,
@@ -697,7 +716,7 @@ test("renderCall: shows mode and every agent title", () => {
   assert.ok(renderable(rendered));
   const text = renderText(rendered);
   assert.match(text, /parallel \(2 tasks\)/);
-  assert.match(text, /\[async/);
+  assert.match(text, /\[concurrency 3\]/);
   assert.match(text, /scout.*First task/);
   assert.match(text, /worker.*Second task/);
 });

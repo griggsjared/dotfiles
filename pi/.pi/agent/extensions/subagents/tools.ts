@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { Text } from "@earendil-works/pi-tui";
-import { StringEnum } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -13,7 +12,6 @@ import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
 import {
   ENTRY_TYPE,
-  type ExecutionMode,
   type SubagentMessageDetails,
   type SubagentResult,
   type SubagentToolDetails,
@@ -41,10 +39,6 @@ const SubagentParams = Type.Object({
   tasks: Type.Optional(Type.Array(TaskItem, {
     description: "Array of tasks to run in parallel",
     minItems: 1,
-  })),
-  execution: Type.Optional(StringEnum(["async", "sync"] as const, {
-    default: "async",
-    description: "Async (default, preferred): return immediately; results arrive as follow-up messages. Sync: wait for the result before continuing",
   })),
   concurrency: Type.Optional(Type.Integer({
     minimum: 1,
@@ -149,12 +143,11 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     "For tasks spanning multiple independent concerns or more than three files, split the work into parallel, non-overlapping subagent tasks; assign explicit file ownership and use an integration pass for shared APIs.",
     "Do not split tightly coupled changes or small tasks; avoid having multiple workers edit the same files.",
     "For substantial or broad exploration across multiple files or directories, use the scout agent; handle routine small investigations directly.",
-    "Prefer execution:'async' (the default) for every subagent call: launch it, then end your turn or continue with independent work; results arrive as follow-up messages. Use execution:'sync' only when the very next step in this turn cannot be produced without the subagent's result — never to avoid ending the turn or because waiting inline feels more reliable.",
-    "The subagent tool's async jobs return immediately and deliver results via follow-up messages; do not block or poll for them.",
-    "After launching async subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
-    "Use subagent_status only when you need a snapshot of running or recent subagents; async completion is automatic, so do not poll for normal completion.",
+    "Subagent jobs are always asynchronous: launch them, then end your turn or continue with independent work; results arrive as follow-up messages.",
+    "The subagent tool returns immediately; do not block or poll for normal completion.",
+    "After launching subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
+    "Use subagent_status only when you need a snapshot of running or recent subagents; completion is automatic, so do not poll for it.",
     "Use subagent_cancel with a jobId or all, or /subagent-cancel <id|all>, when running subagents are stalled or no longer needed; cancellation stops the selected jobs.",
-    "With the subagent tool, execution:'sync' on tasks[] waits for the whole batch; concurrency still controls how many children run at once.",
     "Give each subagent a clear, self-contained task. Keep tasks scoped so they finish quickly.",
     "Pass a short display title for each task; it is used in results, the widget, and history.",
     "For delegated research or exploration, act as the orchestrator: do not duplicate an async subagent's investigation. If you continue working while it runs, do only independent, non-overlapping work; otherwise end the turn and use its result when it arrives to decide the next step.",
@@ -278,10 +271,6 @@ export class Batch {
       console.error("subagents: failed to send batch summary", err);
     }
   }
-
-  markCleared(): void {
-    this.deps.registry.markCleared(this.jobIds);
-  }
 }
 
 export interface SubagentToolDeps {
@@ -305,11 +294,11 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
   return {
     name: "subagent",
     label: "Subagent",
-    description: "Delegate work to specialized subagents; prefer async (default), sync only when the result is needed before continuing.",
+    description: "Delegate work to specialized subagents. Jobs always run asynchronously and deliver their results as follow-up messages.",
     parameters: SubagentParams,
     promptGuidelines: buildGuidelines(deps.agents),
 
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const defaultModel = formatModel(ctx.model);
       const parentThinkingLevel = ctx.thinkingLevel;
       const agents = (await deps.discover()).map((agent) => {
@@ -323,7 +312,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const { registry, activeTickers } = deps;
       const agentByName = new Map(agents.map((a) => [a.name, a]));
       const available = agents.map((a) => a.name).join(", ") || "none";
-      const execution: ExecutionMode = params.execution ?? "async";
       const mode = resolveMode(params);
       deps.onUiContext(ctx);
       const refresh = () => deps.refresh(ctx);
@@ -334,11 +322,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       // which reject and are recorded here.
       const launchOne = async (agent: AgentConfig, task: string, jobId: number, title?: string): Promise<SubagentResult> => {
         try {
-          // A parent-aborted sync job may still be waiting for a concurrency
-          // slot. Mark it cancelled before checking whether to spawn it.
-          if (execution === "sync" && signal?.aborted) {
-            registry.cancel(jobId, "parent-abort");
-          }
           // A cancelled job may have been waiting for a concurrency slot. Do
           // not spawn it just to discover the cancellation after launch.
           const cancellationReason = registry.get(jobId)?.cancellationReason;
@@ -352,12 +335,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             return result;
           }
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
-            // The tool-call signal belongs to the synchronous invocation. An
-            // async tool returns before its child completes, so retaining it
-            // would let the host abort signal cancel a job immediately after
-            // launch. Async jobs are cancelled explicitly via subagent_cancel
-            // or /subagent-cancel instead.
-            signal: execution === "sync" ? signal : undefined,
             thinkingLevel: agent.thinkingLevel,
             title,
             spawnFn: deps.spawnFn,
@@ -418,35 +395,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         batch.addJob(jobId);
         refresh();
         const stopTicker = startTicker(activeTickers, refresh);
-        if (execution === "sync") {
-          let result: SubagentResult;
-          try {
-            result = await launchOne(agent, single.task, jobId, single.title);
-          } catch (err) {
-            const cancellationReason = registry.get(jobId)?.cancellationReason;
-            result = cancellationReason
-              ? cancelledResult(agent.name, single.task, single.title, cancellationReason, agent)
-              : failedResult(agent.name, single.task, single.title, err, agent);
-            if (cancellationReason) registry.complete(jobId, result);
-          }
-          stopTicker();
-          batch.deliverResult(jobId, result);
-          batch.markCleared();
-          refresh();
-          const status = result.cancelled ? "cancelled" : result.exitCode === 0 ? "completed" : "failed";
-          return {
-            content: [{ type: "text", text: capOutput(formatResultOutput(result), 20000) }],
-            details: {
-              agent: agent.name,
-              status,
-              execution,
-              jobIds: [jobId],
-              jobScope: registry.scope,
-              ...(result.cancellationReason ? { cancellationReason: result.cancellationReason } : {}),
-            },
-          };
-        }
-
         launchOne(agent, single.task, jobId, single.title)
           .then((r) => {
             stopTicker();
@@ -467,11 +415,10 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             batch.summary();
           });
 
-        // Return before the child finishes only for async execution; results
-        // are delivered via sendMessage with the custom renderer.
+        // Results are delivered later via sendMessage with the custom renderer.
         return {
           content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${single.title ?? single.task}"` }],
-          details: { agent: agent.name, status: "launched", execution, jobIds: [jobId], jobScope: registry.scope },
+          details: { agent: agent.name, status: "launched", jobIds: [jobId], jobScope: registry.scope },
         };
       }
 
@@ -493,7 +440,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       refresh();
       const stopTicker = startTicker(activeTickers, refresh);
 
-      const results: Array<SubagentResult | undefined> = new Array(tasks.length);
       const runWithAgent = async (task: TaskItemType, index: number): Promise<void> => {
         const jobId = jobIds[index];
         if (jobId === undefined) return; // unreachable: index is bounded by the concurrency loop
@@ -508,77 +454,32 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
               task.title,
               `Unknown agent "${task.agent}". Available: ${available}`,
             );
-          results[index] = result;
           registry.complete(jobId, result);
           batch.recordCompletion(jobId);
           refresh();
-          if (execution === "async") {
-            batch.deliverResult(jobId, result);
-            batch.summary();
-          }
+          batch.deliverResult(jobId, result);
+          batch.summary();
           return;
         }
         try {
           const result = await launchOne(agent, task.task, jobId, task.title);
-          results[index] = result;
-          if (execution === "async") {
-            batch.deliverResult(jobId, result);
-            batch.summary();
-          }
+          batch.deliverResult(jobId, result);
+          batch.summary();
         } catch (err) {
           const cancellationReason = registry.get(jobId)?.cancellationReason;
           const result = cancellationReason
             ? cancelledResult(task.agent, task.task, task.title, cancellationReason, agent)
             : failedResult(task.agent, task.task, task.title, err, agent);
-          results[index] = result;
-          if (cancellationReason) registry.complete(jobId, result);
-          if (execution === "async") {
-            if (cancellationReason) {
-              batch.recordCompletion(jobId);
-              batch.deliverResult(jobId, result);
-            } else {
-              batch.sendError(task.agent, task.task, task.title, err, agent, jobId);
-            }
-            batch.summary();
+          if (cancellationReason) {
+            registry.complete(jobId, result);
+            batch.recordCompletion(jobId);
+            batch.deliverResult(jobId, result);
+          } else {
+            batch.sendError(task.agent, task.task, task.title, err, agent, jobId);
           }
+          batch.summary();
         }
       };
-
-      if (execution === "sync") {
-        try {
-          await runWithConcurrencyLimit(tasks, concurrency, runWithAgent);
-        } finally {
-          stopTicker();
-        }
-        for (const [index, result] of results.entries()) {
-          const jobId = jobIds[index];
-          if (jobId !== undefined && result) batch.deliverResult(jobId, result);
-        }
-        registry.markCleared(jobIds);
-        refresh();
-        const output = results.map((result, index) => {
-          const task = tasks[index];
-          if (!task) return "";
-          const title = normalizeTitle(task.title);
-          const label = title ? `${task.agent}: ${title}` : `${task.agent}: ${shortLabel(undefined, task.task, 120)}`;
-          return `### ${label}\n${result ? formatResultOutput(result) : "(no output)"}`;
-        }).join("\n\n");
-        const failed = results.some((result) => !result || result.exitCode !== 0);
-        return {
-          content: [{ type: "text", text: capOutput(output, 50000) }],
-          details: {
-            count: tasks.length - unknownCount,
-            skipped: unknownCount,
-            status: results.some((result) => result?.cancelled) ? "cancelled" : failed ? "failed" : "completed",
-            execution,
-            jobIds,
-            jobScope: registry.scope,
-            ...(results.find((result) => result?.cancelled)?.cancellationReason
-              ? { cancellationReason: results.find((result) => result?.cancelled)?.cancellationReason }
-              : {}),
-          },
-        };
-      }
 
       runWithConcurrencyLimit(tasks, concurrency, runWithAgent)
         .finally(stopTicker)
@@ -591,7 +492,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           count: tasks.length - unknownCount,
           skipped: unknownCount,
           status: "launched",
-          execution,
           jobIds,
           jobScope: registry.scope,
         },
@@ -603,7 +503,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         let text =
           theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
-          theme.fg("muted", ` [${args.execution ?? "async"}, concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
+          theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
         for (const task of args.tasks.slice(0, 8)) {
           const title = normalizeTitle(task.title);
           const preview = title ? title : shortLabel(undefined, task.task, 60);
@@ -617,7 +517,6 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       return new Text(
         theme.fg("toolTitle", theme.bold("subagent ")) +
           theme.fg("accent", agentName) +
-          theme.fg("muted", ` [${args.execution ?? "async"}]`) +
           `\n  ${theme.fg("dim", preview)}`,
         0,
         0,

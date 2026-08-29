@@ -10,6 +10,17 @@ five_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empt
 five_reset=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 week_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 week_reset=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
+transcript=$(echo "$input" | jq -r '.transcript_path // empty')
+cache_pct=""
+if [ -n "$transcript" ] && [ -r "$transcript" ]; then
+    cache_pct=$(jq -s '
+        map(select(.type == "assistant" and .message.usage))
+        | map(.message.usage)
+        | map({input: (.input_tokens // 0), read: (.cache_read_input_tokens // 0), write: (.cache_creation_input_tokens // 0)})
+        | {read: map(.read) | add, total: map(.input + .read + .write) | add}
+        | if .total > 0 then (.read / .total * 100 | round) else empty end
+    ' "$transcript" 2>/dev/null)
+fi
 
 out=$(printf "\033[35m%s\033[0m" "$model")
 
@@ -34,6 +45,10 @@ if [ -n "$total_in" ] && [ -n "$ctx_size" ]; then
         context_color="\033[5;31m"
     fi
     out="$out $(printf "${context_color}%s/%s\033[0m" "$(abbrev "$total_in")" "$(abbrev "$ctx_size")")"
+fi
+
+if [ -n "$cache_pct" ]; then
+    out="$out $(printf "\033[33mC%s%%\033[0m" "$cache_pct")"
 fi
 
 if [ "$tasks" -gt 0 ]; then

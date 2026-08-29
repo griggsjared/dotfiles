@@ -63,6 +63,25 @@ export function calculateFooterCost(entries: ReadonlyArray<{ type: string; messa
 	return cost;
 }
 
+export function calculateFooterCacheHit(entries: ReadonlyArray<{ type: string; message?: unknown }>): number | undefined {
+	let cacheRead = 0;
+	let cacheInput = 0;
+	for (const entry of entries) {
+		if (entry.type !== "message" || !entry.message || typeof entry.message !== "object") continue;
+		const message = entry.message as { role?: unknown; usage?: unknown };
+		if (message.role !== "assistant" || !message.usage || typeof message.usage !== "object") continue;
+		const usage = message.usage as { input?: unknown; cacheRead?: unknown; cacheWrite?: unknown };
+		if (
+			typeof usage.input !== "number" || !Number.isFinite(usage.input) ||
+			typeof usage.cacheRead !== "number" || !Number.isFinite(usage.cacheRead) ||
+			typeof usage.cacheWrite !== "number" || !Number.isFinite(usage.cacheWrite)
+		) continue;
+		cacheRead += usage.cacheRead;
+		cacheInput += usage.input + usage.cacheRead + usage.cacheWrite;
+	}
+	return cacheInput > 0 ? cacheRead / cacheInput * 100 : undefined;
+}
+
 function formatTokens(count: number): string {
 	if (count < 1000) return String(count);
 	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
@@ -72,7 +91,7 @@ function formatTokens(count: number): string {
 
 export function registerStatusline(pi: ExtensionAPI) {
 	let costVersion = 0;
-	let costCache: { version: number; leafId: string | null; cost: number } | undefined;
+	let costCache: { version: number; leafId: string | null; cost: number; cacheHit?: number } | undefined;
 	const invalidateCost = (): void => {
 		costVersion++;
 	};
@@ -115,6 +134,20 @@ export function registerStatusline(pi: ExtensionAPI) {
 						line += ` ${theme.fg(contextUsage.tokens >= 200000 ? "error" : "borderAccent", `${used}/${total}`)}`;
 					}
 
+					const leafId = ctx.sessionManager.getLeafId();
+					if (!costCache || costCache.version !== costVersion || costCache.leafId !== leafId) {
+						const branch = ctx.sessionManager.getBranch();
+						costCache = {
+							version: costVersion,
+							leafId,
+							cost: calculateFooterCost(branch),
+							cacheHit: calculateFooterCacheHit(branch),
+						};
+					}
+					if (costCache.cacheHit !== undefined) {
+						line += ` ${theme.fg("warning", `C${Math.round(costCache.cacheHit)}%`)}`;
+					}
+
 					const usage = decodeFooterUsageStatus(statuses.get(USAGE_STATUS_KEY));
 					if (usage?.state === "ready" && usage.provider === model?.provider && usage.windows.length > 0) {
 						const providerWidth = model?.provider ? model.provider.length : 0;
@@ -123,14 +156,6 @@ export function registerStatusline(pi: ExtensionAPI) {
 					} else if (isUsageProvider(model?.provider)) {
 						line += ` ${theme.fg("dim", "quota:?")}`;
 					} else {
-						const leafId = ctx.sessionManager.getLeafId();
-						if (!costCache || costCache.version !== costVersion || costCache.leafId !== leafId) {
-							costCache = {
-								version: costVersion,
-								leafId,
-								cost: calculateFooterCost(ctx.sessionManager.getBranch()),
-							};
-						}
 						const cost = costCache.cost;
 						if (cost > 0) {
 							line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;

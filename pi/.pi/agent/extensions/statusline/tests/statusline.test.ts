@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateFooterCost, decodeFooterUsageStatus, formatFooterReset, formatFooterUsage, registerStatusline } from "../footer.ts";
+import { calculateFooterCacheHit, calculateFooterCost, decodeFooterUsageStatus, formatFooterReset, formatFooterUsage, registerStatusline } from "../footer.ts";
 
 test("formats shared usage status", () => {
 	assert.equal(formatFooterUsage({
@@ -63,6 +63,13 @@ test("calculates assistant cost without trusting unrelated entries", () => {
 	]), 1.25);
 });
 
+test("calculates cache hit percentage from assistant usage", () => {
+	assert.equal(calculateFooterCacheHit([
+		{ type: "message", message: { role: "assistant", usage: { input: 25, cacheRead: 75, cacheWrite: 0 } } },
+	]), 75);
+	assert.equal(calculateFooterCacheHit([]), undefined);
+});
+
 test("renders ANSI-themed footer within a narrow width and disposes its timer", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: any;
@@ -73,7 +80,7 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 	const context = {
 		model: { name: "a-very-long-model-name", provider: "openai-codex" }, thinkingLevel: "off",
 		getContextUsage: () => ({ tokens: contextTokens, contextWindow: 1000000 }),
-		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { input: 25, cacheRead: 75, cacheWrite: 0 } } }] },
 		ui: { setFooter(callback: any) { footer = callback; } },
 	};
 	try {
@@ -84,6 +91,7 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 		};
 		rendered = footer({ invalidate() {} }, { fg: ansi, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		assert.match(rendered.render(120)[0], /\x1b\[34m1\.0k\/1m\x1b\[0m/);
+		assert.match(rendered.render(120)[0], /\x1b\[33mC75%\x1b\[0m/);
 		contextTokens = 200000;
 		assert.match(rendered.render(120)[0], /\x1b\[31m200k\/1m\x1b\[0m/);
 		const lines = rendered.render(20);

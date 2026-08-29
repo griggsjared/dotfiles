@@ -38,7 +38,10 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
       maxWidth,
       "",
     ));
-    const progress = job.pendingQuestions.length > 0 ? "waiting for parent" : job.progress ?? job.task;
+    const questionCount = job.pendingQuestions.length;
+    const progress = questionCount > 0
+      ? `waiting for parent${questionCount > 1 ? ` (${questionCount})` : ""}`
+      : job.progress ?? job.task;
     lines.push(truncateToWidth(fg("muted", `  ${shortLabel(undefined, progress, 40)}`), maxWidth, ""));
   }
   for (const job of completed) {
@@ -47,7 +50,8 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
     const color = job.status === "completed" ? "success" : job.status === "cancelled" ? "warning" : "error";
     const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
     lines.push(truncateToWidth(
-      fg(color, `${icon} #${job.id} ${job.agent}`) +
+      fg(color, `${icon} `) +
+        fg("accent", `#${job.id} ${job.agent}`) +
         fg("muted", ` (${duration})`) +
         fg("dim", label),
       maxWidth,
@@ -85,14 +89,17 @@ export function refreshUi(ctx: UiContext, registry: JobRegistry): void {
 export function registerRenderers(pi: ExtensionAPI): void {
   pi.registerMessageRenderer<SubagentMessageDetails>(ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
     const details = message.details;
-    if (!details) return new Text(typeof message.content === "string" ? message.content : "", 0, 0);
+    if (!details) {
+      const content = typeof message.content === "string" ? message.content : "";
+      return new Text(theme.fg("toolOutput", content), 0, 0);
+    }
 
     const color = details.status === "completed" ? "success" : details.status === "cancelled" ? "warning" : "error";
     const jobLabel = details.jobId === undefined ? details.agent : `#${details.jobId} ${details.agent}`;
-    const prefix = theme.fg(color, details.icon + " " + jobLabel);
+    const prefix = theme.fg(color, details.icon + " ") + theme.fg("accent", jobLabel);
     const usageStr = formatUsageStats(details.usage, details.model, details.thinkingLevel);
     const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
-    const taskFallback = details.title ? "" : `: ${theme.fg("dim", shortLabel(undefined, details.task, 60))}`;
+    const taskFallback = details.title ? "" : theme.fg("dim", `: ${shortLabel(undefined, details.task, 60)}`);
     const cancellation = details.status === "cancelled" && details.cancellationReason
       ? theme.fg("warning", ` — cancelled (${details.cancellationReason})`)
       : "";
@@ -129,18 +136,26 @@ export function registerRenderers(pi: ExtensionAPI): void {
 
   pi.registerMessageRenderer<SubagentQuestionMessageDetails>(QUESTION_ENTRY_TYPE, (message, { expanded, outputPad }, theme) => {
     const details = message.details;
-    if (!details) return new Text(typeof message.content === "string" ? message.content : "", 0, 0);
+    if (!details) {
+      const content = typeof message.content === "string" ? message.content : "";
+      return new Text(theme.fg("muted", content), 0, 0);
+    }
 
-    const summary = theme.fg("warning", `? #${details.jobId} ${details.agent}`) +
+    const summary = theme.fg("warning", "? ") +
+      theme.fg("accent", `#${details.jobId} ${details.agent}`) +
       theme.fg("dim", `: ${shortLabel(undefined, details.question, 80)}`);
     const box = new Box(outputPad, 1, (text) => theme.bg("customMessageBg", text));
     box.addChild(new Text(summary, 0, 0));
     if (expanded) {
       if (details.context) {
         box.addChild(new Spacer(1));
-        box.addChild(new Text(`Context: ${details.context}`, 0, 0));
+        box.addChild(new Text(
+          theme.fg("muted", "Context: ") + theme.fg("dim", details.context),
+          0,
+          0,
+        ));
       }
-      box.addChild(new Text(theme.fg("muted", `Question ID: ${details.questionId}`), 0, 0));
+      box.addChild(new Text(theme.fg("muted", "Waiting for parent reply"), 0, 0));
     }
     return box;
   });

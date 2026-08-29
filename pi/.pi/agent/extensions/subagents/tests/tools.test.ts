@@ -9,6 +9,7 @@ import { createJobRegistry } from "../registry.ts";
 import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
 import {
+  createCancelTool,
   createReplyTool,
   createSendTool,
   createStatusTool,
@@ -271,6 +272,134 @@ test("subagent status supports individual and unknown job IDs", async () => {
   assert.equal((unknown.content[0] as { text: string }).text, "Unknown subagent job ID: 999");
 });
 
+test("status, cancel, and send tools render job-aware output", async () => {
+  const registry = createJobRegistry();
+  const jobId = registry.add("scout", "Inspect the error path");
+  registry.registerControl(jobId, {
+    cancel: () => {},
+    send: async () => {},
+    reply: async () => {},
+  });
+  registry.updateLive(jobId, { text: "Error: output text\n- output item\n**output heading**" });
+  registry.recordQuestion(jobId, {
+    id: "f7455070-1bdd-4bf8-9806-2647a04b1eba",
+    question: "Which path?",
+  });
+  const theme = fakeTheme() as never;
+
+  const statusTool = createStatusTool({ registry });
+  assert.equal(renderText(statusTool.renderCall!({ jobId }, theme, {} as never)).trim(), "status #1");
+  const statusResult = await statusTool.execute("status", { jobId }, undefined, undefined, {} as never);
+  assert.match(statusResult.details.text, /Subagent #1/);
+  const statusColors: string[] = [];
+  const statusTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => { statusColors.push(color); return text; },
+  } as never;
+  const renderedStatus = renderText(
+    statusTool.renderResult!(statusResult, { expanded: false, isPartial: false }, statusTheme, {} as never),
+  );
+  assert.match(renderedStatus, /Subagent #1/);
+  assert.doesNotMatch(renderedStatus, /\*\*Subagent #1\*\*/);
+  assert.doesNotMatch(renderedStatus, /f7455070/);
+  assert.ok(["toolTitle", "accent", "muted", "dim", "toolOutput"].every((color) => statusColors.includes(color)));
+
+  const taggedStatusTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  } as never;
+  const taggedStatus = renderText(
+    statusTool.renderResult!(statusResult, { expanded: false, isPartial: false }, taggedStatusTheme, {} as never),
+  );
+  assert.match(taggedStatus, /\[dim\] Inspect the error path/);
+  assert.match(taggedStatus, /\[dim\]- Which path\?/);
+  assert.match(taggedStatus, /\[toolOutput\]Error: output text/);
+  assert.match(taggedStatus, /\[toolOutput\]- output item/);
+  assert.match(taggedStatus, /\[toolOutput\]\*\*output heading\*\*/);
+  assert.doesNotMatch(taggedStatus, /f7455070/);
+
+  const aggregateResult = await statusTool.execute("status-all", {}, undefined, undefined, {} as never);
+  const taggedAggregate = renderText(
+    statusTool.renderResult!(aggregateResult, { expanded: false, isPartial: false }, taggedStatusTheme, {} as never),
+  );
+  assert.match(taggedAggregate, /\[accent\]#1 scout/);
+  assert.match(taggedAggregate, /\[muted\] \([^)]*\)/);
+  assert.match(taggedAggregate, /\[dim\]: Inspect the error path/);
+
+  const malformedStatus = statusTool.renderResult!(
+    { content: [{ type: "text", text: "legacy status" }], details: { text: 123 } } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(malformedStatus).trim(), "legacy status");
+
+  const sendTool = createSendTool({ registry });
+  const sendArgs = { jobId, message: "Check the failure path", deliverAs: "steer" as const };
+  const sendCall = renderText(sendTool.renderCall!(sendArgs, theme, {} as never))
+    .split("\n").map((line) => line.trimEnd()).join("\n").trim();
+  assert.equal(sendCall, "send #1 steer\n  Check the failure path");
+  const sendResult = await sendTool.execute("send", sendArgs, undefined, undefined, {} as never);
+  const renderedSendResult = renderText(
+    sendTool.renderResult!(sendResult, { expanded: false, isPartial: false }, theme, {} as never),
+  ).split("\n").map((line) => line.trimEnd()).join("\n").trim();
+  assert.equal(renderedSendResult, "✓ steering delivered to #1 scout\n  Inspect the error path");
+  const taggedTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  } as never;
+  const taggedSendResult = renderText(
+    sendTool.renderResult!(sendResult, { expanded: false, isPartial: false }, taggedTheme, {} as never),
+  );
+  assert.match(taggedSendResult, /\[success\]✓ /);
+  assert.match(taggedSendResult, /\[muted\]steering delivered to /);
+  assert.match(taggedSendResult, /\[accent\]#1 scout/);
+  assert.match(taggedSendResult, /\[dim\]Inspect the error path/);
+  const sendError = sendTool.renderResult!(
+    { content: [{ type: "text", text: "transport failed" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: true } as never,
+  );
+  assert.equal(renderText(sendError).trim(), "transport failed");
+  const legacySend = sendTool.renderResult!(
+    { content: [{ type: "text", text: "legacy send result" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(legacySend).trim(), "legacy send result");
+
+  const cancelTool = createCancelTool({ registry });
+  assert.equal(renderText(cancelTool.renderCall!({ jobId }, theme, {} as never)).trim(), "cancel #1");
+  const cancelResult = await cancelTool.execute("cancel", { jobId }, undefined, undefined, {} as never);
+  assert.equal(
+    renderText(cancelTool.renderResult!(cancelResult, { expanded: false, isPartial: false }, theme, {} as never)).trim(),
+    "⊘ cancelling #1 scout: Inspect the error path",
+  );
+  const taggedCancelResult = renderText(
+    cancelTool.renderResult!(cancelResult, { expanded: false, isPartial: false }, taggedTheme, {} as never),
+  );
+  assert.match(taggedCancelResult, /\[warning\]⊘ /);
+  assert.match(taggedCancelResult, /\[muted\]cancelling /);
+  assert.match(taggedCancelResult, /\[accent\]#1 scout/);
+  assert.match(taggedCancelResult, /\[dim\]: Inspect the error path/);
+  const cancelError = cancelTool.renderResult!(
+    { content: [{ type: "text", text: "cancel failed" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: true } as never,
+  );
+  assert.equal(renderText(cancelError).trim(), "cancel failed");
+  const legacyCancel = cancelTool.renderResult!(
+    { content: [{ type: "text", text: "legacy cancel result" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(legacyCancel).trim(), "legacy cancel result");
+});
+
 test("/subagent-status shares the status formatter", async () => {
   const registry = createJobRegistry();
   const id = registry.add("scout", "running task");
@@ -291,8 +420,14 @@ test("/subagent-status shares the status formatter", async () => {
 
   await command.handler("", ctx);
   assert.match(notices.at(-1) ?? "", new RegExp(`#${id} scout`));
+  registry.recordQuestion(id, {
+    id: "f7455070-1bdd-4bf8-9806-2647a04b1eba",
+    question: "Which API?",
+  });
   await command.handler(String(id), ctx);
   assert.match(notices.at(-1) ?? "", new RegExp(`Subagent #${id}`));
+  assert.match(notices.at(-1) ?? "", /- Which API\?/);
+  assert.doesNotMatch(notices.at(-1) ?? "", /f7455070/);
   await command.handler("nope", ctx);
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
 });
@@ -469,7 +604,10 @@ test("execute: setup failures preserve inherited model and effort", async () => 
     throw new Error("spawn failed");
   }) as typeof spawn;
   const { tool, registry, sendMessage, ctx } = makeTool({ spawnFn });
+  const notices: string[] = [];
   (ctx as unknown as { thinkingLevel?: string }).thinkingLevel = "medium";
+  (ctx as unknown as { hasUI: boolean; ui: { notify: (text: string) => void } }).hasUI = true;
+  (ctx as unknown as { ui: { notify: (text: string) => void } }).ui = { notify: (text) => notices.push(text) };
 
   const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
   assert.equal(result.details.status, "launched");
@@ -478,6 +616,7 @@ test("execute: setup failures preserve inherited model and effort", async () => 
   const [message] = sendMessage.calls[0] as [{ details: { model?: string; thinkingLevel?: string } }];
   assert.equal(message.details.model, "p/m");
   assert.equal(message.details.thinkingLevel, "medium");
+  assert.deepEqual(notices, ["#1 scout: t — failed: Error: spawn failed"]);
 });
 
 test("subagent schema has no execution mode", () => {
@@ -610,6 +749,26 @@ test("child questions trigger a parent turn and subagent_reply resolves them", a
   assert.equal(sendMessage.calls.length, 3, "question, result, and hidden summary sent once each");
 });
 
+test("stale UI context does not duplicate cancellation completion", async () => {
+  const { tool, registry, sendMessage, child, ctx } = makeTool();
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  await sleep(10);
+  Object.defineProperty(ctx, "hasUI", {
+    configurable: true,
+    get: () => { throw new Error("stale context"); },
+  });
+
+  assert.equal(registry.cancel(1, "manual"), true);
+  await sleep(30);
+
+  assert.equal(registry.get(1)?.status, "cancelled");
+  const summaries = sendMessage.calls.filter((call) => (call[0] as { display?: boolean }).display === false);
+  assert.equal(summaries.length, 1);
+  const summary = (summaries[0]?.[0] as { content: string }).content;
+  assert.equal(summary.match(/#1 scout/g)?.length, 1);
+  assert.equal(child.killed, "SIGTERM");
+});
+
 test("cancelling a child waiting on the parent invalidates its question", async () => {
   const { tool, registry, sendMessage, child, ctx } = makeTool();
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
@@ -659,6 +818,36 @@ test("subagent_reply renders a compact call and result", async () => {
   const renderedResult = renderText(tool.renderResult!(result, { expanded: false, isPartial: false }, theme, {} as never))
     .split("\n").map((line) => line.trimEnd()).join("\n").trim();
   assert.equal(renderedResult, "✓ reply delivered to #1\n  Q: Continue?\n  A: yes");
+  const taggedTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  } as never;
+  const taggedResult = renderText(
+    tool.renderResult!(result, { expanded: false, isPartial: false }, taggedTheme, {} as never),
+  );
+  assert.match(taggedResult, /\[success\]✓ /);
+  assert.match(taggedResult, /\[muted\]reply delivered to /);
+  assert.match(taggedResult, /\[accent\]#1/);
+  assert.match(taggedResult, /\[muted\]Q: /);
+  assert.match(taggedResult, /\[dim\]Continue\?/);
+  assert.match(taggedResult, /\[muted\]A: /);
+  assert.match(taggedResult, /\[dim\]yes/);
+  assert.doesNotMatch(taggedResult, /f7455070/);
+
+  const errorResult = tool.renderResult!(
+    { content: [{ type: "text", text: "reply failed" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    { isError: true } as never,
+  );
+  assert.equal(renderText(errorResult).trim(), "reply failed");
+  const legacyResult = tool.renderResult!(
+    { content: [{ type: "text", text: "legacy reply result" }], details: {} } as never,
+    { expanded: false, isPartial: false },
+    theme,
+    {} as never,
+  );
+  assert.equal(renderText(legacyResult).trim(), "legacy reply result");
 });
 
 test("subagent messaging tools reject queued, stale, and empty inputs", async () => {
@@ -749,7 +938,7 @@ test("execute: queued cancellation does not spawn and reports its reason", async
   const resultMessage = sendMessage.calls.find((call) => (call[0] as { details?: { jobId?: number } }).details?.jobId === 2);
   assert.equal((resultMessage?.[0] as { details: { status: string; cancellationReason?: string } }).details.status, "cancelled");
   assert.equal((resultMessage?.[0] as { details: { cancellationReason?: string } }).details.cancellationReason, "timeout");
-  assert.ok(notices.some((notice) => notice.includes("cancelled (timeout)")));
+  assert.deepEqual(notices, ["#2 scout: two — cancelled (timeout)"]);
   assert.match((sendMessage.calls.at(-1)?.[0] as { content: string }).content, /cancelled \(timeout\)/);
 });
 
@@ -901,7 +1090,27 @@ test("renderFullWidget: shows progress when no tool call is active", () => {
   assert.doesNotMatch(output, /live agent output/);
 
   registry.recordQuestion(id, { id: "question-1", question: "Which API?" });
-  assert.match(renderFullWidget(registry, (_color, text) => text, 80).join("\n"), /waiting for parent/);
+  registry.recordQuestion(id, { id: "question-2", question: "Which format?" });
+  assert.match(renderFullWidget(registry, (_color, text) => text, 80).join("\n"), /waiting for parent \(2\)/);
+
+  const completedId = registry.add("worker", "finished task", "Finished task");
+  registry.complete(completedId, {
+    agent: "worker",
+    task: "finished task",
+    title: "Finished task",
+    text: "done",
+    exitCode: 0,
+    error: "",
+  });
+  const tagged = renderFullWidget(
+    registry,
+    (color, text) => `[${color}]${text}[/${color}]`,
+    200,
+  ).join("\n");
+  assert.match(tagged, /\[success\]✓ /);
+  assert.match(tagged, /\[accent\]#2 worker/);
+  assert.match(tagged, /\[muted\] \([^)]*\)/);
+  assert.match(tagged, /\[dim\]: Finished task/);
 });
 
 test("renderResult: tolerates missing details (error results omit it)", () => {
@@ -1003,8 +1212,15 @@ test("message renderer: renders results and parent questions", () => {
   assert.match(compactText, /Ctrl\+O to expand/);
   assert.equal(compactText.split("\n").filter((line) => line.trim()).length, 3);
 
-  const withoutDetails = captured!({ content: "plain", details: undefined }, options, theme);
+  const fallbackColors: string[] = [];
+  const fallbackTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => { fallbackColors.push(color); return text; },
+  } as never;
+  const withoutDetails = captured!({ content: "plain", details: undefined }, options, fallbackTheme);
   assert.ok(renderable(withoutDetails));
+  assert.equal(renderText(withoutDetails).trim(), "plain");
+  assert.deepEqual(fallbackColors, ["toolOutput"]);
 
   const backgroundCalls: string[] = [];
   const expandedTheme = {
@@ -1038,23 +1254,70 @@ test("message renderer: renders results and parent questions", () => {
   assert.match(renderText(expanded), /\$ npm test/);
   assert.ok(backgroundCalls.includes("customMessageBg"));
 
-  const question = questionRenderer!(
-    {
-      content: "model-facing instructions",
-      details: {
-        jobId: 12,
-        agent: "worker",
-        questionId: "question-1",
-        question: "Which API should I use?",
-        context: "The code has two patterns.",
-      },
+  const questionMessage = {
+    content: "model-facing instructions",
+    details: {
+      jobId: 12,
+      agent: "worker",
+      questionId: "question-1",
+      question: "Which API should I use?",
+      context: "The code has two patterns.",
     },
-    { ...options, expanded: true },
-    theme,
-  );
+  };
+  const question = questionRenderer!(questionMessage, { ...options, expanded: true }, theme);
   const questionText = renderText(question);
   assert.match(questionText, /\? #12 worker: Which API should I use\?/);
   assert.match(questionText, /Context:.*The code has two patterns/);
-  assert.match(questionText, /Question ID: question-1/);
+  assert.match(questionText, /Waiting for parent reply/);
+  assert.doesNotMatch(questionText, /question-1/);
   assert.doesNotMatch(questionText, /model-facing instructions/);
+
+  const taggedTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  } as never;
+  const taggedResult = renderText(captured!(
+    {
+      content: "out",
+      details: {
+        jobId: 7,
+        agent: "a",
+        task: "t",
+        status: "completed",
+        duration: "1s",
+        icon: "✓",
+      },
+    },
+    options,
+    taggedTheme,
+  ));
+  assert.match(taggedResult, /\[success\]✓ /);
+  assert.match(taggedResult, /\[accent\]#7 a/);
+  assert.match(taggedResult, /\[muted\] \(1s\)/);
+  assert.match(taggedResult, /\[dim\]: t/);
+
+  const taggedQuestion = renderText(questionRenderer!(
+    questionMessage,
+    { ...options, expanded: true },
+    taggedTheme,
+  ));
+  assert.match(taggedQuestion, /\[warning\]\? /);
+  assert.match(taggedQuestion, /\[accent\]#12 worker/);
+  assert.match(taggedQuestion, /\[dim\]: Which API should I use\?/);
+  assert.match(taggedQuestion, /\[muted\]Context: /);
+  assert.match(taggedQuestion, /\[dim\]The code has two patterns\./);
+  assert.doesNotMatch(taggedQuestion, /question-1/);
+
+  const questionFallbackColors: string[] = [];
+  const questionFallbackTheme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => { questionFallbackColors.push(color); return text; },
+  } as never;
+  const questionFallback = questionRenderer!(
+    { content: "legacy question", details: undefined },
+    options,
+    questionFallbackTheme,
+  );
+  assert.equal(renderText(questionFallback).trim(), "legacy question");
+  assert.deepEqual(questionFallbackColors, ["muted"]);
 });

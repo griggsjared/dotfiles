@@ -349,6 +349,26 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       deps.onUiContext(ctx);
       const refresh = () => deps.refresh(ctx);
       const batch = new Batch({ pi: deps.pi, registry, refresh });
+      const notifyTerminal = (
+        jobId: number,
+        agent: string,
+        task: string,
+        title: string | undefined,
+        result: SubagentResult,
+      ): void => {
+        if (!result.cancelled && result.exitCode === 0) return;
+        const label = shortLabel(normalizeTitle(title), normalizeTitle(task), 60);
+        const reason = result.cancelled && result.cancellationReason
+          ? `cancelled (${result.cancellationReason})`
+          : `failed: ${shortLabel(undefined, normalizeTitle(result.error), 80)}`;
+        try {
+          if (!ctx.hasUI) return;
+          ctx.ui.notify(
+            `#${jobId} ${agent}: ${label} — ${reason}`,
+            result.cancelled ? "warning" : "error",
+          );
+        } catch { /* session torn down mid-run */ }
+      };
 
       // Launch one job: stream updates into the registry, then complete it.
       // Failures are returned as failed results, except spawn-level failures
@@ -362,9 +382,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             const result = cancelledResult(agent.name, task, title, cancellationReason, agent);
             registry.complete(jobId, result);
             batch.recordCompletion(jobId);
-            try {
-              if (ctx.hasUI) ctx.ui.notify(`#${jobId} ${agent.name} subagent cancelled (${cancellationReason})`, "warning");
-            } catch { /* session torn down mid-run */ }
+            notifyTerminal(jobId, agent.name, task, title, result);
             return result;
           }
           const launched = await runSubagent(agent, task, ctx.cwd, defaultModel, {
@@ -396,15 +414,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           // Cancellation may race the child's final close/update. The registry
           // reason is authoritative for every downstream representation.
           refresh();
-          try {
-            if (ctx.hasUI) {
-              const status = subagentResult.cancelled ? "cancelled" : subagentResult.exitCode === 0 ? "completed" : "failed";
-              const cancellation = subagentResult.cancelled && subagentResult.cancellationReason
-                ? ` (${subagentResult.cancellationReason})`
-                : "";
-              ctx.ui.notify(`#${jobId} ${agent.name} subagent ${status}${cancellation}`, status === "completed" ? "info" : status === "cancelled" ? "warning" : "error");
-            }
-          } catch { /* session torn down mid-run */ }
+          notifyTerminal(jobId, agent.name, task, title, subagentResult);
           batch.recordCompletion(jobId);
           return subagentResult;
         } catch (err) {
@@ -414,11 +424,14 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             registry.complete(jobId, result);
             batch.recordCompletion(jobId);
             refresh();
+            notifyTerminal(jobId, agent.name, task, title, result);
             return result;
           }
-          registry.complete(jobId, failedResult(agent.name, task, title, err, agent));
+          const result = failedResult(agent.name, task, title, err, agent);
+          registry.complete(jobId, result);
           batch.recordCompletion(jobId);
           refresh();
+          notifyTerminal(jobId, agent.name, task, title, result);
           throw err;
         }
       };

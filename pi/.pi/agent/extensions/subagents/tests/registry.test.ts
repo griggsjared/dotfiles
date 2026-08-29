@@ -55,6 +55,53 @@ test("registry lifecycle: add -> complete -> pendingCompleted -> markCleared", (
   assert.equal(registry.recent(1).length, 1);
 });
 
+test("registry: event ring sequences, limits, cursors, and defensive copies", () => {
+  let time = 10;
+  const registry = createJobRegistry({ now: () => time++ });
+  const id = registry.add("worker", "task");
+  assert.equal(registry.appendEvent(id, { kind: "state", summary: "started" }), true);
+  assert.equal(registry.appendEvent(id, { kind: "assistant", summary: "hello" }), true);
+  assert.equal(registry.appendEvent(id, { kind: "tool-start", summary: "read" }), true);
+
+  const latest = registry.readEvents(id, { limit: 2 });
+  assert.deepEqual(latest, {
+    events: [
+      { seq: 2, timestamp: 12, kind: "assistant", summary: "hello" },
+      { seq: 3, timestamp: 13, kind: "tool-start", summary: "read" },
+    ],
+    nextCursor: 3,
+  });
+  latest!.events[0]!.summary = "changed";
+  assert.equal(registry.readEvents(id, { since: 1 })?.events[0]?.summary, "hello");
+  assert.deepEqual(registry.readEvents(id, { since: 0 })?.events.map((event) => event.seq), [1, 2, 3]);
+  assert.equal(registry.readEvents(id, { since: 0 })?.droppedBefore, undefined);
+  assert.deepEqual(registry.readEvents(id, { since: 1, limit: 1 })?.events.map((event) => event.seq), [2]);
+  assert.equal(registry.readEvents(id, { since: 1, limit: 1 })?.nextCursor, 2);
+  assert.deepEqual(registry.readEvents(id, { since: 3 }), { events: [], nextCursor: 3 });
+  assert.throws(() => registry.readEvents(id, { since: 4 }), /ahead of current sequence/);
+
+  for (let i = 0; i < 100; i++) registry.appendEvent(id, { kind: "state", summary: String(i) });
+  const retained = registry.readEvents(id, { since: 0, limit: 200 })!;
+  assert.equal(retained.events.length, 100);
+  assert.equal(retained.events[0]!.seq, 4);
+  assert.equal(retained.droppedBefore, 4);
+});
+
+test("registry: event rings retain terminal jobs and are pruned with them", () => {
+  let time = 0;
+  const registry = createJobRegistry({ now: () => time });
+  const id = registry.add("worker", "task");
+  registry.appendEvent(id, { kind: "state", summary: "done" });
+  registry.complete(id, result());
+  assert.equal(registry.appendEvent(id, { kind: "state", summary: "late" }), false);
+  assert.equal(registry.readEvents(id)?.events[0]?.summary, "done");
+  registry.markCleared([id]);
+  const next = registry.add("worker", "next");
+  time = 300_001;
+  registry.complete(next, result());
+  assert.equal(registry.readEvents(id), undefined);
+});
+
 test("registry: failed jobs keep error and are pruned after cutoff once cleared", () => {
   let time = 0;
   const registry = createJobRegistry({ now: () => time });

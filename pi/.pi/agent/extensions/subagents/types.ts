@@ -6,6 +6,9 @@ export const STATUS_KEY = "subagents";
 
 export type CancellationReason = "manual" | "parent-abort" | "timeout" | "session-shutdown";
 export type SubagentDelivery = "steer" | "followUp";
+export type JobEventKind = "assistant" | "tool-start" | "tool-end" | "question" | "state";
+export interface JobEvent { seq: number; timestamp: number; kind: JobEventKind; summary: string; }
+export type JobEventInput = Omit<JobEvent, "seq" | "timestamp">;
 export interface SubagentQuestion { id: string; question: string; context?: string; }
 
 export interface SubagentUsage {

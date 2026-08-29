@@ -5,6 +5,7 @@ import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
 import {
   createCancelTool,
+  createPeekTool,
   createReplyTool,
   createSendTool,
   createStatusTool,
@@ -40,6 +41,7 @@ export default async function (pi: ExtensionAPI) {
     refresh: (ctx) => refreshUi(ctx, registry),
   }));
   pi.registerTool(createStatusTool({ registry }));
+  pi.registerTool(createPeekTool({ registry }));
   pi.registerTool(createCancelTool({ registry }));
   pi.registerTool(createSendTool({ registry }));
   pi.registerTool(createReplyTool({ registry }));

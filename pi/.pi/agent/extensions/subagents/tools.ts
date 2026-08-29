@@ -22,6 +22,14 @@ import {
 
 const MAX_PARALLEL = 8;
 const DEFAULT_CONCURRENCY = 3;
+const MAX_QUESTION_SUMMARY = 500;
+
+function questionSummary(question: SubagentQuestion): string {
+  const flattened = question.question.replace(/\s+/g, " ").trim();
+  return flattened.length > MAX_QUESTION_SUMMARY
+    ? `${flattened.slice(0, MAX_QUESTION_SUMMARY - 1)}…`
+    : flattened;
+}
 
 const TaskItem = Type.Object({
   agent: Type.String({ description: "Agent name to invoke" }),
@@ -141,6 +149,7 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     : "Use the subagent tool with an available agent discovered from the agents directory.";
   return [
     agentGuidance,
+    "Launch results include job IDs; use those IDs with subagent_peek, subagent_send, subagent_cancel, and subagent_reply instead of calling subagent_status just to discover them.",
     "Use the reviewer agent only for explicit user requests to review code or changes, or for clearly broad/high-risk changes where independent verification is warranted; do not use it merely because implementation finished or a commit was requested. Tell the reviewer to use the peer-review skill when available; use scout for general exploration or investigation.",
     "For broad/high-risk reviews, use parallel read-only reviewers with separate lenses (for example lifecycle/races, API/UX, and tests/regressions) only when the scope justifies it; otherwise use one reviewer and synthesize its findings.",
     "For tasks spanning multiple independent concerns or more than three files, split the work into parallel, non-overlapping subagent tasks; assign explicit file ownership and use an integration pass for shared APIs.",
@@ -390,8 +399,12 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             title,
             bridgeExtensionPath: deps.bridgeExtensionPath,
             spawnFn: deps.spawnFn,
+            onEvent: (event) => {
+              registry.appendEvent(jobId, event);
+            },
             onQuestion: (question) => {
               if (!registry.recordQuestion(jobId, question)) return;
+              registry.appendEvent(jobId, { kind: "question", summary: `question: ${questionSummary(question)}` });
               batch.deliverQuestion(jobId, question);
               refresh();
             },
@@ -469,7 +482,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
 
         // Results are delivered later via sendMessage with the custom renderer.
         return {
-          content: [{ type: "text", text: `Launched **${agent.name}** subagent: "${single.title ?? single.task}"` }],
+          content: [{ type: "text", text: `Launched **${agent.name}** subagent #${jobId}: "${single.title ?? single.task}"` }],
           details: { agent: agent.name, status: "launched", jobIds: [jobId], jobScope: registry.scope },
         };
       }
@@ -538,8 +551,9 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         .catch((err) => console.error("subagents: batch execution failed", err));
 
       const skipped = unknownCount > 0 ? `, ${unknownCount} skipped (unknown agent)` : "";
+      const launchedLines = tasks.map((task, index) => `- #${jobIds[index]} ${task.agent}: "${task.title ?? task.task}"`);
       return {
-        content: [{ type: "text", text: `Launched ${tasks.length - unknownCount} subagents in parallel${skipped}.` }],
+        content: [{ type: "text", text: `Launched ${tasks.length - unknownCount} subagents in parallel${skipped}:\n${launchedLines.join("\n")}` }],
         details: {
           count: tasks.length - unknownCount,
           skipped: unknownCount,

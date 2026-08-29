@@ -3,6 +3,8 @@ import { normalizeTitle } from "./format.ts";
 import {
   EMPTY_USAGE,
   type CancellationReason,
+  type JobEvent,
+  type JobEventInput,
   type SubagentDelivery,
   type SubagentQuestion,
   type SubagentResult,
@@ -24,9 +26,13 @@ export interface Job {
   pendingQuestions: PendingQuestion[];
 }
 const PRUNE_AFTER_MS = 300_000;
+const JOB_EVENT_CAPACITY = 100;
+interface JobEventRing { events: JobEvent[]; nextSeq: number; }
 export interface JobRegistry {
   scope: string; jobs: Map<number, Job>;
   add(agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string }): number;
+  appendEvent(id: number, event: JobEventInput): boolean;
+  readEvents(id: number, options?: { since?: number; limit?: number }): { events: JobEvent[]; nextCursor: number; droppedBefore?: number } | undefined;
   updateLive(id: number, live: { text?: string; progress?: string; usage?: SubagentUsage; toolCalls?: ToolCallInfo[]; model?: string; thinkingLevel?: string }): void;
   complete(id: number, result: SubagentResult): void;
   registerControl(id: number, handle: SubagentControl): void;
@@ -39,9 +45,28 @@ export interface JobRegistry {
 }
 export function createJobRegistry(options: { now?: () => number } = {}) {
   const now = options.now ?? Date.now; let nextId = 1; const scope = randomUUID();
-  const jobs = new Map<number, Job>(); const clearedIds = new Set<number>(); const handles = new Map<number, SubagentControl>(); const replying = new Set<string>();
+  const jobs = new Map<number, Job>(); const eventRings = new Map<number, JobEventRing>(); const clearedIds = new Set<number>(); const handles = new Map<number, SubagentControl>(); const replying = new Set<string>();
   const add = (agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string }): number => {
-    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, pendingQuestions: [] }); return id;
+    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, pendingQuestions: [] }); eventRings.set(id, { events: [], nextSeq: 1 }); return id;
+  };
+  const appendEvent = (id: number, event: JobEventInput): boolean => {
+    const job = jobs.get(id); if (!job || job.status !== "running") return false;
+    const ring = eventRings.get(id); if (!ring) return false;
+    ring.events.push({ ...event, seq: ring.nextSeq++, timestamp: now() });
+    if (ring.events.length > JOB_EVENT_CAPACITY) ring.events.shift();
+    return true;
+  };
+  const readEvents = (id: number, options: { since?: number; limit?: number } = {}) => {
+    const job = jobs.get(id); if (!job) return undefined;
+    const ring = eventRings.get(id)!; const since = options.since; const currentSeq = ring.nextSeq - 1;
+    if (since !== undefined && since > currentSeq) throw new Error(`Event cursor ${since} is ahead of current sequence ${currentSeq} for subagent #${id}.`);
+    const limit = options.limit === undefined ? JOB_EVENT_CAPACITY : Math.max(0, Math.floor(options.limit));
+    const oldest = ring.events[0]?.seq;
+    const source = since === undefined ? ring.events.slice(Math.max(0, ring.events.length - limit)) : ring.events.filter((event) => event.seq > since).slice(0, limit);
+    const events = source.map((event) => ({ ...event }));
+    const result: { events: JobEvent[]; nextCursor: number; droppedBefore?: number } = { events, nextCursor: events.at(-1)?.seq ?? (since ?? 0) };
+    if (since !== undefined && oldest !== undefined && oldest > 1 && since < oldest) result.droppedBefore = oldest;
+    return result;
   };
   const updateLive = (id: number, live: { text?: string; progress?: string; usage?: SubagentUsage; toolCalls?: ToolCallInfo[]; model?: string; thinkingLevel?: string }): void => {
     const job = jobs.get(id); if (!job) return;
@@ -112,12 +137,12 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
     // A cancellation requested through the registry wins any later child
     // result, so reporting remains consistent across races.
     job.cancellationReason = job.cancellationReason ?? result.cancellationReason;
-    const cutoff = now() - PRUNE_AFTER_MS; for (const [jid, j] of jobs) if (j.status !== "running" && clearedIds.has(jid) && (j.endTime ?? 0) < cutoff) jobs.delete(jid);
+    const cutoff = now() - PRUNE_AFTER_MS; for (const [jid, j] of jobs) if (j.status !== "running" && clearedIds.has(jid) && (j.endTime ?? 0) < cutoff) { jobs.delete(jid); eventRings.delete(jid); }
   };
   const markCleared = (ids: Iterable<number>) => { for (const id of ids) clearedIds.add(id); };
   const pendingCompleted = () => Array.from(jobs.values()).filter(j => j.status !== "running" && !clearedIds.has(j.id)).sort((a,b)=>(b.endTime??0)-(a.endTime??0));
   const running = () => Array.from(jobs.values()).filter(j => j.status === "running");
   const recent = (limit = 5) => Array.from(jobs.values()).filter(j => j.status !== "running").sort((a,b)=>(b.endTime??0)-(a.endTime??0)).slice(0, limit);
   const get = (id: number) => jobs.get(id);
-  return { scope, jobs, add, updateLive, complete, registerControl, recordQuestion, send, reply, cancel, cancelAll, markCleared, pendingCompleted, running, recent, get };
+  return { scope, jobs, add, appendEvent, readEvents, updateLive, complete, registerControl, recordQuestion, send, reply, cancel, cancelAll, markCleared, pendingCompleted, running, recent, get };
 }

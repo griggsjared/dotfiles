@@ -10,6 +10,7 @@ import { registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
 import {
   createCancelTool,
+  createPeekTool,
   createReplyTool,
   createSendTool,
   createStatusTool,
@@ -231,6 +232,49 @@ test("subagent status includes compact model and effort", async () => {
   const text = (result.content[0] as { text: string }).text;
   assert.match(text, /◐ #1 scout .*openai-codex\/gpt-5\.6-luna:minimal/);
   assert.match(text, /openai-codex\/gpt-5\.6-luna:high/);
+});
+
+test("subagent peek returns bounded incremental semantic events", async () => {
+  const registry = createJobRegistry();
+  const runningId = registry.add("scout", "running task");
+  registry.appendEvent(runningId, { kind: "state", summary: "started" });
+  registry.appendEvent(runningId, { kind: "tool-start", summary: "read src/auth.ts" });
+  registry.appendEvent(runningId, { kind: "assistant", summary: "Found the auth module." });
+  const tool = createPeekTool({ registry });
+
+  const first = await tool.execute("peek1", { jobId: runningId, limit: 2 }, undefined, undefined, {} as never);
+  assert.deepEqual(first.details.events, [
+    { seq: 2, timestamp: first.details.events[0]!.timestamp, kind: "tool-start", summary: "read src/auth.ts" },
+    { seq: 3, timestamp: first.details.events[1]!.timestamp, kind: "assistant", summary: "Found the auth module." },
+  ]);
+  assert.equal(first.details.nextCursor, 3);
+  assert.equal((first.content[0] as { text: string }).text, "[2] read src/auth.ts\n[3] Found the auth module.\nnextCursor: 3");
+
+  const next = await tool.execute("peek2", { jobId: runningId, since: first.details.nextCursor }, undefined, undefined, {} as never);
+  assert.deepEqual(next.details.events, []);
+  assert.equal(next.details.nextCursor, 3);
+
+  const fromStart = await tool.execute("peek3", { jobId: runningId, since: 0, limit: 2 }, undefined, undefined, {} as never);
+  assert.deepEqual(fromStart.details.events.map((event) => event.seq), [1, 2]);
+  assert.equal(fromStart.details.nextCursor, 2);
+
+  const capped = await tool.execute("peek4", { jobId: runningId, since: 0, maxChars: 12 }, undefined, undefined, {} as never);
+  assert.deepEqual(capped.details.events.map((event) => event.seq), [1]);
+  assert.equal(capped.details.nextCursor, 1);
+  assert.ok((capped.content[0] as { text: string }).text.length <= 12);
+  await assert.rejects(tool.execute("peek5", { jobId: runningId, since: 99 }, undefined, undefined, {} as never), /ahead of current sequence/);
+  await assert.rejects(tool.execute("peek6", { jobId: 999 }, undefined, undefined, {} as never), /Unknown subagent job ID: 999/);
+
+  registry.complete(runningId, { agent: "scout", task: "running task", text: "done", exitCode: 0, error: "" });
+  const terminal = await tool.execute("peek7", { jobId: runningId }, undefined, undefined, {} as never);
+  assert.equal(terminal.details.status, "completed");
+  assert.deepEqual(terminal.details.events.map((event) => event.seq), [1, 2, 3]);
+
+  const ringId = registry.add("worker", "ring task");
+  for (let i = 0; i < 101; i++) registry.appendEvent(ringId, { kind: "state", summary: String(i) });
+  const dropped = await tool.execute("peek8", { jobId: ringId, since: 0, limit: 100 }, undefined, undefined, {} as never);
+  assert.equal(dropped.details.droppedBefore, 2);
+  assert.equal(dropped.details.events[0]?.seq, 2);
 });
 
 test("subagent status supports individual and unknown job IDs", async () => {
@@ -661,6 +705,7 @@ test("execute: single returns launched, then delivers result + summary", async (
   assert.equal(result.details.status, "launched");
   assert.equal(result.details.jobScope, registry.scope);
   assert.deepEqual(result.details.jobIds, [1]);
+  assert.equal((result.content[0] as { text: string }).text, 'Launched **scout** subagent #1: "t"');
 
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));
@@ -673,6 +718,35 @@ test("execute: single returns launched, then delivers result + summary", async (
   assert.equal(summary.display, false);
   assert.equal(options.triggerTurn, true);
   assert.match(summary.content, /\*\*Subagents complete:\*\*/);
+});
+
+test("execute: child semantic events are available through peek", async () => {
+  const { tool, registry, child, ctx } = makeTool();
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  await sleep(10);
+  const emit = (event: Record<string, unknown>) => {
+    child.stdout.emit("data", Buffer.from(`${JSON.stringify(event)}\n`));
+  };
+  emit({ type: "agent_start" });
+  emit({ type: "tool_execution_start", toolName: "read", args: { path: "src/auth.ts" } });
+  emit({ type: "tool_execution_end", toolName: "read", isError: false, result: "ok" });
+  child.stdout.emit("data", Buffer.from(endEvent("scouted")));
+  child.finish(0);
+  await sleep(20);
+
+  const peek = await createPeekTool({ registry }).execute(
+    "peek",
+    { jobId: 1 },
+    undefined,
+    undefined,
+    {} as never,
+  );
+  assert.deepEqual(peek.details.events.map((event) => `${event.kind}:${event.summary}`), [
+    "state:started",
+    "tool-start:read src/auth.ts",
+    "tool-end:read success: ok",
+    "assistant:scouted",
+  ]);
 });
 
 test("subagent_send delivers a correlated steering command to a running child", async () => {
@@ -716,6 +790,9 @@ test("child questions trigger a parent turn and subagent_reply resolves them", a
   child.stdout.emit("data", Buffer.from(questionEvent("question-1", "Which API?", "Two choices")));
 
   assert.deepEqual(registry.get(1)?.pendingQuestions.map((question) => question.id), ["question-1"]);
+  assert.deepEqual(registry.readEvents(1)?.events.map((event) => `${event.kind}:${event.summary}`), [
+    "question:question: Which API?",
+  ]);
   const [message, options] = sendMessage.calls[0] as [
     { customType: string; content: string; display: boolean; details: { jobId: number; questionId: string } },
     { deliverAs: string; triggerTurn: boolean },
@@ -1028,6 +1105,10 @@ test("execute: parallel batch delivers per-job results and one summary", async (
   );
   assert.equal(result.details.status, "launched");
   assert.equal(result.details.count, 2);
+  assert.equal(
+    (result.content[0] as { text: string }).text,
+    'Launched 2 subagents in parallel:\n- #1 scout: "t1"\n- #2 scout: "t2"',
+  );
 
   await sleep(10);
   assert.equal(calls.length, 2, "one child spawned per task");

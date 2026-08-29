@@ -4,9 +4,19 @@ import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { AgentConfig } from "./agents.ts";
 import { normalizeTitle, toolCallLabel } from "./format.ts";
-import { accumulateEvent, createStreamState, extractFinalText, parseParentQuestion } from "./jsonl.ts";
+import {
+  accumulateEvent,
+  assistantText,
+  createStreamState,
+  extractFinalText,
+  normalizeToolArgs,
+  parseParentQuestion,
+  sanitizeToolCallArgs,
+  truncateStrings,
+} from "./jsonl.ts";
 import type {
   CancellationReason,
+  JobEventInput,
   SubagentDelivery,
   SubagentQuestion,
   SubagentResult,
@@ -18,6 +28,54 @@ const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
 const MAX_CHILD_ERROR = 1024 * 1024; // keep only the tail of child stderr
 const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
 const SHUTDOWN_GRACE_MS = 10000;
+const MAX_EVENT_SUMMARY = 500;
+
+function flattenSummary(value: string): string {
+  const flattened = value.replace(/\s+/g, " ").trim();
+  return flattened.length > MAX_EVENT_SUMMARY
+    ? `${flattened.slice(0, MAX_EVENT_SUMMARY - 1)}…`
+    : flattened;
+}
+
+function valueSummary(value: unknown): string {
+  if (typeof value === "string") return flattenSummary(String(truncateStrings(value)));
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(truncateStrings(value)) ?? String(value);
+  } catch {
+    serialized = String(value);
+  }
+  return flattenSummary(serialized);
+}
+
+function toolName(event: Record<string, unknown>): string {
+  const nested = event.toolCall;
+  const call = nested && typeof nested === "object" ? nested as Record<string, unknown> : undefined;
+  return String(event.toolName ?? event.name ?? call?.toolName ?? call?.name ?? "tool");
+}
+
+function toolArgs(event: Record<string, unknown>): Record<string, unknown> {
+  const nested = event.toolCall;
+  const call = nested && typeof nested === "object" ? nested as Record<string, unknown> : undefined;
+  return normalizeToolArgs(event.args ?? event.arguments ?? event.input ?? call?.args ?? call?.arguments);
+}
+
+function toolStartSummary(event: Record<string, unknown>): string {
+  const name = toolName(event);
+  const args = truncateStrings(sanitizeToolCallArgs(name, toolArgs(event))) as Record<string, unknown>;
+  return flattenSummary(toolCallLabel(name, args));
+}
+
+function toolEndSummary(event: Record<string, unknown>): string {
+  const name = toolName(event);
+  const isError = event.isError === true || event.success === false || event.error !== undefined;
+  const status = isError ? "error" : "success";
+  if (name === "write" || name === "edit") return flattenSummary(`${name} ${status}`);
+  const detail = isError ? event.error ?? event.result : event.result;
+  return flattenSummary(detail === undefined
+    ? `${name} ${status}`
+    : `${name} ${status}: ${valueSummary(detail)}`);
+}
 
 /**
  * Resolve how to invoke pi from this (extension) process. Children are spawned
@@ -62,6 +120,7 @@ export function killProcess(proc: ChildProcess, delayMs = 5000): void {
 export interface RunSubagentOptions {
   signal?: AbortSignal;
   onUpdate?: (update: SubagentUpdate) => void;
+  onEvent?: (event: JobEventInput) => void;
   onQuestion?: (question: SubagentQuestion) => void;
   maxRuntimeMs?: number;
   thinkingLevel?: string;
@@ -275,6 +334,13 @@ export async function runSubagent(
         console.error("subagents: question callback failed", err);
       }
     };
+    const safeEvent = (event: JobEventInput) => {
+      try {
+        options.onEvent?.(event);
+      } catch (err) {
+        console.error("subagents: event callback failed", err);
+      }
+    };
     const maybeStream = () => {
       const nowMs = Date.now();
       if (nowMs - lastStreamAt < STREAM_INTERVAL_MS) return;
@@ -326,13 +392,30 @@ export async function runSubagent(
       accumulateEvent(state, line);
       maybeStream();
       if (!event || settled) return;
-      if (event.type === "agent_start") {
-        settling = false;
-        return;
-      }
-      if (event.type === "agent_settled") {
-        settling = true;
-        finishSettling();
+      switch (event.type) {
+        case "tool_execution_start":
+          safeEvent({ kind: "tool-start", summary: toolStartSummary(event) });
+          break;
+        case "tool_execution_end":
+          safeEvent({ kind: "tool-end", summary: toolEndSummary(event) });
+          break;
+        case "message_end": {
+          const message = event.message;
+          if (message && typeof message === "object" && (message as { role?: unknown }).role === "assistant") {
+            const text = assistantText((message as { content?: unknown }).content);
+            if (text) safeEvent({ kind: "assistant", summary: flattenSummary(text) });
+          }
+          break;
+        }
+        case "agent_start":
+          safeEvent({ kind: "state", summary: "started" });
+          settling = false;
+          break;
+        case "agent_settled":
+          safeEvent({ kind: "state", summary: "settled" });
+          settling = true;
+          finishSettling();
+          break;
       }
     };
 

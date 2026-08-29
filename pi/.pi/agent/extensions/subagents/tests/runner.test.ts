@@ -482,3 +482,50 @@ test("runSubagent: cancellation survives process error and later close", async (
   assert.equal(r.cancellationReason, "manual");
   assert.match(r.error, /Cancelled \(manual\)/);
 });
+
+test("runSubagent: emits ordered semantic events without deltas or tool bodies", async () => {
+  const child = new FakeChild();
+  const events: Array<{ kind: string; summary: string }> = [];
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    onEvent: (event) => events.push(event),
+  });
+  const emit = (event: Record<string, unknown>) => child.stdout.emit("data", Buffer.from(`${JSON.stringify(event)}\n`));
+
+  emit({ type: "agent_start" });
+  emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "partial" } });
+  emit({ type: "tool_execution_start", toolName: "write", args: { file_path: "notes.txt", content: "SECRET BODY\nsecond" } });
+  emit({ type: "tool_execution_end", toolName: "write", isError: false, result: "SECRET BODY\nsecond" });
+  emit({ type: "tool_execution_start", toolName: "bash", args: { command: "npm test" } });
+  emit({ type: "tool_execution_end", toolName: "bash", isError: false, result: "ok\nwith whitespace" });
+  emit({
+    type: "message_end",
+    message: { role: "assistant", content: [{ type: "thinking", thinking: "not emitted" }, { type: "text", text: " final\n answer " }] },
+  });
+  emit({ type: "agent_settled" });
+  child.finish(0);
+  await result;
+
+  assert.deepEqual(events.map(({ kind, summary }) => ({ kind, summary })), [
+    { kind: "state", summary: "started" },
+    { kind: "tool-start", summary: "write notes.txt (2 lines)" },
+    { kind: "tool-end", summary: "write success" },
+    { kind: "tool-start", summary: "$ npm test" },
+    { kind: "tool-end", summary: "bash success: ok with whitespace" },
+    { kind: "assistant", summary: "final answer" },
+    { kind: "state", summary: "settled" },
+  ]);
+  assert.equal(events.some((event) => event.summary.includes("SECRET BODY")), false);
+  assert.equal(events.every((event) => event.summary.length <= 500 && !/[\r\n\t]/.test(event.summary)), true);
+});
+
+test("runSubagent: event callback exceptions do not interrupt processing", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    onEvent: () => { throw new Error("event callback failed"); },
+  });
+  child.stdout.emit("data", Buffer.from(endEvent("final answer")));
+  child.finish(0);
+  assert.equal((await result).text, "final answer");
+});

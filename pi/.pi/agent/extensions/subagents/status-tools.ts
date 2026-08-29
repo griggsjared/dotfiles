@@ -3,6 +3,7 @@ import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-cod
 import { Type } from "typebox";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
+import type { JobEvent } from "./types.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
 const CancelParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })), all: Type.Optional(Type.Boolean()) });
@@ -16,8 +17,16 @@ const ReplyParams = Type.Object({
   questionId: Type.String({ minLength: 1 }),
   answer: Type.String({ minLength: 1 }),
 });
+const PeekParams = Type.Object({
+  jobId: Type.Integer({ minimum: 1 }),
+  since: Type.Optional(Type.Integer({ minimum: 0 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  maxChars: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
+});
 
 const MAX_STATUS_OUTPUT = 4000;
+const DEFAULT_PEEK_LIMIT = 20;
+const DEFAULT_PEEK_CHARS = 2000;
 const MAX_STATUS_TOOL_CALLS = 8;
 
 type StatusJob = Job;
@@ -26,6 +35,14 @@ interface CancelTarget { jobId: number; agent: string; label: string; }
 interface CancelToolDetails { count: number; targets: CancelTarget[]; }
 interface SendToolDetails { jobId: number; agent: string; label: string; message: string; deliverAs: "steer" | "followUp"; }
 interface ReplyToolDetails { jobId: number; questionId: string; question: string; answer: string; }
+interface PeekToolDetails {
+  jobId: number;
+  agent: string;
+  status: Job["status"];
+  events: JobEvent[];
+  nextCursor: number;
+  droppedBefore?: number;
+}
 
 function jobLabel(job: Pick<Job, "title" | "task">, max = 80): string {
   return shortLabel(normalizeTitle(job.title), normalizeTitle(job.task), max);
@@ -202,6 +219,71 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
         ? details.text
         : result.content[0]?.type === "text" ? result.content[0].text : "";
       return renderStatusText(text, theme, details ?? {});
+    },
+  };
+}
+
+export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<typeof PeekParams, PeekToolDetails> {
+  return {
+    name: "subagent_peek",
+    label: "Peek Subagent",
+    description: "Inspect concise semantic events from a running or retained subagent job.",
+    promptGuidelines: [
+      "Use subagent_peek for an explicit bounded look at a job; pass nextCursor as since for incremental reads and do not poll for normal completion.",
+    ],
+    parameters: PeekParams,
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const job = deps.registry.get(params.jobId);
+      if (!job) throw new Error(`Unknown subagent job ID: ${params.jobId}`);
+      const read = deps.registry.readEvents(params.jobId, {
+        since: params.since,
+        limit: params.limit ?? DEFAULT_PEEK_LIMIT,
+      });
+      if (!read) throw new Error(`Unknown subagent job ID: ${params.jobId}`);
+      const maxChars = params.maxChars ?? DEFAULT_PEEK_CHARS;
+      const events: JobEvent[] = [];
+      const droppedNotice = read.droppedBefore === undefined ? undefined : `[history dropped before ${read.droppedBefore}]`;
+      const lines: string[] = droppedNotice && droppedNotice.length <= maxChars ? [droppedNotice] : [];
+      for (const event of read.events) {
+        const line = `[${event.seq}] ${event.summary}`;
+        const text = lines.length > 0 ? `${lines.join("\n")}\n${line}` : line;
+        if (text.length > maxChars) break;
+        events.push({ ...event });
+        lines.push(line);
+      }
+      const nextCursor = events.at(-1)?.seq ?? (params.since ?? 0);
+      const body = lines.join("\n");
+      const cursor = `nextCursor: ${nextCursor}`;
+      const compactCursor = `cursor:${nextCursor}`;
+      const text = !body
+        ? cursor.length <= maxChars ? cursor : compactCursor.length <= maxChars ? compactCursor : ""
+        : body.length + cursor.length + 1 <= maxChars
+          ? `${body}\n${cursor}`
+          : body.length + compactCursor.length + 1 <= maxChars
+            ? `${body}\n${compactCursor}`
+            : body;
+      return {
+        content: [{ type: "text", text }],
+        details: {
+          jobId: job.id,
+          agent: job.agent,
+          status: job.status,
+          events,
+          nextCursor,
+          ...(read.droppedBefore !== undefined ? { droppedBefore: read.droppedBefore } : {}),
+        },
+      };
+    },
+    renderCall(args, theme, _context) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("peek ")) + theme.fg("accent", `#${args.jobId}`),
+        0,
+        0,
+      );
+    },
+    renderResult(result, _options, theme, _context) {
+      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+      return new Text(theme.fg("muted", text), 0, 0);
     },
   };
 }

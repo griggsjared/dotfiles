@@ -6,7 +6,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
-import { registerRenderers, renderFullWidget } from "../render.ts";
+import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
 import {
   createCancelTool,
@@ -1154,6 +1154,39 @@ function renderable(value: unknown): boolean {
 function renderText(value: unknown): string {
   return (value as { render: (width: number) => string[] }).render(120).join("\n");
 }
+
+test("refreshUi: keeps one widget component and requests in-place renders", () => {
+  const registry = createJobRegistry();
+  registry.add("reviewer", "review safety fixes", "Review safety fixes");
+  let factoryCalls = 0;
+  let renderRequests = 0;
+  let widgetContent: unknown;
+  const tui = { requestRender: () => { renderRequests += 1; } };
+  const ui = {
+    setWidget: (_key: string, content: unknown) => {
+      widgetContent = content;
+      if (typeof content === "function") {
+        factoryCalls += 1;
+        content(tui, fakeTheme());
+      }
+    },
+  };
+  const ctx = { hasUI: true, ui } as never;
+
+  refreshUi(ctx, registry);
+  refreshUi(ctx, registry);
+  refreshUi(ctx, registry);
+
+  assert.equal(factoryCalls, 1);
+  assert.equal(renderRequests, 2);
+
+  registry.markCleared(registry.jobs.keys());
+  for (const job of registry.running()) {
+    registry.complete(job.id, { agent: job.agent, task: job.task, text: "done", exitCode: 0, error: "" });
+  }
+  refreshUi(ctx, registry);
+  assert.equal(widgetContent, undefined);
+});
 
 test("renderFullWidget: shows progress when no tool call is active", () => {
   const registry = createJobRegistry();

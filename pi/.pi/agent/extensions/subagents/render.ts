@@ -69,19 +69,29 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
 // may be stale; only hasUI and ui are used.
 export type UiContext = Pick<ExtensionContext, "hasUI" | "ui">;
 
+const widgetTuis = new WeakMap<object, TUI>();
+
 export function refreshUi(ctx: UiContext, registry: JobRegistry): void {
   try {
     if (!ctx.hasUI) return;
+    const uiKey = ctx.ui as object;
     const running = registry.running();
     if (running.length > 0 || registry.pendingCompleted().length > 0) {
-      // Factory form so lines can use theme colors; re-set on every tick,
-      // so the factory re-runs with the current theme.
-      ctx.ui.setWidget(WIDGET_KEY, (_tui: TUI, theme: Theme) => ({
-        render: (width) => renderFullWidget(registry, (color, text) => theme.fg(color, text), width),
-        invalidate: () => {},
-      }));
+      const existingTui = widgetTuis.get(uiKey);
+      if (existingTui) {
+        existingTui.requestRender();
+        return;
+      }
+      ctx.ui.setWidget(WIDGET_KEY, (tui: TUI, theme: Theme) => {
+        widgetTuis.set(uiKey, tui);
+        return {
+          render: (width) => renderFullWidget(registry, (color, text) => theme.fg(color, text), width),
+          invalidate: () => {},
+        };
+      });
     } else {
-      ctx.ui.setWidget(WIDGET_KEY, []);
+      widgetTuis.delete(uiKey);
+      ctx.ui.setWidget(WIDGET_KEY, undefined);
     }
   } catch { /* ctx stale after session change */ }
 }

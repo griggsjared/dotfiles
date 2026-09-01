@@ -3,6 +3,7 @@ import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-cod
 import { Type } from "typebox";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
+import { SubagentTail, eventColor, eventKindLabel, formatEventSummary } from "./tail.ts";
 import type { JobEvent } from "./types.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
@@ -245,7 +246,7 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       const droppedNotice = read.droppedBefore === undefined ? undefined : `[history dropped before ${read.droppedBefore}]`;
       const lines: string[] = droppedNotice && droppedNotice.length <= maxChars ? [droppedNotice] : [];
       for (const event of read.events) {
-        const line = `[${event.seq}] ${event.summary}`;
+        const line = `[${event.seq}] ${formatEventSummary(event)}`;
         const text = lines.length > 0 ? `${lines.join("\n")}\n${line}` : line;
         if (text.length > maxChars) break;
         events.push({ ...event });
@@ -282,6 +283,25 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       );
     },
     renderResult(result, _options, theme, _context) {
+      const details = result.details;
+      if (details && Array.isArray(details.events) && typeof details.nextCursor === "number") {
+        const lines: string[] = [];
+        if (details.droppedBefore !== undefined) {
+          lines.push(theme.fg("warning", `history dropped before event ${details.droppedBefore}`));
+        }
+        if (details.events.length === 0) {
+          lines.push(theme.fg("dim", "no new events"));
+        } else {
+          for (const event of details.events) {
+            const label = eventKindLabel(event.kind).padEnd(9);
+            lines.push(
+              `${theme.fg("dim", `[${event.seq}]`)} ${theme.fg(eventColor(event.kind), label)} ${theme.fg("muted", formatEventSummary(event) || "(empty)")}`,
+            );
+          }
+        }
+        lines.push(theme.fg("dim", `cursor: ${details.nextCursor}`));
+        return new Text(lines.join("\n"), 0, 0);
+      }
       const text = result.content[0]?.type === "text" ? result.content[0].text : "";
       return new Text(theme.fg("muted", text), 0, 0);
     },
@@ -468,6 +488,39 @@ export function createReplyTool(deps: { registry: JobRegistry }): ToolDefinition
 }
 
 export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRegistry; activeProcs?: unknown }): void {
+  pi.registerCommand("subagent-tail", {
+    description: "Open a live event tail for a subagent by ID",
+    handler: async (args, ctx) => {
+      if (ctx.mode !== "tui") {
+        if (ctx.hasUI) ctx.ui.notify("/subagent-tail requires interactive mode", "error");
+        return;
+      }
+      const value = args.trim();
+      const jobId = Number(value);
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(jobId) || jobId < 1) {
+        ctx.ui.notify("Usage: /subagent-tail <numeric-job-id>", "error");
+        return;
+      }
+      if (!deps.registry.get(jobId)) {
+        ctx.ui.notify(`Unknown subagent job ID: ${jobId}`, "error");
+        return;
+      }
+      await ctx.ui.custom<void>(
+        (tui, theme, _keybindings, done) => new SubagentTail(tui, theme, deps.registry, jobId, () => done(undefined)),
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "center",
+            width: "100%",
+            minWidth: 60,
+            maxHeight: "100%",
+            margin: 1,
+          },
+        },
+      );
+    },
+  });
+
   pi.registerCommand("subagent-status", {
     description: "Show running and recent subagent status or inspect a job by ID",
     handler: async (args, ctx) => {

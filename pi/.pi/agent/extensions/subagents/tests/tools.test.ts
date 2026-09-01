@@ -275,6 +275,46 @@ test("subagent peek returns bounded incremental semantic events", async () => {
   const dropped = await tool.execute("peek8", { jobId: ringId, since: 0, limit: 100 }, undefined, undefined, {} as never);
   assert.equal(dropped.details.droppedBefore, 2);
   assert.equal(dropped.details.events[0]?.seq, 2);
+
+  const rawId = registry.add("worker", "structured result");
+  registry.appendEvent(rawId, {
+    kind: "tool-end",
+    summary: 'read success: {"content":[{"type":"text","text":"\\u001b]52;c;cHduZWQ=\\u0007\\u001b[31mone\\u001b[0m\\ntwo"}]}',
+  });
+  const raw = await tool.execute("peek9", { jobId: rawId }, undefined, undefined, {} as never);
+  assert.equal((raw.content[0] as { text: string }).text, "[1] read success: one · 2 lines\nnextCursor: 1");
+});
+
+test("subagent peek renderer labels events and compacts structured results", () => {
+  const { renderResult } = createPeekTool({ registry: createJobRegistry() });
+  const theme = {
+    ...fakeTheme(),
+    fg: (color: string, text: string) => `[${color}]${text}[/${color}]`,
+  } as never;
+  const rendered = renderText(renderResult!({
+    content: [{ type: "text", text: "legacy peek text" }],
+    details: {
+      jobId: 1,
+      agent: "scout",
+      status: "running",
+      events: [
+        {
+          seq: 1,
+          timestamp: Date.now(),
+          kind: "tool-end",
+          summary: 'read success: {"content":[{"type":"text","text":"one\\ntwo"}]}',
+        },
+        { seq: 2, timestamp: Date.now(), kind: "assistant", summary: "\u001b]2;pwned\u0007Found \u001b[31mit\u001b[0m." },
+      ],
+      nextCursor: 2,
+    },
+  } as never, {} as never, theme, {} as never));
+  assert.match(rendered, /\[success\]result/);
+  assert.match(rendered, /read success: one · 2 lines/);
+  assert.match(rendered, /\[text\]assistant/);
+  assert.match(rendered, /Found it\./);
+  assert.doesNotMatch(rendered, /pwned|content|\u001b/);
+  assert.match(rendered, /\[dim\]cursor: 2/);
 });
 
 test("subagent status supports individual and unknown job IDs", async () => {
@@ -474,6 +514,70 @@ test("/subagent-status shares the status formatter", async () => {
   assert.doesNotMatch(notices.at(-1) ?? "", /f7455070/);
   await command.handler("nope", ctx);
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
+});
+
+test("/subagent-tail opens a live overlay and follows new events", async () => {
+  const registry = createJobRegistry();
+  const id = registry.add("scout", "running task");
+  registry.appendEvent(id, { kind: "state", summary: "started" });
+  registry.appendEvent(id, {
+    kind: "tool-end",
+    summary: 'read success: {"content":[{"type":"text","text":"one\\ntwo"}]}',
+  });
+  const notices: Array<{ text: string; level: string }> = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+  } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, { registry });
+  const command = commands.get("subagent-tail");
+  assert.ok(command);
+
+  type TailComponent = { render(width: number): string[]; handleInput?(data: string): void };
+  let component: TailComponent | undefined;
+  let overlayOptions: unknown;
+  let renderRequests = 0;
+  const custom = (
+    factory: (tui: { requestRender: () => void }, theme: ReturnType<typeof fakeTheme>, keybindings: unknown, done: (result: void) => void) => TailComponent,
+    options: unknown,
+  ) => new Promise<void>((resolve) => {
+    overlayOptions = options;
+    component = factory({ requestRender: () => { renderRequests += 1; } }, fakeTheme(), {}, () => resolve());
+  });
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: { custom, notify: (text: string, level: string) => notices.push({ text, level }) },
+  };
+
+  const pending = command.handler(String(id), ctx);
+  assert.ok(component);
+  assert.deepEqual(overlayOptions, {
+    overlay: true,
+    overlayOptions: {
+      anchor: "center",
+      width: "100%",
+      minWidth: 60,
+      maxHeight: "100%",
+      margin: 1,
+    },
+  });
+  assert.match(renderText(component), /Subagent #1 scout/);
+  assert.match(renderText(component), /started/);
+  assert.match(renderText(component), /read success: one · 2 lines/);
+  assert.doesNotMatch(renderText(component), /content/);
+
+  registry.appendEvent(id, { kind: "assistant", summary: "new event" });
+  await sleep(300);
+  assert.match(renderText(component), /new event/);
+  assert.ok(renderRequests > 0);
+
+  component.handleInput!("q");
+  await pending;
+  await command.handler("bad", ctx);
+  assert.match(notices.at(-1)?.text ?? "", /Usage: \/subagent-tail/);
+  await command.handler("999", ctx);
+  assert.match(notices.at(-1)?.text ?? "", /Unknown subagent job ID: 999/);
 });
 
 test("/subagent-cancel validates and targets numeric job IDs", async () => {

@@ -187,67 +187,35 @@ local function cycle_clis()
 	end
 end
 
--- nvim only tails terminal output in the current window, but pi renders
--- bottom-anchored; keep the pi panel at the live prompt while we edit
--- elsewhere. A manual scroll of the panel pauses this for a while so
--- scrollback history stays readable.
-local function tail_pi_windows()
-	local cur = vim.api.nvim_get_current_win()
-	local State = require("sidekick.cli.state")
-	for _, s in ipairs(State.get({ attached = true })) do
-		if s.tool.name == "pi" and s.terminal and s.terminal.win then
-			local win = s.terminal.win
-			if
-				win
-				and win ~= cur
-				and vim.api.nvim_win_is_valid(win)
-				and vim.api.nvim_win_get_buf(win) == s.terminal.buf
-			then
-				local paused = vim.w[win].sidekick_pi_tail_paused
-				if not paused or paused < vim.loop.now() - 8000 then
-					vim.w[win].sidekick_pi_tail_internal = true
-					local buf = vim.api.nvim_win_get_buf(win)
-					vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
-					-- WinScrolled fires when back in the main loop, so keep the
-					-- guard up until then: our own scroll must not count as manual
-					vim.defer_fn(function()
-						if vim.w[win] and vim.w[win].sidekick_pi_tail_internal then
-							vim.w[win].sidekick_pi_tail_internal = nil
-						end
-					end, 100)
+vim.api.nvim_create_autocmd("TermOpen", {
+	callback = function(args)
+		local cli = vim.b[args.buf].sidekick_cli
+		if not (cli and cli.name == "pi") then
+			return
+		end
+
+		local scheduled = false
+		vim.api.nvim_buf_attach(args.buf, false, {
+			on_lines = function(_, buf)
+				if scheduled then
+					return
 				end
-			end
-		end
-	end
-end
-
-vim.api.nvim_create_autocmd("WinScrolled", {
-	callback = function(args)
-		local win = args.win ---@type integer?
-		if not (win and vim.w[win] and vim.w[win].sidekick_session_id) then
-			return
-		end
-		if win == vim.api.nvim_get_current_win() then
-			return
-		end
-		if vim.w[win].sidekick_pi_tail_internal then
-			vim.w[win].sidekick_pi_tail_internal = nil
-			return
-		end
-		vim.w[win].sidekick_pi_tail_paused = vim.loop.now()
+				scheduled = true
+				vim.schedule(function()
+					scheduled = false
+					if not vim.api.nvim_buf_is_valid(buf) then
+						return
+					end
+					for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+						if win ~= vim.api.nvim_get_current_win() then
+							vim.api.nvim_win_set_cursor(win, { vim.api.nvim_buf_line_count(buf), 0 })
+						end
+					end
+				end)
+			end,
+		})
 	end,
 })
-
-vim.api.nvim_create_autocmd("WinEnter", {
-	callback = function(args)
-		local win = args.win ---@type integer?
-		if win and vim.w[win] and vim.w[win].sidekick_session_id then
-			vim.w[win].sidekick_pi_tail_paused = nil
-		end
-	end,
-})
-
-vim.fn.timer_start(300, tail_pi_windows, { ["repeat"] = -1 })
 
 -- Dynamic key mappings
 local keys = {

@@ -133,6 +133,8 @@ local function open_cli()
 	end)
 end
 
+local cycle_editor ---@type integer?
+
 local function cycle_clis()
 	local State = require("sidekick.cli.state")
 	local clis = vim.tbl_filter(function(s)
@@ -155,22 +157,27 @@ local function cycle_clis()
 	end
 
 	if not current then
+		cycle_editor = vim.api.nvim_get_current_win()
 		clis[1].terminal:focus()
 	elseif current < #clis then
 		clis[current + 1].terminal:focus()
 	else
-		local editor ---@type integer?
-		for _, w in ipairs(vim.api.nvim_list_wins()) do
-			local buf = vim.api.nvim_win_get_buf(w)
-			if
-				not vim.w[w].sidekick_session_id
-				and vim.api.nvim_win_get_config(w).relative == ""
-				and vim.bo[buf].buftype == ""
-			then
-				editor = w
-				break
+		local editor = cycle_editor
+		if not (editor and vim.api.nvim_win_is_valid(editor)) then
+			editor = nil
+			for _, w in ipairs(vim.api.nvim_list_wins()) do
+				local buf = vim.api.nvim_win_get_buf(w)
+				if
+					not vim.w[w].sidekick_session_id
+					and vim.api.nvim_win_get_config(w).relative == ""
+					and vim.bo[buf].buftype == ""
+				then
+					editor = w
+					break
+				end
 			end
 		end
+		cycle_editor = nil
 		if editor then
 			vim.api.nvim_set_current_win(editor)
 			vim.cmd.stopinsert()

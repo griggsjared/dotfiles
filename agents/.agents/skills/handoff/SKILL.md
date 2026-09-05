@@ -16,7 +16,7 @@ Always write the handoff to `_notes/HANDOFF.md` relative to the current working 
 3. Read relevant plans and notes referenced by the current task or existing handoff. Do not inventory unrelated documentation.
 4. Inspect:
    - `git status --short --untracked-files=all`
-   - the current branch and exact `HEAD`
+   - the current branch
    - staged and unstaged diffs, including relevant untracked text files
    - recent commits that explain the current work
 5. Use the conversation for decisions, commands, test results, and deferred work that may not exist in the repository.
@@ -30,7 +30,7 @@ Include only sections that help the next agent:
 
 - updated date
 - current goal and scope
-- branch and exact committed `HEAD`, when in a Git repository
+- current branch, when in a Git repository
 - current uncommitted files and what each change does
 - completed work and relevant commit hashes
 - decisions and invariants that constrain implementation

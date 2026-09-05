@@ -17,15 +17,17 @@ Read and verify `_notes/HANDOFF.md`, then continue from its current state.
 
 ## Verify
 
-Before relying on the handoff, inspect:
+Derive the current repository state from Git before relying on the handoff. The handoff does not need to record the current `HEAD`.
+
+Inspect:
 
 - `git status --short --untracked-files=all`
 - the current branch and exact `HEAD`
 - staged and unstaged diffs, including relevant untracked text files
 - the files named in the current-work and next-step sections
-- recent commits when `HEAD` or completed-work claims differ
+- recent commits when current Git state or completed-work claims differ
 
-Call out stale or conflicting handoff content. Current repository state wins over the handoff. Do not repeat validation commands merely because the handoff records them.
+Call out stale or conflicting handoff content. Current Git state wins over the handoff. Do not repeat validation commands merely because the handoff records them.
 
 ## Explain the State
 

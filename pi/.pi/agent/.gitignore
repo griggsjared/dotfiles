@@ -11,4 +11,5 @@
 !extensions/workspace-guard/**
 !extensions/web-search.ts
 !extensions/ask-user.ts
+!extensions/btw.ts
 !extensions/subagents/**

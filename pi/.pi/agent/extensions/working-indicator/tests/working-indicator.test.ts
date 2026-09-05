@@ -10,6 +10,7 @@ type Calls = {
 	messages: Array<string | undefined>;
 	indicators: Array<unknown>;
 	visibility: boolean[];
+	editors: unknown[];
 };
 
 function register() {
@@ -23,10 +24,11 @@ function register() {
 }
 
 function createContext() {
-	const calls: Calls = { messages: [], indicators: [], visibility: [] };
+	const calls: Calls = { messages: [], indicators: [], visibility: [], editors: [] };
 	return {
 		calls,
 		ctx: {
+			mode: "tui",
 			hasUI: true,
 			ui: {
 				theme: {
@@ -36,6 +38,7 @@ function createContext() {
 				setWorkingMessage(message?: string) { calls.messages.push(message); },
 				setWorkingIndicator(indicator?: unknown) { calls.indicators.push(indicator); },
 				setWorkingVisible(visible: boolean) { calls.visibility.push(visible); },
+				setEditorComponent(factory: unknown) { calls.editors.push(factory); },
 			},
 			isIdle: () => true,
 		},
@@ -67,6 +70,7 @@ test("starts and settles the observable working indicator lifecycle", () => {
 	const { calls, ctx } = createContext();
 
 	emit(handlers, "session_start", ctx);
+	assert.equal(typeof calls.editors.at(-1), "function");
 	assert.equal(calls.visibility.at(-1), false);
 	emit(handlers, "agent_start", ctx);
 	assert.equal(calls.visibility.at(-1), true);

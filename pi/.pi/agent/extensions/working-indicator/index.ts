@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 type Phase = "thinking" | "writing" | "tooling" | "waiting";
 
@@ -545,6 +545,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
+		if (ctx.mode === "tui") {
+			ctx.ui.setEditorComponent((tui, theme, keybindings) =>
+				new CustomEditor(tui, theme, keybindings));
+		}
 		if (ctx.hasUI === false) return;
 		// Invalidate callbacks from a runtime being replaced during reload. A
 		// callback can already be queued even after its timer was cleared.

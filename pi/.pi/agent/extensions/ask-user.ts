@@ -43,13 +43,6 @@ const QuestionParams = Type.Object({
 			description: "Allow selecting multiple options (checkboxes)",
 		}),
 	),
-	allowOther: Type.Optional(
-		Type.Boolean({
-			default: true,
-			description:
-				"Show the 'Other (specify)' free-text fallback (on by default) — set false when the options are exhaustive",
-		}),
-	),
 });
 
 const AskUserParams = Type.Object({
@@ -61,23 +54,33 @@ const AskUserParams = Type.Object({
 });
 
 type MultiSelected = {
-	items: { label: string; description?: string; index: number }[];
+	items: { label: string; description?: string; index: number; context?: string }[];
 	other?: string;
 };
 
 type Selected =
-	| { label: string; description?: string; index: number }
+	| { label: string; description?: string; index: number; context?: string }
 	| { other: string }
 	| MultiSelected;
 
 type Answer = { question: string; selected: Selected };
 
-type InitialState = { values?: string[]; otherText?: string };
+type InitialState = {
+	values?: string[];
+	otherText?: string;
+	contexts?: Record<string, string>;
+};
 
 type PickResult =
-	| { kind: "item"; item: SelectItem }
+	| { kind: "item"; item: SelectItem; context?: string }
 	| { kind: "other"; text: string }
-	| { kind: "multi"; values: string[]; otherToggled: boolean; otherText?: string };
+	| {
+			kind: "multi";
+			values: string[];
+			otherToggled: boolean;
+			otherText?: string;
+			contexts?: Record<string, string>;
+	  };
 
 interface UiLike {
 	select(title: string, options: string[], opts?: { signal?: AbortSignal }): Promise<string | undefined>;
@@ -86,20 +89,17 @@ interface UiLike {
 
 function buildItems(question: {
 	options: { label: string; description?: string }[];
-	allowOther?: boolean;
 }): SelectItem[] {
 	const items: SelectItem[] = question.options.map((option, index) => ({
 		value: String(index),
 		label: option.label,
 		description: option.description,
 	}));
-	if (question.allowOther !== false) {
-		items.push({
-			value: OTHER_VALUE,
-			label: "Other (specify)",
-			description: "Type a custom answer",
-		});
-	}
+	items.push({
+		value: OTHER_VALUE,
+		label: "Other (specify)",
+		description: "Type a custom answer",
+	});
 	return items;
 }
 
@@ -305,24 +305,33 @@ function pickTui(
 		if (question.description) {
 			container.addChild(new Text(theme.fg("muted", question.description), 1, 0));
 		}
-		let typing = false;
-		let otherText = "";
+		let typing: "other" | "context" | null = null;
+		let inputText = "";
+		let contextItem: SelectItem | null = null;
 		const kb = getKeybindings();
-		const otherInput = new Text("", 1, 0);
-		const updateOtherInput = () => {
-			otherInput.setText(
+		const textInput = new Text("", 1, 0);
+		const updateTextInput = () => {
+			const label = typing === "other" ? "Other: " : "Extra context: ";
+			textInput.setText(
 				typing
-					? theme.fg("accent", theme.bold("Other: ")) +
-							theme.fg("toolOutput", otherText) +
+					? theme.fg("accent", theme.bold(label)) +
+							theme.fg("toolOutput", inputText) +
 							theme.fg("warning", "▏")
 					: "",
 			);
 			tui.requestRender();
 		};
-		const beginTyping = () => {
-			otherText = typing ? otherText : initial?.otherText ?? "";
-			typing = true;
-			updateOtherInput();
+		const beginOther = () => {
+			typing = "other";
+			inputText = initial?.otherText ?? "";
+			contextItem = null;
+			updateTextInput();
+		};
+		const beginContext = (item: SelectItem) => {
+			typing = "context";
+			inputText = initial?.contexts?.[item.value] ?? "";
+			contextItem = item;
+			updateTextInput();
 		};
 		const selectList = new MultiLineSelectList(
 			initial?.otherText
@@ -340,16 +349,16 @@ function pickTui(
 		);
 		selectList.onSelect = (item) => {
 			if (item.value === OTHER_VALUE) {
-				beginTyping();
+				beginOther();
 				return;
 			}
 			done({ kind: "item", item });
 		};
 		selectList.onCancel = () => done(null);
 		container.addChild(selectList);
-		container.addChild(otherInput);
+		container.addChild(textInput);
 		container.addChild(
-			new Text(theme.fg("dim", "↑↓ navigate • 1-9 select • enter confirm • esc cancel"), 1, 0),
+			new Text(theme.fg("dim", "↑↓ navigate • 1-9 select • tab add context • enter confirm • esc cancel"), 1, 0),
 		);
 		container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
 		signal?.addEventListener("abort", () => done(null), { once: true });
@@ -359,33 +368,43 @@ function pickTui(
 			handleInput: (data) => {
 				if (typing) {
 					if (kb.matches(data, "tui.select.cancel") || data === "escape" || data === "ctrl+c") {
-						typing = false;
-						otherText = "";
-						updateOtherInput();
+						typing = null;
+						inputText = "";
+						contextItem = null;
+						updateTextInput();
 					} else if (kb.matches(data, "tui.select.confirm") || data === "\n" || data === "enter" || data === "\r") {
-						if (otherText.trim()) {
-							done({ kind: "other", text: otherText.trim() });
+						const text = inputText.trim();
+						if (typing === "context" && contextItem) {
+							done({ kind: "item", item: contextItem, context: text || undefined });
+						} else if (text) {
+							done({ kind: "other", text });
 						} else {
-							typing = false;
-							updateOtherInput();
+							typing = null;
+							updateTextInput();
 						}
 					} else if (data === "backspace" || data === "\u007f") {
-						otherText = otherText.slice(0, -1);
-						updateOtherInput();
+						inputText = inputText.slice(0, -1);
+						updateTextInput();
 					} else if (data === "space") {
-						otherText += " ";
-						updateOtherInput();
+						inputText += " ";
+						updateTextInput();
 					} else if (data.length === 1 && data >= " ") {
-						otherText += data;
-						updateOtherInput();
+						inputText += data;
+						updateTextInput();
 					}
+					return;
+				}
+				if (kb.matches(data, "tui.input.tab") || data === "tab") {
+					const item = selectList.getSelectedItem();
+					if (item?.value === OTHER_VALUE) beginOther();
+					else if (item) beginContext(item);
 					return;
 				}
 				if (/^[1-9]$/.test(data)) {
 					const item = items[Number(data) - 1];
 					if (item) {
 						if (item.value === OTHER_VALUE) {
-							beginTyping();
+							beginOther();
 							return;
 						}
 						done({ kind: "item", item });
@@ -417,18 +436,21 @@ function pickMultiTui(
 			container.addChild(new Text(theme.fg("muted", question.description), 1, 0));
 		}
 		const selected = new Set<string>(initial?.values ?? []);
+		const contexts = new Map<string, string>(Object.entries(initial?.contexts ?? {}));
 		let listHolder: MultiLineSelectList;
 		let cursor = 0;
-		let typing = false;
-		let otherText = "";
+		let typing: "other" | "context" | null = null;
+		let inputText = "";
+		let contextValue: string | null = null;
 		let committedOtherText = initial?.otherText ?? "";
 		const kb = getKeybindings();
-		const otherInput = new Text("", 1, 0);
-		const updateOtherInput = () => {
-			otherInput.setText(
+		const textInput = new Text("", 1, 0);
+		const updateTextInput = () => {
+			const label = typing === "other" ? "Other: " : "Extra context: ";
+			textInput.setText(
 				typing
-					? theme.fg("accent", theme.bold("Other: ")) +
-							theme.fg("toolOutput", otherText) +
+					? theme.fg("accent", theme.bold(label)) +
+							theme.fg("toolOutput", inputText) +
 							theme.fg("warning", "▏")
 					: "",
 			);
@@ -443,7 +465,9 @@ function pickMultiTui(
 				description:
 					item.value === OTHER_VALUE && selected.has(OTHER_VALUE)
 						? committedOtherText
-						: item.description,
+						: contexts.has(item.value)
+							? `${item.description ? `${item.description} · ` : ""}Context: ${contexts.get(item.value)}`
+							: item.description,
 			})),
 			...(selected.size > 0
 				? [{ value: DONE_VALUE, label: "  Done", description: "Confirm selection" }]
@@ -473,6 +497,7 @@ function pickMultiTui(
 						values: [...selected],
 						otherToggled: selected.has(OTHER_VALUE),
 						otherText: selected.has(OTHER_VALUE) ? committedOtherText : undefined,
+						contexts: Object.fromEntries(contexts),
 					});
 					return;
 				}
@@ -487,26 +512,37 @@ function pickMultiTui(
 			replaceList(current, makeList());
 			tui.requestRender();
 		};
+		const beginTyping = (value: string) => {
+			cursor = listItems().findIndex((item) => item.value === value);
+			if (value === OTHER_VALUE) {
+				typing = "other";
+				inputText = selected.has(OTHER_VALUE) ? committedOtherText : initial?.otherText ?? "";
+				contextValue = null;
+			} else {
+				typing = "context";
+				inputText = contexts.get(value) ?? "";
+				contextValue = value;
+			}
+			updateTextInput();
+		};
 		const toggle = (value: string) => {
 			if (value === OTHER_VALUE) {
-				otherText = selected.has(OTHER_VALUE) ? committedOtherText : initial?.otherText ?? "";
-				typing = true;
-				cursor = listItems().findIndex((i) => i.value === value);
-				updateOtherInput();
+				beginTyping(value);
 				return;
 			}
 			if (selected.has(value)) {
 				selected.delete(value);
+				contexts.delete(value);
 			} else {
 				selected.add(value);
 			}
-			cursor = listItems().findIndex((i) => i.value === value);
+			cursor = listItems().findIndex((item) => item.value === value);
 			rebuild();
 		};
 		container.addChild(makeList());
-		container.addChild(otherInput);
+		container.addChild(textInput);
 		container.addChild(
-			new Text(theme.fg("dim", "↑↓ navigate • 1-9 toggle • enter/space toggle • done confirms • esc cancel"), 1, 0),
+			new Text(theme.fg("dim", "↑↓ navigate • 1-9 toggle • tab add context • enter/space toggle • done confirms • esc cancel"), 1, 0),
 		);
 		container.addChild(new DynamicBorder((s: string) => theme.fg("borderAccent", s)));
 		signal?.addEventListener("abort", () => done(null), { once: true });
@@ -516,35 +552,43 @@ function pickMultiTui(
 			handleInput: (data) => {
 				if (typing) {
 					if (kb.matches(data, "tui.select.cancel") || data === "escape" || data === "ctrl+c") {
-						typing = false;
-						otherText = selected.has(OTHER_VALUE) ? committedOtherText : "";
-						updateOtherInput();
+						typing = null;
+						inputText = "";
+						contextValue = null;
+						updateTextInput();
 					} else if (kb.matches(data, "tui.select.confirm") || data === "\n" || data === "enter" || data === "\r") {
-						if (otherText.trim()) {
+						const text = inputText.trim();
+						if (typing === "context" && contextValue) {
+							selected.add(contextValue);
+							if (text) contexts.set(contextValue, text);
+							else contexts.delete(contextValue);
+						} else if (text) {
 							selected.add(OTHER_VALUE);
-							committedOtherText = otherText;
-							typing = false;
-							cursor = listItems().findIndex((i) => i.value === OTHER_VALUE);
-							rebuild();
-							updateOtherInput();
+							committedOtherText = text;
 						} else {
 							selected.delete(OTHER_VALUE);
 							committedOtherText = "";
-							otherText = "";
-							typing = false;
-							updateOtherInput();
-							rebuild();
 						}
+						typing = null;
+						inputText = "";
+						contextValue = null;
+						rebuild();
+						updateTextInput();
 					} else if (data === "backspace" || data === "\u007f") {
-						otherText = otherText.slice(0, -1);
-						updateOtherInput();
+						inputText = inputText.slice(0, -1);
+						updateTextInput();
 					} else if (data === "space") {
-						otherText += " ";
-						updateOtherInput();
+						inputText += " ";
+						updateTextInput();
 					} else if (data.length === 1 && data >= " ") {
-						otherText += data;
-						updateOtherInput();
+						inputText += data;
+						updateTextInput();
 					}
+					return;
+				}
+				if (kb.matches(data, "tui.input.tab") || data === "tab") {
+					const item = listHolder.getSelectedItem();
+					if (item && item.value !== DONE_VALUE) beginTyping(item.value);
 					return;
 				}
 				if (data === "space") {
@@ -563,6 +607,7 @@ function pickMultiTui(
 								values: [...selected],
 								otherToggled: selected.has(OTHER_VALUE),
 								otherText: selected.has(OTHER_VALUE) ? committedOtherText : undefined,
+								contexts: Object.fromEntries(contexts),
 							});
 							return;
 						}
@@ -647,9 +692,13 @@ async function confirmAnswers(
 }
 
 function choiceText(selected: Selected): string {
-	if ("label" in selected) return selected.label;
+	if ("label" in selected) {
+		return selected.context ? `${selected.label} — ${selected.context}` : selected.label;
+	}
 	if ("items" in selected) {
-		const parts = selected.items.map((item) => item.label);
+		const parts = selected.items.map((item) =>
+			item.context ? `${item.label} — ${item.context}` : item.label,
+		);
 		if (selected.other) parts.push(`Other: ${selected.other}`);
 		return parts.join(", ");
 	}
@@ -677,7 +726,7 @@ export default function (pi: ExtensionAPI) {
 		promptGuidelines: [
 			"When the task needs direction — ambiguous requirements, multiple valid approaches, or choices with trade-offs — ask the user with ask_user instead of guessing or asking in prose.",
 			"One decision per question: keep questions and option labels short, and add a one-line description to each option when it clarifies the trade-off.",
-			"Limit to 4 questions per call and 2-4 options per question. Set multiple when several options can apply at once (e.g. 'which features?'). 'Other (specify)' is on by default — set allowOther: false only when the options are exhaustive.",
+			"Limit to 4 questions per call and 2-4 options per question. Set multiple when several options can apply at once (e.g. 'which features?'). Every question includes an 'Other (specify)' free-text option.",
 			"If the user cancels, ask in prose or proceed with the most reasonable default and state your assumption.",
 		],
 		parameters: AskUserParams,
@@ -711,10 +760,20 @@ export default function (pi: ExtensionAPI) {
 									...(previous.selected.other ? [OTHER_VALUE] : []),
 								],
 								otherText: previous.selected.other,
+								contexts: Object.fromEntries(
+									previous.selected.items.flatMap((item) =>
+										item.context ? [[String(item.index), item.context]] : [],
+									),
+								),
 							}
 						: "other" in previous.selected
 							? { otherText: previous.selected.other }
-							: { values: [String(previous.selected.index)] }
+							: {
+									values: [String(previous.selected.index)],
+									contexts: previous.selected.context
+										? { [String(previous.selected.index)]: previous.selected.context }
+										: undefined,
+								}
 					: undefined;
 				const items = buildItems(question);
 				const result =
@@ -737,6 +796,7 @@ export default function (pi: ExtensionAPI) {
 									label: item?.label ?? value,
 									description: item?.description,
 									index: Number(value),
+									context: result.contexts?.[value],
 								};
 							}),
 					};
@@ -763,6 +823,7 @@ export default function (pi: ExtensionAPI) {
 						label: item.label,
 						description: item.description,
 						index: Number(item.value),
+						context: result.context,
 					},
 				};
 			};

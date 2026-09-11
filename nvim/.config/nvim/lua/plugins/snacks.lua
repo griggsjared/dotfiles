@@ -210,6 +210,15 @@ local keys = {
 					Snacks.picker.git_diff({
 						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")",
 						base = d.baseRefName,
+						layout = {
+							preset = "ivy",
+							layout = {
+								height = 0.99,
+								row = 0, -- Position at top
+								col = 0,
+								relative = "editor",
+							},
+						},
 					})
 				end)
 			)

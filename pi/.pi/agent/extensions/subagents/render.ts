@@ -38,11 +38,6 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
       maxWidth,
       "",
     ));
-    const questionCount = job.pendingQuestions.length;
-    const progress = questionCount > 0
-      ? `waiting for parent${questionCount > 1 ? ` (${questionCount})` : ""}`
-      : job.progress ?? job.task;
-    lines.push(truncateToWidth(fg("muted", `  ${shortLabel(undefined, progress, 40)}`), maxWidth, ""));
   }
   for (const job of completed) {
     const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";

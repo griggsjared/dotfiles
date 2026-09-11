@@ -1292,7 +1292,7 @@ test("refreshUi: keeps one widget component and requests in-place renders", () =
   assert.equal(widgetContent, undefined);
 });
 
-test("renderFullWidget: shows progress when no tool call is active", () => {
+test("renderFullWidget: shows one line per active agent", () => {
   const registry = createJobRegistry();
   const id = registry.add("scout", "task", "a".repeat(60), {
     model: "openai-codex/gpt-5.6-luna",
@@ -1301,15 +1301,18 @@ test("renderFullWidget: shows progress when no tool call is active", () => {
   registry.updateLive(id, { progress: "reading files", text: "live agent output" });
   const lines = renderFullWidget(registry, (_color, text) => text, 80);
   const output = lines.join("\n");
+  assert.equal(lines.length, 1);
   assert.ok(lines.every((line) => visibleWidth(line) <= 80));
   assert.match(output, new RegExp(`◐ #${id} scout`));
-  assert.match(output, /reading files/);
+  assert.doesNotMatch(output, /reading files/);
   assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
 
   registry.recordQuestion(id, { id: "question-1", question: "Which API?" });
   registry.recordQuestion(id, { id: "question-2", question: "Which format?" });
-  assert.match(renderFullWidget(registry, (_color, text) => text, 80).join("\n"), /waiting for parent \(2\)/);
+  const waitingLines = renderFullWidget(registry, (_color, text) => text, 80);
+  assert.equal(waitingLines.length, 1);
+  assert.doesNotMatch(waitingLines.join("\n"), /waiting for parent \(2\)/);
 
   const completedId = registry.add("worker", "finished task", "Finished task");
   registry.complete(completedId, {

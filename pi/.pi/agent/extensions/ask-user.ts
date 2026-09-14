@@ -13,12 +13,16 @@ import { Type } from "typebox";
 
 const OTHER_VALUE = "__other__";
 const DONE_VALUE = "__done__";
-const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 4;
 const MIN_OPTIONS = 2;
+const RESERVED_OPTION_RE =
+	/^(other(?: \(specify\))?|custom(?: answer)?|something else|type (?:my|your) own(?: answer)?|write-in)$/i;
 
 const OptionParams = Type.Object({
-	label: Type.String({ description: "Option label shown in the picker" }),
+	label: Type.String({
+		description:
+			"Concrete option label shown in the picker. Do not provide an Other, Custom, write-in, or free-text option.",
+	}),
 	description: Type.Optional(
 		Type.String({ description: "One-line explanation shown under the label" }),
 	),
@@ -35,7 +39,7 @@ const QuestionParams = Type.Object({
 	options: Type.Array(OptionParams, {
 		minItems: MIN_OPTIONS,
 		maxItems: MAX_OPTIONS,
-		description: `${MIN_OPTIONS}-${MAX_OPTIONS} options`,
+		description: `${MIN_OPTIONS}-${MAX_OPTIONS} concrete options; the UI automatically adds an Other (specify) option`,
 	}),
 	multiple: Type.Optional(
 		Type.Boolean({
@@ -48,8 +52,7 @@ const QuestionParams = Type.Object({
 const AskUserParams = Type.Object({
 	questions: Type.Array(QuestionParams, {
 		minItems: 1,
-		maxItems: MAX_QUESTIONS,
-		description: `1-${MAX_QUESTIONS} questions asked in order`,
+		description: "Questions asked in order",
 	}),
 });
 
@@ -90,11 +93,13 @@ interface UiLike {
 function buildItems(question: {
 	options: { label: string; description?: string }[];
 }): SelectItem[] {
-	const items: SelectItem[] = question.options.map((option, index) => ({
-		value: String(index),
-		label: option.label,
-		description: option.description,
-	}));
+	const items: SelectItem[] = question.options
+		.filter((option) => !RESERVED_OPTION_RE.test(option.label.trim()))
+		.map((option, index) => ({
+			value: String(index),
+			label: option.label,
+			description: option.description,
+		}));
 	items.push({
 		value: OTHER_VALUE,
 		label: "Other (specify)",
@@ -721,12 +726,12 @@ export default function (pi: ExtensionAPI) {
 		name: "ask_user",
 		label: "Ask User",
 		description:
-			"Ask the user multiple-choice questions when the task needs direction or clarification. Renders an interactive picker in the TUI (single-select or multi-select), then a confirmation step with per-question re-answer, and returns the chosen options, or free text via the 'Other (specify)' fallback. Up to 4 questions per call, 2-4 options each.",
+			"Ask the user multiple-choice questions when the task needs direction or clarification. Renders an interactive picker in the TUI (single-select or multi-select), then a confirmation step with per-question re-answer, and returns the chosen options, or free text via the 'Other (specify)' fallback. Each question has 2-4 options.",
 		promptSnippet: "Ask the user multiple-choice questions when direction is needed",
 		promptGuidelines: [
 			"When the task needs direction — ambiguous requirements, multiple valid approaches, or choices with trade-offs — ask the user with ask_user instead of guessing or asking in prose.",
 			"One decision per question: keep questions and option labels short, and add a one-line description to each option when it clarifies the trade-off.",
-			"Limit to 4 questions per call and 2-4 options per question. Set multiple when several options can apply at once (e.g. 'which features?'). Every question includes an 'Other (specify)' free-text option.",
+			"Use 2-4 concrete options per question. Set multiple when several options can apply at once (e.g. 'which features?'). The ask_user UI automatically adds an 'Other (specify)' free-text option; never include an Other, Custom, write-in, or free-text choice in options.",
 			"If the user cancels, ask in prose or proceed with the most reasonable default and state your assumption.",
 		],
 		parameters: AskUserParams,

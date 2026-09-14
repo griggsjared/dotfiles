@@ -67,4 +67,5 @@ brew "mysql-client"
 brew "sqlx-cli"
 
 # AI Cli Tools
+brew "rtk"
 brew "sst/tap/opencode"

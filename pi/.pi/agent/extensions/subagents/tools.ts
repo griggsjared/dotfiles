@@ -169,18 +169,53 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
   ];
 }
 
+interface CompletionMessage {
+  content: string;
+  details: SubagentMessageDetails;
+}
+
+export class CompletionMailbox {
+  private readonly pending: CompletionMessage[] = [];
+  private readonly pi: ExtensionAPI;
+
+  constructor(pi: ExtensionAPI) {
+    this.pi = pi;
+  }
+
+  deliver(message: CompletionMessage): void {
+    this.pending.push(message);
+    try {
+      this.pi.appendEntry(ENTRY_TYPE, message);
+    } catch (err) {
+      console.error("subagents: failed to display result", err);
+    }
+  }
+
+  flush(isIdle: () => boolean): void {
+    if (this.pending.length === 0 || !isIdle()) return;
+    const messages = this.pending.splice(0);
+    for (const [index, message] of messages.entries()) {
+      try {
+        this.pi.sendMessage(
+          { customType: ENTRY_TYPE, ...message, display: false },
+          { triggerTurn: index === messages.length - 1, deliverAs: "steer" },
+        );
+      } catch (err) {
+        console.error("subagents: failed to deliver result to parent", err);
+      }
+    }
+  }
+}
+
 interface BatchDeps {
   pi: ExtensionAPI;
   registry: JobRegistry;
   refresh: () => void;
+  mailbox: CompletionMailbox;
+  isIdle: () => boolean;
 }
 
-/**
- * Per-invocation bookkeeping for a subagent batch: which job ids belong to it,
- * which completed, and when the last one finishes, a summary message that
- * triggers a new turn. Scoped per batch so overlapping invocations can't
- * suppress each other's summary.
- */
+/** Per-invocation bookkeeping for completion display and cleanup. */
 export class Batch {
   private readonly jobIds = new Set<number>();
   private readonly completed: Job[] = [];
@@ -222,14 +257,8 @@ export class Batch {
       thinkingLevel: result.thinkingLevel,
       cancellationReason: result.cancellationReason,
     };
-    try {
-      this.deps.pi.sendMessage(
-        { customType: ENTRY_TYPE, content: capped, display: true, details },
-        { deliverAs: "steer" },
-      );
-    } catch (err) {
-      console.error("subagents: failed to deliver result message", err);
-    }
+    this.deps.mailbox.deliver({ content: capped, details });
+    this.deps.mailbox.flush(this.deps.isIdle);
   }
 
   deliverQuestion(jobId: number, question: SubagentQuestion): void {
@@ -277,40 +306,16 @@ export class Batch {
       model: metadata?.model,
       thinkingLevel: metadata?.thinkingLevel,
     };
-    try {
-      this.deps.pi.sendMessage(
-        { customType: ENTRY_TYPE, content: `Error: ${String(err)}`, display: true, details },
-        { deliverAs: "steer" },
-      );
-    } catch (sendErr) {
-      console.error("subagents: failed to deliver error message", sendErr);
-    }
+    this.deps.mailbox.deliver({ content: `Error: ${String(err)}`, details });
+    this.deps.mailbox.flush(this.deps.isIdle);
   }
 
-  /** Fires once when this batch's last job finishes, and triggers a turn. */
   summary(): void {
     this.pending -= 1;
     if (this.pending !== 0) return;
     if (this.completed.length === 0) return;
-    const lines = this.completed.map((j) => {
-      const duration = j.endTime ? formatDuration(j.endTime - j.startTime) : "?";
-      const icon = j.status === "completed" ? "✓" : j.status === "cancelled" ? "⊘" : "✗";
-      const cancellation = j.status === "cancelled" && j.cancellationReason
-        ? ` — cancelled (${j.cancellationReason})`
-        : "";
-      return `${icon} #${j.id} ${j.agent} (${duration}): ${j.title ?? j.task}${cancellation}`;
-    });
-    lines.unshift("**Subagents complete:**");
     this.deps.registry.markCleared(this.jobIds);
     this.deps.refresh();
-    try {
-      this.deps.pi.sendMessage(
-        { customType: ENTRY_TYPE, content: lines.join("\n"), display: false },
-        { triggerTurn: true, deliverAs: "steer" },
-      );
-    } catch (err) {
-      console.error("subagents: failed to send batch summary", err);
-    }
   }
 }
 
@@ -333,6 +338,9 @@ export interface SubagentToolDeps {
 }
 
 export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeof SubagentParams, SubagentToolDetails> {
+  const mailbox = new CompletionMailbox(deps.pi);
+  deps.pi.on("agent_settled", (_event, ctx) => mailbox.flush(() => ctx.isIdle()));
+
   return {
     name: "subagent",
     label: "Subagent",
@@ -357,7 +365,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const mode = resolveMode(params);
       deps.onUiContext(ctx);
       const refresh = () => deps.refresh(ctx);
-      const batch = new Batch({ pi: deps.pi, registry, refresh });
+      const batch = new Batch({ pi: deps.pi, registry, refresh, mailbox, isIdle: () => ctx.isIdle() });
       const notifyTerminal = (
         jobId: number,
         agent: string,

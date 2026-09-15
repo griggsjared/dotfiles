@@ -7,7 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { AgentConfig } from "../agents.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
-import { Batch, createSubagentTool, resolveMode } from "../tools.ts";
+import { Batch, CompletionMailbox, createSubagentTool, resolveMode } from "../tools.ts";
 import {
   createCancelTool,
   createPeekTool,
@@ -63,14 +63,16 @@ test("resolveMode: single, batch, and validation", () => {
 
 // --- Batch -------------------------------------------------------------------
 
-function makeBatch() {
+function makeBatch(isIdle = true) {
   const registry = createJobRegistry();
   const sendMessage = spy();
   const sendUserMessage = spy();
-  const pi = { sendMessage: sendMessage.fn, sendUserMessage: sendUserMessage.fn } as unknown as ExtensionAPI;
+  const appendEntry = spy();
+  const pi = { sendMessage: sendMessage.fn, sendUserMessage: sendUserMessage.fn, appendEntry: appendEntry.fn } as unknown as ExtensionAPI;
   let refreshes = 0;
-  const batch = new Batch({ pi, registry, refresh: () => { refreshes += 1; } });
-  return { registry, batch, sendMessage, sendUserMessage, refreshes: () => refreshes };
+  const mailbox = new CompletionMailbox(pi);
+  const batch = new Batch({ pi, registry, refresh: () => { refreshes += 1; }, mailbox, isIdle: () => isIdle });
+  return { registry, batch, mailbox, sendMessage, sendUserMessage, appendEntry, refreshes: () => refreshes };
 }
 
 function complete(registry: ReturnType<typeof createJobRegistry>, id: number, exitCode = 0) {
@@ -84,7 +86,7 @@ function complete(registry: ReturnType<typeof createJobRegistry>, id: number, ex
   });
 }
 
-test("Batch: summary fires exactly once when the last job completes", () => {
+test("Batch: clears completed jobs only when the last job completes", () => {
   const { registry, batch, sendMessage } = makeBatch();
   const id1 = registry.add("a", "t1");
   const id2 = registry.add("b", "t2");
@@ -94,33 +96,24 @@ test("Batch: summary fires exactly once when the last job completes", () => {
   complete(registry, id1);
   batch.recordCompletion(id1);
   batch.summary();
-  assert.equal(sendMessage.calls.length, 0, "pending > 0, no summary yet");
+  assert.deepEqual(registry.pendingCompleted().map((job) => job.id), [id1]);
 
   complete(registry, id2, 1);
   batch.recordCompletion(id2);
   batch.summary();
-  assert.equal(sendMessage.calls.length, 1);
-  const [message, options] = sendMessage.calls[0] as [{ content: string; display: boolean }, { triggerTurn: boolean; deliverAs: string }];
-  assert.equal(message.display, false);
-  assert.equal(options.triggerTurn, true);
-  assert.equal(options.deliverAs, "steer");
-  const lines = message.content;
-  assert.equal(lines.split("\n")[0], "**Subagents complete:**");
-  assert.match(lines, /✓ #1 a \(.*\): t1/);
-  assert.match(lines, /✗ #2 b \(.*\): t2/);
-  // markCleared ran: nothing pending for display anymore
+  assert.equal(sendMessage.calls.length, 0);
   assert.equal(registry.pendingCompleted().length, 0);
 });
 
-test("Batch: an extra summary call never re-fires", () => {
+test("Batch: an extra summary call has no effect", () => {
   const { registry, batch, sendMessage } = makeBatch();
   const id = registry.add("a", "t");
   batch.addJob(id);
   complete(registry, id);
   batch.recordCompletion(id);
   batch.summary();
-  batch.summary(); // would decrement to -1 under a naive guard
-  assert.equal(sendMessage.calls.length, 1);
+  batch.summary();
+  assert.equal(sendMessage.calls.length, 0);
 });
 
 test("Batch: summary with no completed jobs sends nothing", () => {
@@ -136,8 +129,9 @@ test("Batch: overlapping batches don't cross-suppress and clear only their own i
   const sendMessage = spy();
   const sendUserMessage = spy();
   const pi = { sendMessage: sendMessage.fn, sendUserMessage: sendUserMessage.fn } as unknown as ExtensionAPI;
-  const b1 = new Batch({ pi, registry, refresh: () => {} });
-  const b2 = new Batch({ pi, registry, refresh: () => {} });
+  const mailbox = new CompletionMailbox(pi);
+  const b1 = new Batch({ pi, registry, refresh: () => {}, mailbox, isIdle: () => true });
+  const b2 = new Batch({ pi, registry, refresh: () => {}, mailbox, isIdle: () => true });
 
   const id1 = registry.add("a", "t1");
   const id2 = registry.add("b", "t2");
@@ -147,19 +141,19 @@ test("Batch: overlapping batches don't cross-suppress and clear only their own i
   complete(registry, id1);
   b1.recordCompletion(id1);
   b1.summary();
-  assert.equal(sendMessage.calls.length, 1, "b1 completes independently");
+  assert.equal(sendMessage.calls.length, 0);
 
   complete(registry, id2);
   b2.recordCompletion(id2);
   b2.summary();
-  assert.equal(sendMessage.calls.length, 2, "b2 completes independently");
+  assert.equal(sendMessage.calls.length, 0);
 
   // b1 cleared id1 but not id2; b2's own summary then cleared id2 as well
   assert.equal(registry.pendingCompleted().length, 0);
 });
 
-test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details", () => {
-  const { registry, batch, sendMessage } = makeBatch();
+test("Batch: deliverResult displays a card and sends a hidden parent message", () => {
+  const { registry, batch, sendMessage, appendEntry } = makeBatch();
   const id = registry.add("a", "t");
   batch.addJob(id);
   complete(registry, id);
@@ -173,19 +167,25 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
     model: "openai-codex/gpt-5.6-luna",
     thinkingLevel: "high",
   });
+  assert.equal(appendEntry.calls.length, 1);
+  const [entryType, entry] = appendEntry.calls[0] as [string, { content: string }];
+  assert.equal(entryType, ENTRY_TYPE);
+  assert.equal(entry.content.length, 20002); // 20000 + "\n…"
   assert.equal(sendMessage.calls.length, 1);
   const [message, options] = sendMessage.calls[0] as [
-    { customType: string; content: string; details: { status: string; icon: string; jobId?: number; agent: string; model?: string; thinkingLevel?: string } },
-    { deliverAs: string },
+    { customType: string; content: string; display: boolean; details: { status: string; icon: string; jobId?: number; agent: string; model?: string; thinkingLevel?: string } },
+    { deliverAs: string; triggerTurn: boolean },
   ];
   assert.equal(message.customType, ENTRY_TYPE);
-  assert.equal(message.content.length, 20002); // 20000 + "\n…"
+  assert.equal(message.display, false);
+  assert.equal(message.content.length, 20002);
   assert.equal(message.details.status, "completed");
   assert.equal(message.details.icon, "✓");
   assert.equal(message.details.jobId, id);
   assert.equal(message.details.model, "openai-codex/gpt-5.6-luna");
   assert.equal(message.details.thinkingLevel, "high");
   assert.equal(options.deliverAs, "steer");
+  assert.equal(options.triggerTurn, true);
   // Complete the first batch member before adding the second one so the
   // summary bookkeeping represents both jobs.
   batch.summary();
@@ -207,7 +207,23 @@ test("Batch: deliverResult sends a capped ENTRY_TYPE message with typed details"
   assert.equal(cancelledMessage.details.icon, "⊘");
   assert.equal(cancelledMessage.details.cancellationReason, "timeout");
   batch.summary();
-  assert.match((sendMessage.calls[2]?.[0] as { content: string }).content, /cancelled \(timeout\)/);
+  assert.equal(appendEntry.calls.length, 2);
+  assert.match((sendMessage.calls[1]?.[0] as { content: string }).content, /Cancelled \(timeout\)/);
+});
+
+test("CompletionMailbox displays active-turn results and waits to deliver them", () => {
+  const { registry, batch, mailbox, sendMessage, appendEntry } = makeBatch(false);
+  const id = registry.add("a", "t");
+  batch.addJob(id);
+  complete(registry, id);
+  batch.deliverResult(id, { agent: "a", task: "t", text: "done", exitCode: 0, error: "" });
+
+  assert.equal(appendEntry.calls.length, 1);
+  assert.equal(sendMessage.calls.length, 0);
+
+  mailbox.flush(() => true);
+  assert.equal(sendMessage.calls.length, 1);
+  assert.deepEqual(sendMessage.calls[0]?.[1], { triggerTurn: true, deliverAs: "steer" });
 });
 
 test("subagent status includes compact model and effort", async () => {
@@ -675,7 +691,14 @@ function makeTool(
   const registry = createJobRegistry();
   const sendMessage = spy();
   const sendUserMessage = spy();
-  const pi = { sendMessage: sendMessage.fn, sendUserMessage: sendUserMessage.fn } as unknown as ExtensionAPI;
+  const appendEntry = spy();
+  const handlers = new Map<string, (...args: unknown[]) => void>();
+  const pi = {
+    sendMessage: sendMessage.fn,
+    sendUserMessage: sendUserMessage.fn,
+    appendEntry: appendEntry.fn,
+    on: (event: string, handler: (...args: unknown[]) => void) => handlers.set(event, handler),
+  } as unknown as ExtensionAPI;
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   const activeProcs = new Set<ChildProcess>();
   const child = new FakeChild();
@@ -697,8 +720,9 @@ function makeTool(
     model: { provider: "p", id: "m" },
     thinkingLevel: undefined,
     hasUI: false,
+    isIdle: () => true,
   } as unknown as ExtensionContext;
-  return { tool, registry, sendMessage, sendUserMessage, activeTickers, activeProcs, child, ctx };
+  return { tool, registry, sendMessage, sendUserMessage, appendEntry, handlers, activeTickers, activeProcs, child, ctx };
 }
 
 test("execute: local settings set child model and thinking level", async () => {
@@ -797,13 +821,13 @@ test("execute: legacy sync input cannot make a single job block", async () => {
   child.finish(0);
   await sleep(20);
 
-  assert.equal(sendMessage.calls.length, 2, "completion sends the result and hidden summary");
+  assert.equal(sendMessage.calls.length, 1, "completion sends one hidden parent message");
   assert.equal(registry.running().length, 0);
   assert.equal(activeTickers.size, 0);
   assert.equal(activeProcs.size, 0);
 });
 
-test("execute: single returns launched, then delivers result + summary", async () => {
+test("execute: single returns launched, then displays and delivers its result", async () => {
   const { tool, registry, sendMessage, child, ctx } = makeTool();
   const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
   assert.equal(result.details.status, "launched");
@@ -816,12 +840,27 @@ test("execute: single returns launched, then delivers result + summary", async (
   child.finish(0);
   await sleep(20); // let the .then chain run
 
-  assert.equal(sendMessage.calls.length, 2, "result and hidden batch summary sent");
-  assert.equal((sendMessage.calls[0]?.[0] as { details: { status: string } }).details.status, "completed");
-  const [summary, options] = sendMessage.calls[1] as [{ content: string; display: boolean }, { triggerTurn: boolean }];
-  assert.equal(summary.display, false);
+  assert.equal(sendMessage.calls.length, 1);
+  const [message, options] = sendMessage.calls[0] as [{ display: boolean; details: { status: string } }, { triggerTurn: boolean }];
+  assert.equal(message.details.status, "completed");
+  assert.equal(message.display, false);
   assert.equal(options.triggerTurn, true);
-  assert.match(summary.content, /\*\*Subagents complete:\*\*/);
+});
+
+test("execute: active parent holds results until agent_settled", async () => {
+  const { tool, sendMessage, appendEntry, handlers, child, ctx } = makeTool();
+  (ctx as unknown as { isIdle: () => boolean }).isIdle = () => false;
+  await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+
+  await sleep(10);
+  child.stdout.emit("data", Buffer.from(endEvent("scouted")));
+  child.finish(0);
+  await sleep(20);
+
+  assert.equal(appendEntry.calls.length, 1);
+  assert.equal(sendMessage.calls.length, 0);
+  handlers.get("agent_settled")?.({}, { isIdle: () => true });
+  assert.equal(sendMessage.calls.length, 1);
 });
 
 test("execute: child semantic events are available through peek", async () => {
@@ -927,7 +966,7 @@ test("child questions trigger a parent turn and subagent_reply resolves them", a
   child.stdout.emit("data", Buffer.from(endEvent("done")));
   child.finish(0);
   await sleep(20);
-  assert.equal(sendMessage.calls.length, 3, "question, result, and hidden summary sent once each");
+  assert.equal(sendMessage.calls.length, 2, "question and result sent once each");
 });
 
 test("stale UI context does not duplicate cancellation completion", async () => {
@@ -943,10 +982,9 @@ test("stale UI context does not duplicate cancellation completion", async () => 
   await sleep(30);
 
   assert.equal(registry.get(1)?.status, "cancelled");
-  const summaries = sendMessage.calls.filter((call) => (call[0] as { display?: boolean }).display === false);
-  assert.equal(summaries.length, 1);
-  const summary = (summaries[0]?.[0] as { content: string }).content;
-  assert.equal(summary.match(/#1 scout/g)?.length, 1);
+  const deliveries = sendMessage.calls.filter((call) => (call[0] as { display?: boolean }).display === false);
+  assert.equal(deliveries.length, 1);
+  assert.equal((deliveries[0]?.[0] as { details: { jobId?: number } }).details.jobId, 1);
   assert.equal(child.killed, "SIGTERM");
 });
 
@@ -1120,7 +1158,7 @@ test("execute: queued cancellation does not spawn and reports its reason", async
   assert.equal((resultMessage?.[0] as { details: { status: string; cancellationReason?: string } }).details.status, "cancelled");
   assert.equal((resultMessage?.[0] as { details: { cancellationReason?: string } }).details.cancellationReason, "timeout");
   assert.deepEqual(notices, ["#2 scout: two — cancelled (timeout)"]);
-  assert.match((sendMessage.calls.at(-1)?.[0] as { content: string }).content, /cancelled \(timeout\)/);
+  assert.match((sendMessage.calls.at(-1)?.[0] as { content: string }).content, /Cancelled \(timeout\)/);
 });
 
 test("execute: parent abort does not cancel running or queued jobs", async () => {
@@ -1196,7 +1234,7 @@ test("execute: jobs outlive the tool-call abort signal", async () => {
   await sleep(20);
 });
 
-test("execute: parallel batch delivers per-job results and one summary", async () => {
+test("execute: parallel batch displays and delivers each result", async () => {
   const children = [new FakeChild(), new FakeChild()];
   const { spawnFn, calls } = fakeSpawnChildren(children);
   const { tool, sendMessage, sendUserMessage, activeTickers, activeProcs, ctx } = makeTool({ spawnFn });
@@ -1222,9 +1260,9 @@ test("execute: parallel batch delivers per-job results and one summary", async (
   children[1]!.finish(0);
   await sleep(30); // let the .then chains run
 
-  assert.equal(sendMessage.calls.length, 3, "deliverResult per job plus hidden batch summary");
-  assert.equal(sendUserMessage.calls.length, 0, "summary is not displayed as a user message");
-  assert.equal((sendMessage.calls[2]?.[0] as { display: boolean }).display, false);
+  assert.equal(sendMessage.calls.length, 2, "one hidden parent message per result");
+  assert.equal(sendUserMessage.calls.length, 0);
+  assert.equal((sendMessage.calls[1]?.[0] as { display: boolean }).display, false);
   assert.equal(activeTickers.size, 0, "ticker stopped via finally");
   assert.equal(activeProcs.size, 0);
 });
@@ -1392,17 +1430,23 @@ test("renderCall: shows concurrency and every agent title", () => {
   assert.match(text, /worker.*Second task/);
 });
 
-test("message renderer: renders results and parent questions", () => {
+test("message and entry renderers render results and parent questions", () => {
   const renderers = new Map<string, (message: unknown, options: unknown, theme: unknown) => unknown>();
+  const entryRenderers = new Map<string, (entry: unknown, options: unknown, theme: unknown) => unknown>();
   const pi = {
     registerMessageRenderer: (type: string, fn: unknown) => {
       renderers.set(type, fn as never);
     },
+    registerEntryRenderer: (type: string, fn: unknown) => {
+      entryRenderers.set(type, fn as never);
+    },
   } as unknown as ExtensionAPI;
   registerRenderers(pi);
   const captured = renderers.get(ENTRY_TYPE);
+  const entryRenderer = entryRenderers.get(ENTRY_TYPE);
   const questionRenderer = renderers.get(QUESTION_ENTRY_TYPE);
-  assert.ok(captured, "result renderer registered");
+  assert.ok(captured, "result message renderer registered");
+  assert.ok(entryRenderer, "result entry renderer registered");
   assert.ok(questionRenderer, "question renderer registered");
 
   const theme = fakeTheme() as never;
@@ -1432,6 +1476,26 @@ test("message renderer: renders results and parent questions", () => {
   assert.doesNotMatch(compactText, /\bout\b/);
   assert.match(compactText, /Ctrl\+O to expand/);
   assert.equal(compactText.split("\n").filter((line) => line.trim()).length, 3);
+
+  const entryCard = entryRenderer!(
+    {
+      data: {
+        content: "out",
+        details: {
+          jobId: 7,
+          agent: "a",
+          task: "t",
+          status: "completed",
+          duration: "1s",
+          icon: "✓",
+        },
+      },
+    },
+    { expanded: false },
+    theme,
+  );
+  assert.match(renderText(entryCard), /✓ #7 a/);
+  assert.match(renderText(entryCard), /Ctrl\+O to expand/);
 
   const fallbackColors: string[] = [];
   const fallbackTheme = {

@@ -9,9 +9,14 @@ export interface AgentSettings {
   thinkingLevel?: string;
 }
 
-export interface SubagentSettings {
+export interface SubagentProfile {
   defaults: AgentSettings;
   agents: Record<string, AgentSettings>;
+}
+
+export interface SubagentSettings {
+  defaultProfile: string;
+  profiles: Record<string, SubagentProfile>;
 }
 
 export interface AgentConfig {
@@ -24,7 +29,8 @@ export interface AgentConfig {
   maxRuntimeMs?: number;
 }
 
-const EMPTY_SETTINGS: SubagentSettings = { defaults: {}, agents: {} };
+const EMPTY_PROFILE: SubagentProfile = { defaults: {}, agents: {} };
+const EMPTY_SETTINGS: SubagentSettings = { defaultProfile: "default", profiles: { default: EMPTY_PROFILE } };
 
 function validModel(value: unknown): value is string {
   return typeof value === "string" && /^[^\s\x00-\x1F\x7F]+$/.test(value);
@@ -43,11 +49,13 @@ function parseAgentSettings(value: unknown): AgentSettings {
   };
 }
 
-export function parseSubagentSettings(value: unknown): SubagentSettings {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_SETTINGS;
-  const subagents = (value as Record<string, unknown>).subagents;
-  if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) return EMPTY_SETTINGS;
-  const config = subagents as Record<string, unknown>;
+export function isValidProfileName(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value);
+}
+
+function parseProfile(value: unknown): SubagentProfile | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const config = value as Record<string, unknown>;
   const agents: Record<string, AgentSettings> = {};
   if (config.agents && typeof config.agents === "object" && !Array.isArray(config.agents)) {
     for (const [name, settings] of Object.entries(config.agents)) {
@@ -58,6 +66,35 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
   return { defaults: parseAgentSettings(config.defaults), agents };
 }
 
+export function parseSubagentSettings(value: unknown): SubagentSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_SETTINGS;
+  const subagents = (value as Record<string, unknown>).subagents;
+  if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) return EMPTY_SETTINGS;
+  const config = subagents as Record<string, unknown>;
+  const profiles: Record<string, SubagentProfile> = {};
+
+  if (config.profiles && typeof config.profiles === "object" && !Array.isArray(config.profiles)) {
+    for (const [name, profile] of Object.entries(config.profiles)) {
+      if (!isValidProfileName(name)) continue;
+      const parsed = parseProfile(profile);
+      if (parsed) profiles[name] = parsed;
+    }
+  }
+
+  // Accept the original unprofiled shape as the default profile.
+  if (Object.keys(profiles).length === 0 && (config.defaults !== undefined || config.agents !== undefined)) {
+    const legacy = parseProfile(config);
+    if (legacy) profiles.default = legacy;
+  }
+  if (Object.keys(profiles).length === 0) return EMPTY_SETTINGS;
+
+  const requested = config.defaultProfile;
+  const defaultProfile = isValidProfileName(requested) && profiles[requested]
+    ? requested
+    : profiles.default ? "default" : Object.keys(profiles)[0]!;
+  return { defaultProfile, profiles };
+}
+
 export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent", "settings.json")): Promise<SubagentSettings> {
   try {
     return parseSubagentSettings(JSON.parse(await readFile(path, "utf8")));
@@ -66,12 +103,17 @@ export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent"
   }
 }
 
-export function resolveAgentSettings(agent: AgentConfig, settings: SubagentSettings): AgentConfig {
-  const local = settings.agents[agent.name] ?? {};
+export function getSubagentProfile(settings: SubagentSettings, profileName = settings.defaultProfile): SubagentProfile {
+  return settings.profiles[profileName] ?? settings.profiles[settings.defaultProfile] ?? EMPTY_PROFILE;
+}
+
+export function resolveAgentSettings(agent: AgentConfig, settings: SubagentSettings, profileName?: string): AgentConfig {
+  const profile = getSubagentProfile(settings, profileName);
+  const local = profile.agents[agent.name] ?? {};
   return {
     ...agent,
-    model: local.model ?? agent.model ?? settings.defaults.model,
-    thinkingLevel: local.thinkingLevel ?? agent.thinkingLevel ?? settings.defaults.thinkingLevel,
+    model: local.model ?? agent.model ?? profile.defaults.model,
+    thinkingLevel: local.thinkingLevel ?? agent.thinkingLevel ?? profile.defaults.thinkingLevel,
   };
 }
 

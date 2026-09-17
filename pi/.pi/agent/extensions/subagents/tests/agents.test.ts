@@ -7,6 +7,7 @@ import {
   discoverAgents,
   loadAgentFile,
   loadSubagentSettings,
+  getSubagentProfile,
   parseFrontmatter,
   parseSubagentSettings,
   resolveAgentSettings,
@@ -111,9 +112,10 @@ test("parseSubagentSettings accepts only valid model and thinking settings", () 
       },
     },
   });
-  assert.deepEqual(settings.defaults, { model: "gpt-5", thinkingLevel: "max" });
-  assert.deepEqual(settings.agents.scout, { model: "sonnet:high", thinkingLevel: "high" });
-  assert.equal(settings.agents.invalid, undefined);
+  assert.equal(settings.defaultProfile, "default");
+  assert.deepEqual(settings.profiles.default!.defaults, { model: "gpt-5", thinkingLevel: "max" });
+  assert.deepEqual(settings.profiles.default!.agents.scout, { model: "sonnet:high", thinkingLevel: "high" });
+  assert.equal(settings.profiles.default!.agents.invalid, undefined);
 });
 
 test("loadSubagentSettings ignores malformed files", async () => {
@@ -121,7 +123,10 @@ test("loadSubagentSettings ignores malformed files", async () => {
   const file = join(dir, "settings.json");
   try {
     await writeFile(file, "{");
-    assert.deepEqual(await loadSubagentSettings(file), { defaults: {}, agents: {} });
+    assert.deepEqual(await loadSubagentSettings(file), {
+      defaultProfile: "default",
+      profiles: { default: { defaults: {}, agents: {} } },
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -145,4 +150,38 @@ test("resolveAgentSettings gives local overrides precedence over frontmatter and
   const defaults = resolveAgentSettings({ name: "worker", description: "", systemPrompt: "" }, settings);
   assert.equal(defaults.model, "default/model");
   assert.equal(defaults.thinkingLevel, "low");
+});
+
+test("parseSubagentSettings validates profiles and selects a valid default", () => {
+  const settings = parseSubagentSettings({
+    subagents: {
+      defaultProfile: "fast",
+      profiles: {
+        fast: { defaults: { model: "fast/model" } },
+        slow: { defaults: { model: "slow/model" } },
+        "not valid": { defaults: { model: "ignored/model" } },
+        broken: null,
+      },
+    },
+  });
+  assert.equal(settings.defaultProfile, "fast");
+  assert.deepEqual(Object.keys(settings.profiles), ["fast", "slow"]);
+  assert.equal(getSubagentProfile(settings), settings.profiles.fast);
+  assert.equal(getSubagentProfile(settings, "slow"), settings.profiles.slow);
+});
+
+test("resolveAgentSettings can resolve an explicitly selected profile", () => {
+  const settings = parseSubagentSettings({
+    subagents: {
+      defaultProfile: "fast",
+      profiles: {
+        fast: { defaults: { model: "fast/model" } },
+        slow: { defaults: { model: "slow/model" } },
+      },
+    },
+  });
+  const agent = { name: "worker", description: "", systemPrompt: "" };
+  assert.equal(resolveAgentSettings(agent, settings).model, "fast/model");
+  assert.equal(resolveAgentSettings(agent, settings, "slow").model, "slow/model");
+  assert.equal(resolveAgentSettings(agent, settings, "missing").model, "fast/model");
 });

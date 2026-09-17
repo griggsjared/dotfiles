@@ -1,10 +1,11 @@
 import { Text } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import type { SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 import { SubagentTail, eventColor, eventKindLabel, formatEventSummary } from "./tail.ts";
-import type { JobEvent } from "./types.ts";
+import { PROFILE_ENTRY_TYPE, type JobEvent } from "./types.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
 const CancelParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })), all: Type.Optional(Type.Boolean()) });
@@ -99,7 +100,7 @@ function renderStatusText(
       bodyLines = label === "Latest output" ? sections.outputLines ?? 0 : label === "Error" ? sections.errorLines ?? 0 : 0;
       const valueColor = label === "State"
         ? value.includes("completed") ? "success" : value.includes("cancelled") ? "warning" : value.includes("failed") ? "error" : "accent"
-        : label === "Agent" ? "accent"
+        : label === "Agent" || label === "Profile" ? "accent"
         : label === "Cancellation" ? "warning"
         : label === "Error" ? "error"
         : label === "Usage" || label === "Elapsed" || label === "Task" || label === "Progress" ? "dim"
@@ -125,8 +126,8 @@ function formatJob(job: StatusJob, now: number): string {
   }
   const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
   const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
-  const usage = formatUsageStats(job.usage, job.model, job.thinkingLevel);
-  return `- ${icon} #${job.id} ${job.agent} (${duration}${usage ? ` ${usage}` : ""}): ${jobLabel(job)}`;
+  const metadata = formatUsageStats(job.usage, job.model, job.thinkingLevel);
+  return `- ${icon} #${job.id} ${job.agent} (${duration}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}`;
 }
 
 function formatDetailedStatus(job: Job, now: number): string {
@@ -139,6 +140,7 @@ function formatDetailedStatus(job: Job, now: number): string {
     `Task: ${jobLabel(job, 160)}`,
     `Elapsed: ${duration}`,
   ];
+  if (job.profile) lines.push(`Profile: ${job.profile}`);
   if (metadata) lines.push(`Usage: ${metadata}`);
   if (job.pendingQuestions.length > 0) {
     lines.push(`Waiting for parent (${job.pendingQuestions.length}):`);
@@ -487,7 +489,44 @@ export function createReplyTool(deps: { registry: JobRegistry }): ToolDefinition
   };
 }
 
-export function registerStatusCommands(pi: ExtensionAPI, deps: { registry: JobRegistry; activeProcs?: unknown }): void {
+interface ProfileCommandDeps {
+  settings: SubagentSettings;
+  getActiveProfile: () => string;
+  setActiveProfile: (name: string) => void;
+}
+
+export function registerStatusCommands(
+  pi: ExtensionAPI,
+  deps: { registry: JobRegistry; activeProcs?: unknown; profiles?: ProfileCommandDeps },
+): void {
+  pi.registerCommand("subagent-profile", {
+    description: "Show or switch the active subagent profile",
+    handler: async (args, ctx) => {
+      const profiles = deps.profiles;
+      if (!profiles) return;
+      const names = Object.keys(profiles.settings.profiles);
+      const current = profiles.getActiveProfile();
+      let name = args.trim();
+      if (!name) {
+        if (ctx.mode !== "tui") {
+          if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ")}`, "info");
+          return;
+        }
+        const options = names.map((profile) => profile === profiles.settings.defaultProfile ? `${profile} (default)` : profile);
+        const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
+        if (!selected) return;
+        name = names[options.indexOf(selected)] ?? "";
+      }
+      if (!profiles.settings.profiles[name]) {
+        if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
+        return;
+      }
+      profiles.setActiveProfile(name);
+      pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
+      if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
+    },
+  });
+
   pi.registerCommand("subagent-tail", {
     description: "Open a live event tail for a subagent by ID",
     handler: async (args, ctx) => {

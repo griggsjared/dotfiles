@@ -61,6 +61,8 @@ const SubagentParams = Type.Object({
 
 type SubagentParamsType = Static<typeof SubagentParams>;
 type TaskItemType = Static<typeof TaskItem>;
+type ResolvedAgent = AgentConfig & { profile: string };
+type LaunchMetadata = Pick<ResolvedAgent, "model" | "thinkingLevel" | "profile">;
 
 interface SingleRequest {
   agent: string;
@@ -93,7 +95,7 @@ function failedResult(
   task: string,
   title: string | undefined,
   err: unknown,
-  metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+  metadata?: LaunchMetadata,
 ): SubagentResult {
   return {
     agent,
@@ -104,6 +106,7 @@ function failedResult(
     error: String(err),
     model: metadata?.model,
     thinkingLevel: metadata?.thinkingLevel,
+    profile: metadata?.profile,
   };
 }
 
@@ -112,7 +115,7 @@ function cancelledResult(
   task: string,
   title: string | undefined,
   reason: NonNullable<Job["cancellationReason"]>,
-  metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+  metadata?: LaunchMetadata,
 ): SubagentResult {
   return {
     agent,
@@ -125,6 +128,7 @@ function cancelledResult(
     cancellationReason: reason,
     model: metadata?.model,
     thinkingLevel: metadata?.thinkingLevel,
+    profile: metadata?.profile,
   };
 }
 
@@ -255,6 +259,7 @@ export class Batch {
       toolCalls: result.toolCalls,
       model: result.model,
       thinkingLevel: result.thinkingLevel,
+      profile: job?.profile ?? result.profile,
       cancellationReason: result.cancellationReason,
     };
     this.deps.mailbox.deliver({ content: capped, details });
@@ -292,7 +297,7 @@ export class Batch {
     task: string,
     title: string | undefined,
     err: unknown,
-    metadata?: Pick<AgentConfig, "model" | "thinkingLevel">,
+    metadata?: LaunchMetadata,
     jobId?: number,
   ): void {
     const details: SubagentMessageDetails = {
@@ -305,6 +310,7 @@ export class Batch {
       icon: "✗",
       model: metadata?.model,
       thinkingLevel: metadata?.thinkingLevel,
+      profile: metadata?.profile,
     };
     this.deps.mailbox.deliver({ content: `Error: ${String(err)}`, details });
     this.deps.mailbox.flush(this.deps.isIdle);
@@ -325,6 +331,8 @@ export interface SubagentToolDeps {
   agents: AgentConfig[];
   /** Machine-local settings loaded when the extension initializes. */
   settings: SubagentSettings;
+  /** Session-local profile selected for new jobs. */
+  getActiveProfile: () => string;
   /** Re-discovered on every execute so agent file edits take effect immediately. */
   discover: () => Promise<AgentConfig[]>;
   registry: JobRegistry;
@@ -351,12 +359,14 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const defaultModel = formatModel(ctx.model);
       const parentThinkingLevel = ctx.thinkingLevel;
-      const agents = (await deps.discover()).map((agent) => {
-        const resolved = resolveAgentSettings(agent, deps.settings);
+      const profile = deps.getActiveProfile();
+      const agents: ResolvedAgent[] = (await deps.discover()).map((agent) => {
+        const resolved = resolveAgentSettings(agent, deps.settings, profile);
         return {
           ...resolved,
           model: resolved.model ?? defaultModel,
           thinkingLevel: resolved.thinkingLevel ?? parentThinkingLevel,
+          profile,
         };
       });
       const { registry, activeTickers } = deps;
@@ -390,7 +400,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       // Launch one job: stream updates into the registry, then complete it.
       // Failures are returned as failed results, except spawn-level failures
       // which reject and are recorded here.
-      const launchOne = async (agent: AgentConfig, task: string, jobId: number, title?: string): Promise<SubagentResult> => {
+      const launchOne = async (agent: ResolvedAgent, task: string, jobId: number, title?: string): Promise<SubagentResult> => {
         try {
           // A cancelled job may have been waiting for a concurrency slot. Do
           // not spawn it just to discover the cancellation after launch.
@@ -429,7 +439,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             },
           });
           registry.registerControl(jobId, launched);
-          let subagentResult = await launched.result;
+          let subagentResult: SubagentResult = { ...await launched.result, profile: agent.profile };
           registry.complete(jobId, subagentResult);
           subagentResult = normalizeCancellation(subagentResult, registry.jobs.get(jobId));
           // Cancellation may race the child's final close/update. The registry
@@ -491,7 +501,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         // Results are delivered later via sendMessage with the custom renderer.
         return {
           content: [{ type: "text", text: `Launched **${agent.name}** subagent #${jobId}: "${single.title ?? single.task}"` }],
-          details: { agent: agent.name, status: "launched", jobIds: [jobId], jobScope: registry.scope },
+          details: { agent: agent.name, status: "launched", jobIds: [jobId], jobScope: registry.scope, profile },
         };
       }
 
@@ -506,7 +516,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       );
 
       const jobIds = tasks.map((t) => {
-        const id = registry.add(t.agent, t.task, t.title, agentByName.get(t.agent));
+        const id = registry.add(t.agent, t.task, t.title, agentByName.get(t.agent) ?? { profile });
         batch.addJob(id);
         return id;
       });
@@ -520,12 +530,13 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         if (!agent) {
           const cancellationReason = registry.get(jobId)?.cancellationReason;
           const result = cancellationReason
-            ? cancelledResult(task.agent, task.task, task.title, cancellationReason)
+            ? cancelledResult(task.agent, task.task, task.title, cancellationReason, { profile })
             : failedResult(
               task.agent,
               task.task,
               task.title,
               `Unknown agent "${task.agent}". Available: ${available}`,
+              { profile },
             );
           registry.complete(jobId, result);
           batch.recordCompletion(jobId);
@@ -568,6 +579,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           status: "launched",
           jobIds,
           jobScope: registry.scope,
+          profile,
         },
       };
     },

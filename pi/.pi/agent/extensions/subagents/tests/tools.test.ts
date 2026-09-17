@@ -4,7 +4,8 @@ import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { AgentConfig } from "../agents.ts";
+import type { AgentConfig, SubagentSettings } from "../agents.ts";
+import { restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, CompletionMailbox, createSubagentTool, resolveMode } from "../tools.ts";
@@ -16,7 +17,7 @@ import {
   createStatusTool,
   registerStatusCommands,
 } from "../status-tools.ts";
-import { EMPTY_USAGE, ENTRY_TYPE, QUESTION_ENTRY_TYPE } from "../types.ts";
+import { EMPTY_USAGE, ENTRY_TYPE, PROFILE_ENTRY_TYPE, QUESTION_ENTRY_TYPE } from "../types.ts";
 import {
   FakeChild,
   fakeSpawn,
@@ -231,6 +232,7 @@ test("subagent status includes compact model and effort", async () => {
   registry.add("scout", "running task", undefined, {
     model: "openai-codex/gpt-5.6-luna",
     thinkingLevel: "minimal",
+    profile: "primary",
   });
   const id = registry.add("worker", "task");
   registry.complete(id, {
@@ -246,6 +248,7 @@ test("subagent status includes compact model and effort", async () => {
   const tool = createStatusTool({ registry });
   const result = await tool.execute("call1", {}, undefined, undefined, {} as never);
   const text = (result.content[0] as { text: string }).text;
+  assert.doesNotMatch(text, /profile/i);
   assert.match(text, /◐ #1 scout .*openai-codex\/gpt-5\.6-luna:minimal/);
   assert.match(text, /openai-codex\/gpt-5\.6-luna:high/);
 });
@@ -335,7 +338,7 @@ test("subagent peek renderer labels events and compacts structured results", () 
 
 test("subagent status supports individual and unknown job IDs", async () => {
   const registry = createJobRegistry();
-  const runningId = registry.add("scout", "running task");
+  const runningId = registry.add("scout", "running task", undefined, { profile: "backup" });
   registry.updateLive(runningId, {
     text: "latest output",
     progress: "reading files",
@@ -358,6 +361,7 @@ test("subagent status supports individual and unknown job IDs", async () => {
   const individualText = (individual.content[0] as { text: string }).text;
   assert.match(individualText, new RegExp(`Subagent #${runningId}`));
   assert.match(individualText, /State: running/);
+  assert.match(individualText, /Profile: backup/);
   assert.match(individualText, /Progress: reading files/);
   assert.match(individualText, /Usage: 1 turn p\/m:minimal/);
   assert.match(individualText, /Tool calls \(1\):\n- read src\/index\.ts/);
@@ -532,6 +536,78 @@ test("/subagent-status shares the status formatter", async () => {
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
 });
 
+test("/subagent-profile shows, selects, validates, and persists profiles", async () => {
+  const settings = {
+    defaultProfile: "primary",
+    profiles: {
+      primary: { defaults: { model: "primary/model" }, agents: {} },
+      backup: { defaults: { model: "backup/model" }, agents: {} },
+    },
+  };
+  let activeProfile = "primary";
+  const entries: Array<[string, unknown]> = [];
+  const notices: Array<{ text: string; level: string }> = [];
+  const pickerOptions: string[][] = [];
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    appendEntry: (type: string, data: unknown) => entries.push([type, data]),
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+  } as unknown as ExtensionAPI;
+  registerStatusCommands(pi, {
+    registry: createJobRegistry(),
+    profiles: {
+      settings,
+      getActiveProfile: () => activeProfile,
+      setActiveProfile: (name) => { activeProfile = name; },
+    },
+  });
+  const command = commands.get("subagent-profile");
+  assert.ok(command);
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      notify: (text: string, level: string) => notices.push({ text, level }),
+      select: async (_title: string, options: string[]) => {
+        pickerOptions.push(options);
+        return "primary (default)";
+      },
+    },
+  };
+
+  await command.handler("backup", ctx);
+  assert.equal(activeProfile, "backup");
+  assert.deepEqual(entries, [[PROFILE_ENTRY_TYPE, { name: "backup" }]]);
+  assert.match(notices.at(-1)?.text ?? "", /New jobs will use it/);
+
+  await command.handler("missing", ctx);
+  assert.equal(activeProfile, "backup");
+  assert.equal(notices.at(-1)?.level, "error");
+
+  await command.handler("", ctx);
+  assert.deepEqual(pickerOptions, [["primary (default)", "backup"]]);
+  assert.equal(activeProfile, "primary");
+  assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "primary" }]);
+
+  await command.handler("", { ...ctx, mode: "print" });
+  assert.match(notices.at(-1)?.text ?? "", /Active subagent profile: primary/);
+});
+
+test("restoreActiveProfile uses the latest valid session selection", () => {
+  const settings = {
+    defaultProfile: "primary",
+    profiles: {
+      primary: { defaults: {}, agents: {} },
+      backup: { defaults: {}, agents: {} },
+    },
+  };
+  assert.equal(restoreActiveProfile([], settings), "primary");
+  assert.equal(restoreActiveProfile([
+    { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "backup" } },
+    { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "removed" } },
+  ], settings), "backup");
+});
+
 test("/subagent-tail opens a live overlay and follows new events", async () => {
   const registry = createJobRegistry();
   const id = registry.add("scout", "running task");
@@ -686,7 +762,8 @@ test("/subagent-send reports rejected messages", async () => {
 
 function makeTool(
   spawnOverride?: { spawnFn: typeof spawn },
-  settings = { defaults: {}, agents: {} },
+  settings: SubagentSettings = { defaultProfile: "default", profiles: { default: { defaults: {}, agents: {} } } },
+  activeProfile = settings.defaultProfile,
 ) {
   const registry = createJobRegistry();
   const sendMessage = spy();
@@ -706,6 +783,7 @@ function makeTool(
     pi,
     agents: [AGENT],
     settings,
+    getActiveProfile: () => activeProfile,
     discover: async () => [AGENT],
     registry,
     activeProcs,
@@ -734,7 +812,15 @@ test("execute: local settings set child model and thinking level", async () => {
   }) as unknown as typeof spawn;
   const { tool, ctx } = makeTool(
     { spawnFn },
-    { defaults: { model: "default-model", thinkingLevel: "low" }, agents: { scout: { model: "local-model", thinkingLevel: "high" } } },
+    {
+      defaultProfile: "default",
+      profiles: {
+        default: {
+          defaults: { model: "default-model", thinkingLevel: "low" },
+          agents: { scout: { model: "local-model", thinkingLevel: "high" } },
+        },
+      },
+    },
   );
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
 
@@ -757,7 +843,10 @@ test("execute: default settings set child model and thinking level", async () =>
   }) as unknown as typeof spawn;
   const { tool, ctx } = makeTool(
     { spawnFn },
-    { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} },
+    {
+      defaultProfile: "default",
+      profiles: { default: { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} } },
+    },
   );
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
 
@@ -769,6 +858,38 @@ test("execute: default settings set child model and thinking level", async () =>
   const args = calls[0]?.args ?? [];
   assert.equal(args[args.indexOf("--model") + 1], "default-model");
   assert.equal(args[args.indexOf("--thinking") + 1], "low");
+});
+
+test("execute: selected profile controls new jobs and completion metadata", async () => {
+  const settings = {
+    defaultProfile: "primary",
+    profiles: {
+      primary: { defaults: { model: "primary/model", thinkingLevel: "low" }, agents: {} },
+      backup: { defaults: { model: "backup/model", thinkingLevel: "high" }, agents: {} },
+    },
+  };
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const spawnFn = ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+    calls.push({ cmd, args, options: options ?? {} });
+    return child;
+  }) as unknown as typeof spawn;
+  const { tool, registry, sendMessage, ctx } = makeTool({ spawnFn }, settings, "backup");
+  const launch = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+
+  assert.equal(launch.details.profile, "backup");
+  assert.doesNotMatch((launch.content[0] as { text: string }).text, /profile/i);
+  assert.equal(registry.get(1)?.profile, "backup");
+  await sleep(10);
+  const args = calls[0]?.args ?? [];
+  assert.equal(args[args.indexOf("--model") + 1], "backup/model");
+  assert.equal(args[args.indexOf("--thinking") + 1], "high");
+
+  child.stdout.emit("data", Buffer.from(endEvent("done")));
+  child.finish(0);
+  await sleep(20);
+  const completion = sendMessage.calls[0]?.[0] as { details: { profile?: string } };
+  assert.equal(completion.details.profile, "backup");
 });
 
 test("execute: setup failures preserve inherited model and effort", async () => {
@@ -814,6 +935,7 @@ test("execute: legacy sync input cannot make a single job block", async () => {
     status: "launched",
     jobIds: [1],
     jobScope: registry.scope,
+    profile: "default",
   });
 
   await sleep(10); // let runSubagent attach stream listeners
@@ -1335,6 +1457,7 @@ test("renderFullWidget: shows one line per active agent", () => {
   const id = registry.add("scout", "task", "a".repeat(60), {
     model: "openai-codex/gpt-5.6-luna",
     thinkingLevel: "high",
+    profile: "primary",
   });
   registry.updateLive(id, { progress: "reading files", text: "live agent output" });
   const lines = renderFullWidget(registry, (_color, text) => text, 80);
@@ -1342,6 +1465,7 @@ test("renderFullWidget: shows one line per active agent", () => {
   assert.equal(lines.length, 1);
   assert.ok(lines.every((line) => visibleWidth(line) <= 80));
   assert.match(output, new RegExp(`◐ #${id} scout`));
+  assert.doesNotMatch(output, /profile/i);
   assert.doesNotMatch(output, /reading files/);
   assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(output, /live agent output/);
@@ -1464,6 +1588,7 @@ test("message and entry renderers render results and parent questions", () => {
         usage: { ...EMPTY_USAGE, turns: 1 },
         model: "openai-codex/gpt-5.6-luna",
         thinkingLevel: "high",
+        profile: "primary",
       },
     },
     options,
@@ -1472,6 +1597,7 @@ test("message and entry renderers render results and parent questions", () => {
   assert.ok(renderable(withDetails));
   const compactText = renderText(withDetails);
   assert.match(compactText, /✓ #7 a/);
+  assert.doesNotMatch(compactText, /profile/i);
   assert.match(compactText, /openai-codex\/gpt-5\.6-luna:high/);
   assert.doesNotMatch(compactText, /\bout\b/);
   assert.match(compactText, /Ctrl\+O to expand/);

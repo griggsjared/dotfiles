@@ -22,7 +22,7 @@ export interface Job {
   id: number; agent: string; task: string; title?: string; startTime: number;
   status: "running" | "completed" | "failed" | "cancelled"; endTime?: number;
   text?: string; error?: string; progress?: string; usage: SubagentUsage; toolCalls: ToolCallInfo[];
-  model?: string; thinkingLevel?: string; cancellationReason?: CancellationReason;
+  model?: string; thinkingLevel?: string; profile?: string; cancellationReason?: CancellationReason;
   pendingQuestions: PendingQuestion[];
 }
 const PRUNE_AFTER_MS = 300_000;
@@ -30,7 +30,7 @@ const JOB_EVENT_CAPACITY = 100;
 interface JobEventRing { events: JobEvent[]; nextSeq: number; }
 export interface JobRegistry {
   scope: string; jobs: Map<number, Job>;
-  add(agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string }): number;
+  add(agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string; profile?: string }): number;
   appendEvent(id: number, event: JobEventInput): boolean;
   readEvents(id: number, options?: { since?: number; limit?: number }): { events: JobEvent[]; nextCursor: number; droppedBefore?: number } | undefined;
   updateLive(id: number, live: { text?: string; progress?: string; usage?: SubagentUsage; toolCalls?: ToolCallInfo[]; model?: string; thinkingLevel?: string }): void;
@@ -46,8 +46,8 @@ export interface JobRegistry {
 export function createJobRegistry(options: { now?: () => number } = {}) {
   const now = options.now ?? Date.now; let nextId = 1; const scope = randomUUID();
   const jobs = new Map<number, Job>(); const eventRings = new Map<number, JobEventRing>(); const clearedIds = new Set<number>(); const handles = new Map<number, SubagentControl>(); const replying = new Set<string>();
-  const add = (agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string }): number => {
-    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, pendingQuestions: [] }); eventRings.set(id, { events: [], nextSeq: 1 }); return id;
+  const add = (agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string; profile?: string }): number => {
+    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, profile: metadata?.profile, pendingQuestions: [] }); eventRings.set(id, { events: [], nextSeq: 1 }); return id;
   };
   const appendEvent = (id: number, event: JobEventInput): boolean => {
     const job = jobs.get(id); if (!job || job.status !== "running") return false;

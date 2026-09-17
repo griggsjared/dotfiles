@@ -55,6 +55,22 @@ test("registry lifecycle: add -> complete -> pendingCompleted -> markCleared", (
   assert.equal(registry.recent(1).length, 1);
 });
 
+test("registry snapshots the launch profile without lifecycle overwrites", () => {
+  const registry = createJobRegistry();
+  const id = registry.add("worker", "task", undefined, {
+    model: "launch-model",
+    thinkingLevel: "high",
+    profile: "primary",
+  });
+  const job = registry.get(id)!;
+
+  registry.updateLive(id, { model: "served-model", thinkingLevel: "minimal" });
+  registry.complete(id, result({ model: "result-model", thinkingLevel: "off", profile: "backup" }));
+  assert.equal(job.model, "result-model");
+  assert.equal(job.thinkingLevel, "off");
+  assert.equal(job.profile, "primary");
+});
+
 test("registry: event ring sequences, limits, cursors, and defensive copies", () => {
   let time = 10;
   const registry = createJobRegistry({ now: () => time++ });

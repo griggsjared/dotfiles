@@ -184,6 +184,12 @@ local keys = {
 						keys = {
 							["tu"] = { "transfer_up", mode = { "n" } },
 							["td"] = { "transfer_down", mode = { "n" } },
+							["<c-d>"] = { "git_diff_open", mode = { "n", "i" } },
+						},
+					},
+					list = {
+						keys = {
+							["<c-d>"] = "git_diff_open",
 						},
 					},
 				},
@@ -210,6 +216,18 @@ local keys = {
 					Snacks.picker.git_diff({
 						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")",
 						base = d.baseRefName,
+						win = {
+							input = {
+								keys = {
+									["<c-d>"] = { "git_diff_open", mode = { "n", "i" } },
+								},
+							},
+							list = {
+								keys = {
+									["<c-d>"] = "git_diff_open",
+								},
+							},
+						},
 						layout = {
 							preset = "ivy",
 							layout = {
@@ -287,6 +305,42 @@ return {
 				},
 			},
 			actions = {
+				git_diff_open = function(picker, item)
+					if not item then
+						return
+					end
+					if item.status == "??" then
+						vim.notify("Cannot diff an untracked file", vim.log.levels.INFO)
+						return
+					end
+					local base = "HEAD"
+					if picker.opts.base then
+						local out = vim
+							.system(
+								{ "git", "merge-base", "HEAD", picker.opts.base },
+								{ text = true, cwd = picker:cwd() }
+							)
+							:wait()
+						if out.code ~= 0 then
+							vim.notify("Failed to resolve PR diff base", vim.log.levels.ERROR)
+							return
+						end
+						base = vim.trim(out.stdout)
+					end
+					picker:norm(function()
+						Snacks.picker.actions.jump(picker, item, {})
+						local buf = vim.api.nvim_get_current_buf()
+						local attached = vim.wait(2000, function()
+							local status = vim.b[buf].gitsigns_status_dict
+							return status and status.added ~= nil
+						end)
+						if not attached then
+							vim.notify("Gitsigns could not attach to this file", vim.log.levels.WARN)
+							return
+						end
+						require("gitsigns").diffthis(base, { vertical = true })
+					end)
+				end,
 				transfer_up = function(_, item)
 					vim.cmd.TransferUpload(item.file)
 				end,

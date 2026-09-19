@@ -1,13 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import providerUsage, {
-	normalizeCodexUsage,
-	normalizeOpencodeGoUsage,
-	readResponseTextLimited,
-} from "../index.ts";
+import { normalizeCodexUsage } from "../providers/codex.ts";
+import { normalizeDeepseekUsage } from "../providers/deepseek.ts";
+import { readResponseTextLimited } from "../http.ts";
+import providerUsage from "../index.ts";
+import { normalizeOpencodeGoUsage } from "../providers/opencode.ts";
 
 const capturedAt = 1_700_000_000_000;
+
+test("entry wiring registers the footer and publishes provider status", async () => {
+	const handlers = new Map<string, Array<(event: any, context: any) => void>>();
+	providerUsage({ on(event: string, handler: (event: any, context: any) => void) {
+		handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+	} } as ExtensionAPI);
+	let footerSet = false;
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true,
+		model: { provider: "deepseek" },
+		modelRegistry: { getProvider: () => undefined, getProviderAuth: async () => undefined },
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		ui: { setFooter() { footerSet = true; }, setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	try {
+		for (const handler of handlers.get("session_start") ?? []) handler({}, context);
+		assert.equal(footerSet, true);
+		const decoded = statuses.map((value) => value === undefined ? undefined : JSON.parse(value) as { provider?: string; state?: string });
+		assert.equal(decoded.some((value) => value?.provider === "deepseek" && value.state === "unknown"), true);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	} finally {
+		for (const handler of handlers.get("session_shutdown") ?? []) handler({}, context);
+	}
+});
 
 test("normalizes Codex field variants and classifies windows", () => {
 	const usage = normalizeCodexUsage({ rate_limit: {
@@ -21,6 +47,180 @@ test("normalizes Codex field variants and classifies windows", () => {
 			{ kind: "weekly", label: "7d", usedPercent: 50, resetAtMs: 1_700_001_234_000 },
 		],
 	});
+});
+
+test("normalizes DeepSeek balance responses", () => {
+	assert.deepEqual(normalizeDeepseekUsage({
+		is_available: true,
+		balance_infos: [{ currency: "CNY", total_balance: "110.00", granted_balance: "10.00", topped_up_balance: "100.00" }],
+	}, capturedAt), {
+		provider: "deepseek", state: "ready", capturedAtMs: capturedAt, windows: [], balance: { amount: 110, currency: "CNY" },
+	});
+	assert.deepEqual(normalizeDeepseekUsage({ balance_infos: [{ currency: "usd", total_balance: "7" }] }, capturedAt)?.balance, { amount: 7, currency: "USD" });
+	assert.deepEqual(normalizeDeepseekUsage({
+		balance_infos: [{ currency: "CNY", total_balance: "0" }, { currency: "USD", total_balance: "9.50" }],
+	}, capturedAt)?.balance, { amount: 9.5, currency: "USD" });
+	assert.deepEqual(normalizeDeepseekUsage({
+		balance_infos: [{ currency: "USD", total_balance: "-1" }, { currency: "CNY", total_balance: "3" }],
+	}, capturedAt)?.balance, { amount: 3, currency: "CNY" });
+	for (const total_balance of ["", "  ", "0x10", "1,234.56", "oops"]) {
+		assert.equal(normalizeDeepseekUsage({ balance_infos: [{ currency: "USD", total_balance }] }, capturedAt), undefined, total_balance);
+	}
+	assert.equal(normalizeDeepseekUsage({ balance_infos: [{ currency: "usd", total_balance: "oops" }] }, capturedAt), undefined);
+	assert.equal(normalizeDeepseekUsage({ balance_infos: [] }, capturedAt), undefined);
+	assert.equal(normalizeDeepseekUsage({}, capturedAt), undefined);
+});
+
+test("fetches DeepSeek balance from the fixed endpoint with an auth header", async () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	let url: string | undefined;
+	let request: RequestInit | undefined;
+	globalThis.fetch = async (target, init) => {
+		url = String(target);
+		request = init;
+		return new Response(JSON.stringify({ is_available: true, balance_infos: [{ currency: "USD", total_balance: "42.50" }] }));
+	};
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true, model: { provider: "deepseek" },
+		modelRegistry: {
+			getProvider: () => ({ baseUrl: "https://api.deepseek.com/v1" }),
+			getProviderAuth: async () => ({ auth: { apiKey: "sk-test" } }),
+		},
+		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(url, "https://api.deepseek.com/user/balance");
+		assert.equal(request?.redirect, "error");
+		assert.equal((request?.headers as Record<string, string>).Authorization, "Bearer sk-test");
+		const published = JSON.parse(statuses.at(-1)!);
+		assert.deepEqual(published, {
+			provider: "deepseek", state: "ready", capturedAtMs: published.capturedAtMs, windows: [], balance: { amount: 42.5, currency: "USD" },
+		});
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("rejects DeepSeek balance fetches to non-official endpoints", async () => {
+	const originalFetch = globalThis.fetch;
+	for (const baseUrl of ["https://api.deepseek.com.evil.tld/v1", "http://api.deepseek.com", "https://api.deepseek.com:8443/v1", "not a url"]) {
+		const handlers = new Map<string, (event: any, context: any) => void>();
+		providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+		let fetched = false;
+		globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
+		const statuses: Array<string | undefined> = [];
+		const context = {
+			hasUI: true, model: { provider: "deepseek" },
+			modelRegistry: { getProvider: () => ({ baseUrl }), getProviderAuth: async () => ({ auth: { apiKey: "sk-test" } }) },
+			ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+		};
+		try {
+			handlers.get("session_start")?.({}, context);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(fetched, false, baseUrl);
+			assert.equal(JSON.parse(statuses.at(-1)!).state, "unknown", baseUrl);
+		} finally {
+			handlers.get("session_shutdown")?.({}, context);
+		}
+	}
+	globalThis.fetch = originalFetch;
+});
+
+test("does not fetch DeepSeek balance without an API key", async () => {
+	const originalFetch = globalThis.fetch;
+	for (const auth of [undefined, { auth: {} }]) {
+		const handlers = new Map<string, (event: any, context: any) => void>();
+		providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+		let fetched = false;
+		globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
+		const statuses: Array<string | undefined> = [];
+		const context = {
+			hasUI: true, model: { provider: "deepseek" },
+			modelRegistry: { getProvider: () => ({ baseUrl: "https://api.deepseek.com" }), getProviderAuth: async () => auth },
+			ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+		};
+		try {
+			handlers.get("session_start")?.({}, context);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(fetched, false);
+			assert.equal(JSON.parse(statuses.at(-1)!).state, "unknown");
+		} finally {
+			handlers.get("session_shutdown")?.({}, context);
+		}
+	}
+	globalThis.fetch = originalFetch;
+});
+
+test("bounds DeepSeek auth resolution so a later refresh can still run", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	let fetchCalls = 0;
+	let authCalls = 0;
+	globalThis.fetch = async () => { fetchCalls++; return new Response(JSON.stringify({ balance_infos: [{ currency: "USD", total_balance: "5.00" }] })); };
+	const context = {
+		hasUI: true, model: { provider: "deepseek" },
+		modelRegistry: {
+			getProvider: () => ({ baseUrl: "https://api.deepseek.com" }),
+			getProviderAuth: () => { authCalls++; return authCalls === 1 ? new Promise(() => {}) : Promise.resolve({ auth: { apiKey: "sk-test" } }); },
+		},
+		ui: { setStatus() {} },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(fetchCalls, 0);
+		t.mock.timers.tick(10_000);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		handlers.get("turn_end")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(fetchCalls, 1);
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
+		globalThis.fetch = originalFetch;
+		t.mock.timers.reset();
+	}
+});
+
+test("preserves a cached DeepSeek balance when a refresh fails", async () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	const originalNow = Date.now;
+	let now = originalNow();
+	let calls = 0;
+	globalThis.fetch = async () => ++calls === 1
+		? new Response(JSON.stringify({ balance_infos: [{ currency: "USD", total_balance: "42.50" }] }))
+		: new Response("nope", { status: 503 });
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true, model: { provider: "deepseek" },
+		modelRegistry: { getProvider: () => ({ baseUrl: "https://api.deepseek.com" }), getProviderAuth: async () => ({ auth: { apiKey: "sk-test" } }) },
+		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	try {
+		Date.now = () => now;
+		handlers.get("session_start")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		now += 10 * 60_000;
+		handlers.get("turn_end")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(calls, 2);
+		const last = JSON.parse(statuses.at(-1)!);
+		assert.equal(last.state, "ready");
+		assert.equal(last.balance.amount, 42.5);
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
+		Date.now = originalNow;
+		globalThis.fetch = originalFetch;
+	}
 });
 
 test("does not invent a Codex reset time", () => {
@@ -158,12 +358,15 @@ test("preserves cached usage when a refresh fails", async () => {
 	const statuses: Array<string | undefined> = [];
 	const context = { hasUI: true, model: { provider: "opencode-go" }, ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } } };
 	const originalNow = Date.now;
+	let now = originalNow();
 	try {
-		Date.now = () => originalNow() + (calls > 1 ? 10 * 60_000 : 0);
+		Date.now = () => now;
 		handlers.get("session_start")?.({}, context);
 		await new Promise<void>((resolve) => setImmediate(resolve));
+		now += 10 * 60_000;
 		handlers.get("turn_end")?.({}, context);
 		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(calls, 2);
 		assert.equal(JSON.parse(statuses.at(-1)!).state, "ready");
 	} finally {
 		handlers.get("session_shutdown")?.({}, context);

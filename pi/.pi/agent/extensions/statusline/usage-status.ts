@@ -1,6 +1,12 @@
 export const USAGE_STATUS_KEY = "provider-usage";
 
-export type UsageProvider = "openai-codex" | "opencode-go";
+const USAGE_PROVIDERS = {
+	"openai-codex": { quota: true },
+	"opencode-go": { quota: true },
+	"deepseek": { quota: false },
+} as const;
+
+export type UsageProvider = keyof typeof USAGE_PROVIDERS;
 export type UsageWindowKind = "rolling" | "weekly" | "monthly";
 
 export type UsageWindow = {
@@ -13,18 +19,31 @@ export type UsageWindow = {
 	unit?: "usd";
 };
 
+export type UsageBalance = {
+	amount: number;
+	currency: string;
+};
+
 export type UsageStatus = {
 	provider: UsageProvider;
 	state: "ready" | "unknown";
 	windows: UsageWindow[];
 	capturedAtMs: number;
+	balance?: UsageBalance;
 };
 
-const providers = new Set<UsageProvider>(["openai-codex", "opencode-go"]);
+const providers = new Set<string>(Object.keys(USAGE_PROVIDERS));
+const quotaProviders = new Set<string>(
+	Object.keys(USAGE_PROVIDERS).filter((provider) => USAGE_PROVIDERS[provider as UsageProvider].quota),
+);
 const kinds = new Set<UsageWindowKind>(["rolling", "weekly", "monthly"]);
 
 export function isUsageProvider(value: unknown): value is UsageProvider {
 	return typeof value === "string" && providers.has(value as UsageProvider);
+}
+
+export function isQuotaProvider(value: unknown): value is UsageProvider {
+	return typeof value === "string" && quotaProviders.has(value as UsageProvider);
 }
 
 export function isUsageStatus(value: unknown): value is UsageStatus {
@@ -36,7 +55,18 @@ export function isUsageStatus(value: unknown): value is UsageStatus {
 		&& typeof status.capturedAtMs === "number"
 		&& Number.isFinite(status.capturedAtMs)
 		&& status.capturedAtMs >= 0
-		&& status.windows.every(isUsageWindow);
+		&& status.windows.every(isUsageWindow)
+		&& (status.balance === undefined || isUsageBalance(status.balance));
+}
+
+export function isUsageBalance(value: unknown): value is UsageBalance {
+	if (!value || typeof value !== "object") return false;
+	const balance = value as Record<string, unknown>;
+	return typeof balance.amount === "number"
+		&& Number.isFinite(balance.amount)
+		&& balance.amount >= 0
+		&& typeof balance.currency === "string"
+		&& /^[A-Z]{3}$/.test(balance.currency);
 }
 
 export function isUsageWindow(value: unknown): value is UsageWindow {

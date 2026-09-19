@@ -289,6 +289,40 @@ function formatResults(query: string, results: SearchResult[]): string {
 const BLOCK_END_TAGS =
 	/<\/(p|h1|h2|h3|h4|h5|h6|li|tr|td|th|dt|dd|blockquote|pre|ul|ol|dl|nav|header|footer|section|aside)>/gi;
 const MAX_TEXT_CHARS = 4000;
+const BINARY_MEDIA_TYPES = new Set([
+	"application/gzip",
+	"application/pdf",
+	"application/postscript",
+	"application/wasm",
+	"application/x-7z-compressed",
+	"application/x-bzip2",
+	"application/x-rar-compressed",
+	"application/x-tar",
+	"application/zip",
+]);
+
+export function isClearlyBinaryContentType(contentType: string): boolean {
+	const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+	if (/^(audio|font|video)\//.test(mediaType)) return true;
+	if (mediaType.startsWith("image/") && mediaType !== "image/svg+xml") return true;
+	if (BINARY_MEDIA_TYPES.has(mediaType)) return true;
+	return /^application\/vnd\.(?:ms-|openxmlformats-officedocument\.)/.test(mediaType);
+}
+
+export function looksLikeBinaryContent(bytes: Uint8Array): boolean {
+	const sample = bytes.subarray(0, Math.min(bytes.length, 8192));
+	if (sample.length === 0) return false;
+	if (
+		(sample[0] === 0xff && sample[1] === 0xfe) ||
+		(sample[0] === 0xfe && sample[1] === 0xff)
+	) return false;
+	let controlBytes = 0;
+	for (const byte of sample) {
+		if (byte === 0) return true;
+		if (byte < 8 || (byte > 13 && byte < 32) || byte === 127) controlBytes++;
+	}
+	return controlBytes / sample.length > 0.02;
+}
 
 // Longest <tag>...</tag> region wins: pages nest <article> inside <main>, and
 // both may appear multiple times (widgets, comments) — the biggest is the content.
@@ -401,7 +435,10 @@ async function fetchPage(url: string, signal?: AbortSignal): Promise<FetchedPage
 	let response: Response;
 	try {
 		response = await fetch(url, {
-			headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xhtml+xml" },
+			headers: {
+				"User-Agent": USER_AGENT,
+				Accept: "text/html,application/xhtml+xml,text/plain,text/markdown,application/json,application/xml,*/*;q=0.5",
+			},
 			redirect: "follow",
 			signal: combined,
 		});
@@ -420,17 +457,57 @@ async function fetchPage(url: string, signal?: AbortSignal): Promise<FetchedPage
 		);
 	}
 	const contentType = response.headers?.get?.("content-type") ?? "";
-	if (!contentType.includes("text/html")) {
+	const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+	if (isClearlyBinaryContentType(contentType)) {
+		throw new Error(`Unsupported binary content type "${mediaType}".`);
+	}
+	const bytes = new Uint8Array(await response.arrayBuffer());
+	if (looksLikeBinaryContent(bytes)) {
 		throw new Error(
-			`Unsupported content type "${contentType.split(";")[0] ?? contentType}" — only HTML pages are readable. Use web_search snippets instead.`,
+			`Unsupported content type "${mediaType || "unknown"}" — the response appears to be binary.`,
 		);
 	}
-	const html = await response.text();
-	const extracted = extractReadableContent(html);
-	if (isWeakContent(html, extracted.text)) {
-		throw new Error("Page content is not readable (requires JavaScript or is empty). Rely on web_search snippets instead.");
+	const charset =
+		contentType.match(/charset\s*=\s*["']?([^;"'\s]+)/i)?.[1] ??
+		(bytes[0] === 0xff && bytes[1] === 0xfe
+			? "utf-16le"
+			: bytes[0] === 0xfe && bytes[1] === 0xff
+				? "utf-16be"
+				: "utf-8");
+	let body: string;
+	try {
+		body = new TextDecoder(charset).decode(bytes);
+	} catch {
+		throw new Error(
+			`Unsupported content type "${mediaType || "unknown"}" — the response is not decodable text.`,
+		);
 	}
-	return { url: response.url || url, ...extracted };
+	const isHtml =
+		mediaType === "text/html" ||
+		mediaType === "application/xhtml+xml" ||
+		/^\s*(?:<!doctype\s+html|<html\b)/i.test(body);
+	if (isHtml) {
+		const extracted = extractReadableContent(body);
+		if (isWeakContent(body, extracted.text)) {
+			throw new Error("Page content is not readable (requires JavaScript or is empty). Rely on web_search snippets instead.");
+		}
+		return { url: response.url || url, ...extracted };
+	}
+	const text = body.trim();
+	if (!text) throw new Error("The response contains no readable text.");
+	const charCount = text.length;
+	const truncated = charCount > MAX_TEXT_CHARS;
+	const finalText = truncated
+		? `${text.slice(0, MAX_TEXT_CHARS).trimEnd()}\n…[truncated at ${charCount} characters]`
+		: text;
+	return {
+		url: response.url || url,
+		title: "",
+		description: "",
+		text: finalText,
+		charCount,
+		truncated,
+	};
 }
 
 function formatPage(url: string, page: FetchedPage): string {
@@ -474,7 +551,7 @@ export default function (pi: ExtensionAPI) {
 		name: "web_fetch",
 		label: "Web Fetch",
 		description:
-			"Fetch a URL and return its readable text content (title, description, and body text, truncated at 4000 characters). Use to read a specific page found via web_search or given by the user. Only HTML pages are readable; JavaScript-rendered, PDF, and other non-HTML content fails with a clear error.",
+			"Fetch a URL and return its readable text content, truncated at 4000 characters. HTML pages use readability extraction; Markdown, JSON, XML, source files, and other text responses are returned directly. JavaScript-rendered pages and binary formats such as PDFs fail with a clear error.",
 		promptSnippet: "Read the text content of a web page",
 		promptGuidelines: [
 			"Use web_fetch to read a specific page when its full content matters; combine with web_search to discover pages first.",

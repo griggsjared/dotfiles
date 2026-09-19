@@ -337,6 +337,26 @@ test("runSubagent: spawns the child with the full pi CLI contract", async () => 
   );
 });
 
+test("runSubagent: forwards allowlisted package extensions and ignores relative paths", async () => {
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const { result } = await runSubagent(agent, "do it", "/tmp", "m", {
+    spawnFn: ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+      calls.push({ cmd, args, options: options ?? {} });
+      return child;
+    }) as unknown as typeof spawn,
+    bridgeExtensionPath: BRIDGE_EXTENSION,
+    extensionPaths: ["/packages/pi-claude-bridge/src/index.ts", "relative/index.ts"],
+  });
+  child.finish(0);
+  await result;
+
+  const flags = calls[0]!.args.slice(1);
+  const extensionValues = flags.flatMap((flag, index) => flag === "--extension" ? [flags[index + 1]] : []);
+  assert.deepEqual(extensionValues, [BRIDGE_EXTENSION, "/packages/pi-claude-bridge/src/index.ts"]);
+  assert.ok(flags.includes("--no-extensions"));
+});
+
 test("runSubagent: loads the workspace guard extension without enabling recursive extensions", async () => {
   const child = new FakeChild();
   const calls: SpawnCall[] = [];

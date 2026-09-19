@@ -543,6 +543,7 @@ test("/subagent-profile shows, selects, validates, and persists profiles", async
       primary: { defaults: { model: "primary/model" }, agents: {} },
       backup: { defaults: { model: "backup/model" }, agents: {} },
     },
+    extensions: [],
   };
   let activeProfile = "primary";
   const entries: Array<[string, unknown]> = [];
@@ -600,6 +601,7 @@ test("restoreActiveProfile uses the latest valid session selection", () => {
       primary: { defaults: {}, agents: {} },
       backup: { defaults: {}, agents: {} },
     },
+    extensions: [],
   };
   assert.equal(restoreActiveProfile([], settings), "primary");
   assert.equal(restoreActiveProfile([
@@ -762,7 +764,7 @@ test("/subagent-send reports rejected messages", async () => {
 
 function makeTool(
   spawnOverride?: { spawnFn: typeof spawn },
-  settings: SubagentSettings = { defaultProfile: "default", profiles: { default: { defaults: {}, agents: {} } } },
+  settings: SubagentSettings = { defaultProfile: "default", profiles: { default: { defaults: {}, agents: {} } }, extensions: [] },
   activeProfile = settings.defaultProfile,
 ) {
   const registry = createJobRegistry();
@@ -788,6 +790,7 @@ function makeTool(
     registry,
     activeProcs,
     activeTickers,
+    extensionPaths: [],
     bridgeExtensionPath: "/extensions/child-bridge.ts",
     onUiContext: () => {},
     refresh: () => {},
@@ -820,6 +823,7 @@ test("execute: local settings set child model and thinking level", async () => {
           agents: { scout: { model: "local-model", thinkingLevel: "high" } },
         },
       },
+      extensions: [],
     },
   );
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
@@ -846,6 +850,7 @@ test("execute: default settings set child model and thinking level", async () =>
     {
       defaultProfile: "default",
       profiles: { default: { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} } },
+      extensions: [],
     },
   );
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
@@ -867,6 +872,7 @@ test("execute: selected profile controls new jobs and completion metadata", asyn
       primary: { defaults: { model: "primary/model", thinkingLevel: "low" }, agents: {} },
       backup: { defaults: { model: "backup/model", thinkingLevel: "high" }, agents: {} },
     },
+    extensions: [],
   };
   const child = new FakeChild();
   const calls: SpawnCall[] = [];

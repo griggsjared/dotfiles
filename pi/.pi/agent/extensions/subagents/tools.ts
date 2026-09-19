@@ -341,6 +341,7 @@ export interface SubagentToolDeps {
   onUiContext: (ctx: ExtensionContext) => void;
   refresh: (ctx: ExtensionContext) => void;
   bridgeExtensionPath: string;
+  extensionPaths: readonly string[];
   /** Test seam: replaces the real child-process spawner. */
   spawnFn?: typeof spawn;
 }
@@ -416,6 +417,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             thinkingLevel: agent.thinkingLevel,
             title,
             bridgeExtensionPath: deps.bridgeExtensionPath,
+            extensionPaths: deps.extensionPaths,
             spawnFn: deps.spawnFn,
             onEvent: (event) => {
               registry.appendEvent(jobId, event);

@@ -17,6 +17,7 @@ export interface SubagentProfile {
 export interface SubagentSettings {
   defaultProfile: string;
   profiles: Record<string, SubagentProfile>;
+  extensions: string[];
 }
 
 export interface AgentConfig {
@@ -30,7 +31,8 @@ export interface AgentConfig {
 }
 
 const EMPTY_PROFILE: SubagentProfile = { defaults: {}, agents: {} };
-const EMPTY_SETTINGS: SubagentSettings = { defaultProfile: "default", profiles: { default: EMPTY_PROFILE } };
+const EMPTY_SETTINGS: SubagentSettings = { defaultProfile: "default", profiles: { default: EMPTY_PROFILE }, extensions: [] };
+const PACKAGE_SPEC = /^npm:(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 function validModel(value: unknown): value is string {
   return typeof value === "string" && /^[^\s\x00-\x1F\x7F]+$/.test(value);
@@ -53,6 +55,35 @@ export function isValidProfileName(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(value);
 }
 
+function parsePackageSpecs(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && PACKAGE_SPEC.test(item)))];
+}
+
+/**
+ * Children run with --no-extensions, so packages that register providers must
+ * be re-added by path. Entry points differ per package, so read each manifest
+ * rather than assuming a layout.
+ */
+export async function resolveExtensionPaths(
+  specs: readonly string[],
+  packageDir = process.env.PI_PACKAGE_DIR || join(homedir(), ".pi", "agent", "npm"),
+): Promise<string[]> {
+  const paths: string[] = [];
+  for (const spec of specs) {
+    const root = join(packageDir, "node_modules", spec.slice("npm:".length));
+    try {
+      const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { pi?: { extensions?: unknown } };
+      const entries = manifest.pi?.extensions;
+      if (!Array.isArray(entries)) continue;
+      for (const entry of entries) {
+        if (typeof entry === "string") paths.push(join(root, entry));
+      }
+    } catch { /* package not installed */ }
+  }
+  return paths;
+}
+
 function parseProfile(value: unknown): SubagentProfile | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const config = value as Record<string, unknown>;
@@ -71,6 +102,7 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
   const subagents = (value as Record<string, unknown>).subagents;
   if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) return EMPTY_SETTINGS;
   const config = subagents as Record<string, unknown>;
+  const extensions = parsePackageSpecs(config.extensions);
   const profiles: Record<string, SubagentProfile> = {};
 
   if (config.profiles && typeof config.profiles === "object" && !Array.isArray(config.profiles)) {
@@ -86,13 +118,13 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
     const legacy = parseProfile(config);
     if (legacy) profiles.default = legacy;
   }
-  if (Object.keys(profiles).length === 0) return EMPTY_SETTINGS;
+  if (Object.keys(profiles).length === 0) return { ...EMPTY_SETTINGS, extensions };
 
   const requested = config.defaultProfile;
   const defaultProfile = isValidProfileName(requested) && profiles[requested]
     ? requested
     : profiles.default ? "default" : Object.keys(profiles)[0]!;
-  return { defaultProfile, profiles };
+  return { defaultProfile, profiles, extensions };
 }
 
 export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent", "settings.json")): Promise<SubagentSettings> {

@@ -126,6 +126,7 @@ export interface RunSubagentOptions {
   thinkingLevel?: string;
   title?: string;
   bridgeExtensionPath?: string;
+  extensionPaths?: readonly string[];
   spawnFn?: typeof spawn;
   killDelayMs?: number;
   shutdownGraceMs?: number;
@@ -171,6 +172,7 @@ export async function runSubagent(
   ])].join(",");
   const guardExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
   const hasGuardExtension = !!guardExtension && isAbsolute(guardExtension);
+  const extraExtensions = (options.extensionPaths ?? []).filter(isAbsolute);
   const args = [
     ...base.args,
     "--mode",
@@ -179,6 +181,7 @@ export async function runSubagent(
     "--no-extensions",
     ...(hasBridgeExtension ? ["--extension", bridgeExtension] : []),
     ...(hasGuardExtension ? ["--extension", guardExtension] : []),
+    ...extraExtensions.flatMap((path) => ["--extension", path]),
     "--no-context-files",
     ...(model ? ["--model", model] : []),
     ...(options.thinkingLevel ? ["--thinking", options.thinkingLevel] : []),

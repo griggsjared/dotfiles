@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { discoverAgents, loadSubagentSettings, type SubagentSettings } from "./agents.ts";
+import { discoverAgents, loadSubagentSettings, resolveExtensionPaths, type SubagentSettings } from "./agents.ts";
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
 import {
@@ -30,6 +30,7 @@ export default async function (pi: ExtensionAPI) {
     discoverAgents(__dirname),
     loadSubagentSettings(),
   ]);
+  const extensionPaths = await resolveExtensionPaths(settings.extensions);
   const registry = createJobRegistry();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   let activeProfile = settings.defaultProfile;
@@ -46,6 +47,7 @@ export default async function (pi: ExtensionAPI) {
     registry,
     activeTickers,
     bridgeExtensionPath: join(__dirname, "child-bridge.ts"),
+    extensionPaths,
     onUiContext: ({ hasUI, ui }) => {
       // Only hasUI/ui are used later (session_shutdown widget clearing); keep
       // just that subset so the full context isn't pinned for the session.

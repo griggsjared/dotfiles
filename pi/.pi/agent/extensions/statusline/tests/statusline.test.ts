@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calculateFooterCacheHit, calculateFooterCost, decodeFooterUsageStatus, formatFooterReset, formatFooterUsage, registerStatusline } from "../footer.ts";
+import { calculateFooterCacheHit, calculateFooterCost, decodeFooterUsageStatus, formatFooterBalance, formatFooterReset, formatFooterUsage, registerStatusline } from "../footer.ts";
 
 test("formats shared usage status", () => {
 	assert.equal(formatFooterUsage({
@@ -68,6 +68,111 @@ test("calculates cache hit percentage from assistant usage", () => {
 		{ type: "message", message: { role: "assistant", usage: { input: 25, cacheRead: 75, cacheWrite: 0 } } },
 	]), 75);
 	assert.equal(calculateFooterCacheHit([]), undefined);
+});
+
+test("formats balances by currency", () => {
+	assert.equal(formatFooterBalance({ amount: 110, currency: "USD" }), "b:$110.00");
+	assert.equal(formatFooterBalance({ amount: 12.5, currency: "CNY" }), "b:¥12.50");
+	assert.equal(formatFooterBalance({ amount: 1, currency: "EUR" }), "b:EUR 1.00");
+});
+
+test("shows session cost and remaining balance together for DeepSeek", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: ((...args: any[]) => any) | undefined;
+	let rendered: any;
+	const statuses = new Map([["provider-usage", JSON.stringify({
+		provider: "deepseek", state: "ready", capturedAtMs: 0, windows: [], balance: { amount: 42.5, currency: "USD" },
+	})]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "DeepSeek V4.1 Flash", provider: "deepseek" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.042 } } } }] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		const line = rendered.render(120)[0];
+		assert.match(line, /b:\$42\.50/);
+		assert.match(line, /s:\$0\.042/);
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("shows session cost for a balance provider even when the balance is missing", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: ((...args: any[]) => any) | undefined;
+	let rendered: any;
+	const statuses = new Map([["provider-usage", JSON.stringify({ provider: "deepseek", state: "unknown", capturedAtMs: 0, windows: [] })]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "DeepSeek V4.1 Flash", provider: "deepseek" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.042 } } } }] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		const line = rendered.render(120)[0];
+		assert.match(line, /s:\$0\.042/);
+		assert.doesNotMatch(line, /quota:\?/);
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("keeps the quota placeholder and hides cost for quota providers", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: ((...args: any[]) => any) | undefined;
+	let rendered: any;
+	const statuses = new Map([["provider-usage", JSON.stringify({ provider: "openai-codex", state: "unknown", capturedAtMs: 0, windows: [] })]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "GPT-5.6 Luna", provider: "openai-codex" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.042 } } } }] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		const line = rendered.render(120)[0];
+		assert.match(line, /quota:\?/);
+		assert.doesNotMatch(line, /s:\$/);
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("never clips balance or cost mid-number on narrow footers", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: ((...args: any[]) => any) | undefined;
+	let rendered: any;
+	const statuses = new Map([["provider-usage", JSON.stringify({
+		provider: "deepseek", state: "ready", capturedAtMs: 0, windows: [], balance: { amount: 123456.78, currency: "USD" },
+	})]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "DeepSeek V4.1 Flash", provider: "deepseek" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.042 } } } }] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		const wide = rendered.render(120)[0];
+		assert.match(wide, /b:\$123456\.78/);
+		assert.match(wide, /s:\$0\.042/);
+		const narrow = rendered.render(36)[0].replace(/\x1b\[[0-9;]*m/g, "");
+		assert.doesNotMatch(narrow, /b:|s:/);
+		assert.match(narrow, /deepseek/);
+	} finally {
+		rendered?.dispose();
+	}
 });
 
 test("renders ANSI-themed footer within a narrow width and disposes its timer", () => {

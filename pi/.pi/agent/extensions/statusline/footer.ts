@@ -8,11 +8,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	decodeUsageStatus,
-	isUsageProvider,
+	isQuotaProvider,
 	USAGE_STATUS_KEY,
+	type UsageBalance,
 	type UsageStatus,
 } from "./usage-status.ts";
 const WINDOW_ORDER = ["rolling", "weekly", "monthly"] as const;
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", CNY: "¥" };
 
 export function decodeFooterUsageStatus(value: string | undefined): UsageStatus | undefined {
 	return value ? decodeUsageStatus(value) : undefined;
@@ -47,6 +49,11 @@ export function formatFooterUsage(status: UsageStatus, now = Date.now(), maxWidt
 	if (visibleWidth(compact) <= width) return compact;
 	const truncated = truncateToWidth(compact, width, "");
 	return visibleWidth(truncated) <= width ? truncated : "";
+}
+
+export function formatFooterBalance(balance: UsageBalance): string {
+	const symbol = CURRENCY_SYMBOLS[balance.currency] ?? `${balance.currency} `;
+	return `b:${symbol}${balance.amount.toFixed(2)}`;
 }
 
 export function calculateFooterCost(entries: ReadonlyArray<{ type: string; message?: unknown }>): number {
@@ -149,21 +156,28 @@ export function registerStatusline(pi: ExtensionAPI) {
 					}
 
 					const usage = decodeFooterUsageStatus(statuses.get(USAGE_STATUS_KEY));
-					if (usage?.state === "ready" && usage.provider === model?.provider && usage.windows.length > 0) {
-						const providerWidth = model?.provider ? model.provider.length : 0;
-						const usageWidth = Math.max(0, width - visibleWidth(line) - providerWidth - 3);
+					const usageReady = usage?.state === "ready" && usage.provider === model?.provider;
+					const providerText = model?.provider ?? "";
+					const reserved = providerText ? visibleWidth(providerText) + 3 : 0;
+					const fitsLine = (text: string) => visibleWidth(line) + 1 + visibleWidth(text) + reserved <= width;
+					if (usageReady && usage.windows.length > 0) {
+						const usageWidth = Math.max(0, width - visibleWidth(line) - reserved);
 						line += ` ${theme.fg("dim", formatFooterUsage(usage, Date.now(), usageWidth))}`;
-					} else if (isUsageProvider(model?.provider)) {
+					} else if (isQuotaProvider(model?.provider) && !usageReady) {
 						line += ` ${theme.fg("dim", "quota:?")}`;
-					} else {
-						const cost = costCache.cost;
-						if (cost > 0) {
-							line += ` ${theme.fg("dim", `$${cost.toFixed(3)}`)}`;
-						}
+					}
+					if (usageReady && usage.balance) {
+						const text = formatFooterBalance(usage.balance);
+						if (fitsLine(text)) line += ` ${theme.fg("dim", text)}`;
+					}
+					const cost = costCache.cost;
+					if (cost > 0 && !isQuotaProvider(model?.provider)) {
+						const text = `s:$${cost.toFixed(3)}`;
+						if (fitsLine(text)) line += ` ${theme.fg("dim", text)}`;
 					}
 
 					// ── Provider (right-aligned) ──
-					const provider = model?.provider ? theme.fg("muted", model.provider) : "";
+					const provider = providerText ? theme.fg("muted", providerText) : "";
 					const gap = width - visibleWidth(line) - visibleWidth(provider);
 
 					const result = gap >= 2

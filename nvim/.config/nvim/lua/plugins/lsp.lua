@@ -53,6 +53,8 @@ return {
 					"eslint",
 					"marksman",
 					"jsonls",
+					"basedpyright",
+					"ruff",
 				},
 				-- never auto-enable; every server is enabled explicitly in its ftplugin
 				automatic_enable = false,

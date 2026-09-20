@@ -24,6 +24,7 @@ return {
 				css = { "prettier" },
 				blade = { "blade-formatter" },
 				php = { "pint", "php_cs_fixer", stop_after_first = true },
+				python = { "ruff_format" },
 				go = { "goimports", "gofmt" },
 				c = { "clang-format" },
 				cpp = { "clang-format" },

@@ -42,7 +42,11 @@ local registry = {
 		commentstring = "//%s",
 		bo = { tabstop = 4, shiftwidth = 4 },
 	},
-	python = { bo = { tabstop = 4, shiftwidth = 4 } },
+	python = {
+		parsers = { "python" },
+		lsp = { "basedpyright", "ruff" },
+		bo = { tabstop = 4, shiftwidth = 4 },
+	},
 	rust = { parsers = { "rust" }, lsp = { "rust_analyzer" } },
 	sh = { parsers = { "bash" } },
 	svelte = { parsers = { "svelte" }, lsp = { "svelte", "vtsls", "tailwindcss", "eslint" } },

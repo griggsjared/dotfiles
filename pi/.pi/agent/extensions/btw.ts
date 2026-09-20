@@ -39,6 +39,31 @@ function answerLines(turns: Turn[], width: number, pendingQuestion?: string): st
 	return lines;
 }
 
+const TRANSCRIPT_HEADER = "Side conversation (via /btw):";
+const MAX_TRANSCRIPT_CHARS = 8000;
+const TRANSCRIPT_TRUNCATION = "[…earlier turns truncated]";
+
+export function transcript(turns: Turn[]): string {
+	const blocks: string[] = [];
+	let budget = MAX_TRANSCRIPT_CHARS;
+	for (let index = turns.length - 1; index >= 0; index -= 1) {
+		const turn = turns[index];
+		if (!turn) continue;
+		const answer = turn.answer.content
+			.flatMap((block) => (block.type === "text" ? [block.text] : []))
+			.join("\n")
+			.trim();
+		const block = answer ? `Q: ${turn.question}\nA: ${answer}` : `Q: ${turn.question}`;
+		if (blocks.length > 0 && block.length > budget) {
+			blocks.unshift(TRANSCRIPT_TRUNCATION);
+			break;
+		}
+		budget -= block.length;
+		blocks.unshift(block);
+	}
+	return [TRANSCRIPT_HEADER, ...blocks].join("\n\n").trim();
+}
+
 function boxed(lines: string[], width: number, theme: { fg(color: string, text: string): string }, title: string): string[] {
 	if (width < 3) return lines.map((line) => truncateToWidth(line, Math.max(1, width), "", true));
 	const innerWidth = width - 2;
@@ -218,7 +243,12 @@ export default function (pi: ExtensionAPI) {
 									const lines = [...visible];
 									lines.push(...replyInput.render(innerWidth));
 									if (loading) lines.push(theme.fg("dim", "Thinking…"));
-									lines.push(theme.fg("dim", loading ? "Esc close" : "PgUp/PgDn scroll · Enter send · Esc close"));
+									const hint = loading
+										? "Esc close"
+										: turns.length > 0
+											? "PgUp/PgDn scroll · Enter send · Ctrl+S send to agent · Esc close"
+											: "PgUp/PgDn scroll · Enter send · Esc close";
+									lines.push(theme.fg("dim", hint));
 									return boxed(lines, maxWidth, theme, "btw");
 								} catch (caught) {
 									scheduleFail(caught);
@@ -231,6 +261,10 @@ export default function (pi: ExtensionAPI) {
 							handleInput: (data: string) => {
 								if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
 									close();
+									return;
+								}
+								if (matchesKey(data, Key.ctrl("s"))) {
+									if (!loading && turns.length > 0) finish(transcript(turns));
 									return;
 								}
 								if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.pageDown)) {
@@ -259,6 +293,10 @@ export default function (pi: ExtensionAPI) {
 				);
 
 				if (result === null && error) ctx.ui.notify("btw request failed", "error");
+				if (result !== null) {
+					pi.sendUserMessage(result, { deliverAs: "followUp" });
+					ctx.ui.notify("Side conversation sent to the agent", "info");
+				}
 			} finally {
 				if (active === operation) active = undefined;
 			}

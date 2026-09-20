@@ -13,3 +13,4 @@
 !extensions/ask-user.ts
 !extensions/btw.ts
 !extensions/subagents/**
+!extensions/tests/**

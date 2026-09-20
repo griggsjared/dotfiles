@@ -2,6 +2,9 @@
   "private": true,
   "type": "module",
   "description": "Runtime and type deps for the standalone extensions",
+  "scripts": {
+    "test": "node --test \"tests/*.test.ts\""
+  },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.83.0",
     "@earendil-works/pi-ai": "^0.83.0",

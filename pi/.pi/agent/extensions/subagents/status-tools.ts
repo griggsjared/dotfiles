@@ -1,5 +1,5 @@
 import { Text } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import type { SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
@@ -499,33 +499,42 @@ export function registerStatusCommands(
   pi: ExtensionAPI,
   deps: { registry: JobRegistry; activeProcs?: unknown; profiles?: ProfileCommandDeps },
 ): void {
-  pi.registerCommand("subagent-profile", {
-    description: "Show or switch the active subagent profile",
-    handler: async (args, ctx) => {
-      const profiles = deps.profiles;
-      if (!profiles) return;
-      const names = Object.keys(profiles.settings.profiles);
-      const current = profiles.getActiveProfile();
-      let name = args.trim();
-      if (!name) {
-        if (ctx.mode !== "tui") {
-          if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ")}`, "info");
-          return;
-        }
-        const options = names.map((profile) => profile === profiles.settings.defaultProfile ? `${profile} (default)` : profile);
-        const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
-        if (!selected) return;
-        name = names[options.indexOf(selected)] ?? "";
-      }
-      if (!profiles.settings.profiles[name]) {
-        if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
+  const switchProfile = async (requested: string, ctx: ExtensionContext): Promise<void> => {
+    const profiles = deps.profiles;
+    if (!profiles) return;
+    const names = Object.keys(profiles.settings.profiles);
+    const current = profiles.getActiveProfile();
+    let name = requested.trim();
+    if (!name) {
+      if (ctx.mode !== "tui" || names.length <= 1) {
+        if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ")}`, "info");
         return;
       }
-      profiles.setActiveProfile(name);
-      pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
-      if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
-    },
+      const options = names.map((profile) => profile === profiles.settings.defaultProfile ? `${profile} (default)` : profile);
+      const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
+      if (!selected) return;
+      name = names[options.indexOf(selected)] ?? "";
+    }
+    if (!profiles.settings.profiles[name]) {
+      if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
+      return;
+    }
+    profiles.setActiveProfile(name);
+    pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
+    if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
+  };
+
+  pi.registerCommand("subagent-profile", {
+    description: "Show or switch the active subagent profile",
+    handler: (args, ctx) => switchProfile(args, ctx),
   });
+
+  if (deps.profiles) {
+    pi.registerShortcut("ctrl+shift+l", {
+      description: "Open the subagent profile picker",
+      handler: (ctx) => switchProfile("", ctx),
+    });
+  }
 
   pi.registerCommand("subagent-tail", {
     description: "Open a live event tail for a subagent by ID",

@@ -536,7 +536,7 @@ test("/subagent-status shares the status formatter", async () => {
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
 });
 
-test("/subagent-profile shows, selects, validates, and persists profiles", async () => {
+test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and persist profiles", async () => {
   const settings = {
     defaultProfile: "primary",
     profiles: {
@@ -550,9 +550,11 @@ test("/subagent-profile shows, selects, validates, and persists profiles", async
   const notices: Array<{ text: string; level: string }> = [];
   const pickerOptions: string[][] = [];
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const shortcuts = new Map<string, { handler: (ctx: unknown) => Promise<void> | void }>();
   const pi = {
     appendEntry: (type: string, data: unknown) => entries.push([type, data]),
     registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+    registerShortcut: (key: string, shortcut: { handler: (ctx: unknown) => Promise<void> | void }) => shortcuts.set(key, shortcut),
   } as unknown as ExtensionAPI;
   registerStatusCommands(pi, {
     registry: createJobRegistry(),
@@ -592,6 +594,21 @@ test("/subagent-profile shows, selects, validates, and persists profiles", async
 
   await command.handler("", { ...ctx, mode: "print" });
   assert.match(notices.at(-1)?.text ?? "", /Active subagent profile: primary/);
+
+  const shortcut = shortcuts.get("ctrl+shift+l");
+  assert.ok(shortcut);
+  await shortcut.handler({
+    ...ctx,
+    ui: {
+      notify: ctx.ui.notify,
+      select: async (_title: string, options: string[]) => {
+        pickerOptions.push(options);
+        return "backup";
+      },
+    },
+  });
+  assert.equal(activeProfile, "backup");
+  assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "backup" }]);
 });
 
 test("restoreActiveProfile uses the latest valid session selection", () => {

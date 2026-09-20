@@ -5,11 +5,12 @@ import { spawn } from "node:child_process";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, SubagentSettings } from "../agents.ts";
-import { restoreActiveProfile } from "../index.ts";
+import { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, CompletionMailbox, createSubagentTool, resolveMode } from "../tools.ts";
 import {
+  confirmSubagentProfile,
   createCancelTool,
   createPeekTool,
   createReplyTool,
@@ -573,7 +574,7 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
       notify: (text: string, level: string) => notices.push({ text, level }),
       select: async (_title: string, options: string[]) => {
         pickerOptions.push(options);
-        return "primary (default)";
+        return "primary";
       },
     },
   };
@@ -588,7 +589,7 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
   assert.equal(notices.at(-1)?.level, "error");
 
   await command.handler("", ctx);
-  assert.deepEqual(pickerOptions, [["primary (default)", "backup"]]);
+  assert.deepEqual(pickerOptions, [["primary", "backup"]]);
   assert.equal(activeProfile, "primary");
   assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "primary" }]);
 
@@ -625,6 +626,118 @@ test("restoreActiveProfile uses the latest valid session selection", () => {
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "backup" } },
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "removed" } },
   ], settings), "backup");
+});
+
+test("reArmsProfileGate re-arms on model changes but not on resume", () => {
+  assert.equal(reArmsProfileGate("set"), true);
+  assert.equal(reArmsProfileGate("cycle"), true);
+  assert.equal(reArmsProfileGate("restore"), false);
+});
+
+test("confirmSubagentProfile gates the first launch and persists the choice", async () => {
+  const settings = {
+    defaultProfile: "primary",
+    profiles: {
+      primary: { defaults: {}, agents: {} },
+      backup: { defaults: {}, agents: {} },
+    },
+    extensions: [],
+  };
+  let activeProfile = "primary";
+  let confirmed = false;
+  const entries: Array<[string, unknown]> = [];
+  const pickerOptions: string[][] = [];
+  const pauses: string[] = [];
+  const pi = {
+    appendEntry: (type: string, data: unknown) => entries.push([type, data]),
+  } as unknown as ExtensionAPI;
+  const profiles = {
+    settings,
+    getActiveProfile: () => activeProfile,
+    setActiveProfile: (name: string) => { activeProfile = name; confirmed = true; },
+    needsConfirmation: () => !confirmed,
+  };
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      notify: () => {},
+      select: async (_title: string, options: string[]) => {
+        pickerOptions.push(options);
+        return "backup";
+      },
+    },
+  } as unknown as ExtensionContext;
+
+  assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
+  assert.deepEqual(pickerOptions, [["primary", "backup"]]);
+  assert.deepEqual(pauses, ["Paused: waiting for subagent profile selection"]);
+  assert.equal(activeProfile, "backup");
+  assert.deepEqual(entries, [[PROFILE_ENTRY_TYPE, { name: "backup" }]]);
+
+  assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
+  assert.equal(pickerOptions.length, 1);
+  assert.equal(pauses.length, 1);
+});
+
+test("confirmSubagentProfile returns false when the picker is dismissed", async () => {
+  const settings = {
+    defaultProfile: "primary",
+    profiles: {
+      primary: { defaults: {}, agents: {} },
+      backup: { defaults: {}, agents: {} },
+    },
+    extensions: [],
+  };
+  let activeProfile = "primary";
+  const entries: Array<[string, unknown]> = [];
+  const pi = {
+    appendEntry: (type: string, data: unknown) => entries.push([type, data]),
+  } as unknown as ExtensionAPI;
+  const profiles = {
+    settings,
+    getActiveProfile: () => activeProfile,
+    setActiveProfile: (name: string) => { activeProfile = name; },
+    needsConfirmation: () => true,
+  };
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: { notify: () => {}, select: async () => undefined },
+  } as unknown as ExtensionContext;
+
+  assert.equal(await confirmSubagentProfile(pi, profiles, ctx), false);
+  assert.equal(activeProfile, "primary");
+  assert.deepEqual(entries, []);
+});
+
+test("confirmSubagentProfile skips the picker for one profile or a non-TUI context", async () => {
+  let selects = 0;
+  const ctx = {
+    mode: "tui",
+    hasUI: true,
+    ui: { notify: () => {}, select: async () => { selects += 1; return "primary"; } },
+  } as unknown as ExtensionContext;
+  const single = {
+    settings: { defaultProfile: "primary", profiles: { primary: { defaults: {}, agents: {} } }, extensions: [] },
+    getActiveProfile: () => "primary",
+    setActiveProfile: () => {},
+    needsConfirmation: () => true,
+  };
+  assert.equal(await confirmSubagentProfile({} as ExtensionAPI, single, ctx), true);
+
+  const multiple = {
+    settings: {
+      defaultProfile: "primary",
+      profiles: { primary: { defaults: {}, agents: {} }, backup: { defaults: {}, agents: {} } },
+      extensions: [],
+    },
+    getActiveProfile: () => "primary",
+    setActiveProfile: () => {},
+    needsConfirmation: () => true,
+  };
+  assert.equal(await confirmSubagentProfile({} as ExtensionAPI, multiple, { ...ctx, mode: "print" }), true);
+  assert.equal(selects, 0);
 });
 
 test("/subagent-tail opens a live overlay and follows new events", async () => {
@@ -783,6 +896,7 @@ function makeTool(
   spawnOverride?: { spawnFn: typeof spawn },
   settings: SubagentSettings = { defaultProfile: "default", profiles: { default: { defaults: {}, agents: {} } }, extensions: [] },
   activeProfile = settings.defaultProfile,
+  confirmProfile: (ctx: ExtensionContext, onPause?: (message: string) => void) => Promise<boolean> = async () => true,
 ) {
   const registry = createJobRegistry();
   const sendMessage = spy();
@@ -803,6 +917,7 @@ function makeTool(
     agents: [AGENT],
     settings,
     getActiveProfile: () => activeProfile,
+    confirmProfile,
     discover: async () => [AGENT],
     registry,
     activeProcs,
@@ -822,6 +937,44 @@ function makeTool(
   } as unknown as ExtensionContext;
   return { tool, registry, sendMessage, sendUserMessage, appendEntry, handlers, activeTickers, activeProcs, child, ctx };
 }
+
+test("execute: profile confirmation surfaces a paused progress update", async () => {
+  const updates: Array<{ content: unknown; details: unknown }> = [];
+  const { tool, ctx } = makeTool(undefined, undefined, undefined, async (_ctx, onPause) => {
+    onPause?.("Paused: waiting for subagent profile selection");
+    return true;
+  });
+  await tool.execute(
+    "call1",
+    { agent: "scout", task: "t" },
+    undefined,
+    (partial) => updates.push(partial),
+    ctx,
+  );
+  assert.deepEqual(updates, [{
+    content: [{ type: "text", text: "Paused: waiting for subagent profile selection" }],
+    details: { status: "running" },
+  }]);
+});
+
+test("execute: cancelling profile confirmation returns a cancelled result", async () => {
+  const child = new FakeChild();
+  const calls: SpawnCall[] = [];
+  const spawnFn = ((cmd: string, args: string[], options?: Record<string, unknown>) => {
+    calls.push({ cmd, args, options: options ?? {} });
+    return child;
+  }) as unknown as typeof spawn;
+  let confirmations = 0;
+  const { tool, ctx } = makeTool({ spawnFn }, undefined, undefined, async () => {
+    confirmations += 1;
+    return false;
+  });
+  const result = await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+  assert.equal(result.details?.status, "cancelled");
+  assert.match(result.content[0]?.type === "text" ? result.content[0].text : "", /no profile selected/i);
+  assert.equal(confirmations, 1);
+  assert.equal(calls.length, 0);
+});
 
 test("execute: local settings set child model and thinking level", async () => {
   const child = new FakeChild();
@@ -939,6 +1092,11 @@ test("subagent schema has no execution mode", () => {
   const { tool } = makeTool();
   const properties = (tool.parameters as { properties: Record<string, unknown> }).properties;
   assert.equal("execution" in properties, false);
+});
+
+test("subagent tool runs sequentially so parallel calls cannot double-open the picker", () => {
+  const { tool } = makeTool();
+  assert.equal(tool.executionMode, "sequential");
 });
 
 test("execute: legacy sync input cannot make a single job block", async () => {
@@ -1547,6 +1705,8 @@ test("renderResult: renders launched/failed/completed summaries", () => {
   assert.equal(renderText(launched).trim(), "");
   assert.ok(renderable(render({ status: "failed" })));
   assert.ok(renderable(render({ status: "completed" })));
+  assert.match(renderText(render({ status: "running" })).trim(), /◐ s/);
+  assert.match(renderText(render({ status: "cancelled" })).trim(), /⊘ s/);
   const completedWithJob = tool.renderResult!(
     { content: [{ type: "text", text: "done" }], details: { status: "completed", jobIds: [1] } } as never,
     {} as never,

@@ -4,6 +4,7 @@ import { discoverAgents, loadSubagentSettings, resolveExtensionPaths, type Subag
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
 import {
+  confirmSubagentProfile,
   createCancelTool,
   createPeekTool,
   createReplyTool,
@@ -25,6 +26,11 @@ export function restoreActiveProfile(entries: readonly unknown[], settings: Suba
   return settings.defaultProfile;
 }
 
+/** A main-model change re-arms the profile gate; `restore` is a resume, not a change. */
+export function reArmsProfileGate(source: string): boolean {
+  return source !== "restore";
+}
+
 export default async function (pi: ExtensionAPI) {
   const [agents, settings] = await Promise.all([
     discoverAgents(__dirname),
@@ -34,7 +40,15 @@ export default async function (pi: ExtensionAPI) {
   const registry = createJobRegistry();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   let activeProfile = settings.defaultProfile;
+  let profileConfirmed = false;
   let lastUiContext: UiContext | undefined;
+
+  const profileDeps = {
+    settings,
+    getActiveProfile: () => activeProfile,
+    setActiveProfile: (name: string) => { activeProfile = name; profileConfirmed = true; },
+    needsConfirmation: () => !profileConfirmed,
+  };
 
   registerRenderers(pi);
 
@@ -43,6 +57,7 @@ export default async function (pi: ExtensionAPI) {
     agents,
     settings,
     getActiveProfile: () => activeProfile,
+    confirmProfile: (ctx, onPause) => confirmSubagentProfile(pi, profileDeps, ctx, onPause),
     discover: () => discoverAgents(__dirname),
     registry,
     activeTickers,
@@ -62,15 +77,16 @@ export default async function (pi: ExtensionAPI) {
   pi.registerTool(createReplyTool({ registry }));
   registerStatusCommands(pi, {
     registry,
-    profiles: {
-      settings,
-      getActiveProfile: () => activeProfile,
-      setActiveProfile: (name) => { activeProfile = name; },
-    },
+    profiles: profileDeps,
   });
 
   pi.on("session_start", (_event, ctx) => {
     activeProfile = restoreActiveProfile(ctx.sessionManager.getEntries(), settings);
+    profileConfirmed = false;
+  });
+
+  pi.on("model_select", (event) => {
+    if (reArmsProfileGate(event.source)) profileConfirmed = false;
   });
 
   pi.on("session_shutdown", () => {

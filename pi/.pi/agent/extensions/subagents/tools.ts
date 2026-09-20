@@ -333,6 +333,8 @@ export interface SubagentToolDeps {
   settings: SubagentSettings;
   /** Session-local profile selected for new jobs. */
   getActiveProfile: () => string;
+  /** Resolves once a profile is chosen for this session; false if the user cancels. */
+  confirmProfile: (ctx: ExtensionContext, onPause?: (message: string) => void) => Promise<boolean>;
   /** Re-discovered on every execute so agent file edits take effect immediately. */
   discover: () => Promise<AgentConfig[]>;
   registry: JobRegistry;
@@ -356,8 +358,17 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     description: "Delegate work to specialized subagents. Jobs always run asynchronously and deliver their results as follow-up messages.",
     parameters: SubagentParams,
     promptGuidelines: buildGuidelines(deps.agents),
+    // The profile gate below opens a modal picker on first use; parallel tool
+    // calls would each open one and deadlock the selector.
+    executionMode: "sequential",
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+      if (!await deps.confirmProfile(ctx, (text) => onUpdate?.({ content: [{ type: "text", text }], details: { status: "running" } }))) {
+        return {
+          content: [{ type: "text", text: "Subagent launch cancelled: no profile selected" }],
+          details: { status: "cancelled" },
+        };
+      }
       const defaultModel = formatModel(ctx.model);
       const parentThinkingLevel = ctx.thinkingLevel;
       const profile = deps.getActiveProfile();
@@ -616,6 +627,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const summary = capOutput(rawSummary ?? "(no output)", 500);
       const status = result.details?.status;
       if (status === "launched" || result.details?.jobIds?.length) return new Text("", 0, 0);
+      if (status === "running") return new Text(theme.fg("accent", "◐ ") + theme.fg("muted", summary), 0, 0);
       const failed = status === "failed";
       const cancelled = status === "cancelled";
       return new Text(

@@ -493,6 +493,46 @@ interface ProfileCommandDeps {
   settings: SubagentSettings;
   getActiveProfile: () => string;
   setActiveProfile: (name: string) => void;
+  /** True while the session still needs a profile choice before subagents run. */
+  needsConfirmation?: () => boolean;
+}
+
+async function chooseProfile(
+  pi: ExtensionAPI,
+  profiles: ProfileCommandDeps,
+  ctx: ExtensionContext,
+): Promise<string | undefined> {
+  const names = Object.keys(profiles.settings.profiles);
+  const current = profiles.getActiveProfile();
+  const options = [...names];
+  const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
+  if (!selected) return undefined;
+  const name = names[options.indexOf(selected)] ?? "";
+  if (!profiles.settings.profiles[name]) {
+    if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
+    return undefined;
+  }
+  profiles.setActiveProfile(name);
+  pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
+  if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
+  return name;
+}
+
+/**
+ * Pauses the first subagent launch of a session for a profile choice when more
+ * than one profile is configured. Returns false when the user cancels.
+ */
+export async function confirmSubagentProfile(
+  pi: ExtensionAPI,
+  profiles: ProfileCommandDeps,
+  ctx: ExtensionContext,
+  onPause?: (message: string) => void,
+): Promise<boolean> {
+  const names = Object.keys(profiles.settings.profiles);
+  if (names.length <= 1 || !profiles.needsConfirmation?.()) return true;
+  if (ctx.mode !== "tui" || !ctx.hasUI) return true;
+  onPause?.("Paused: waiting for subagent profile selection");
+  return (await chooseProfile(pi, profiles, ctx)) !== undefined;
 }
 
 export function registerStatusCommands(
@@ -504,16 +544,14 @@ export function registerStatusCommands(
     if (!profiles) return;
     const names = Object.keys(profiles.settings.profiles);
     const current = profiles.getActiveProfile();
-    let name = requested.trim();
+    const name = requested.trim();
     if (!name) {
       if (ctx.mode !== "tui" || names.length <= 1) {
         if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ")}`, "info");
         return;
       }
-      const options = names.map((profile) => profile === profiles.settings.defaultProfile ? `${profile} (default)` : profile);
-      const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
-      if (!selected) return;
-      name = names[options.indexOf(selected)] ?? "";
+      await chooseProfile(pi, profiles, ctx);
+      return;
     }
     if (!profiles.settings.profiles[name]) {
       if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");

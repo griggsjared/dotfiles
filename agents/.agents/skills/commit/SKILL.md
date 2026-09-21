@@ -38,6 +38,20 @@ If no commits by the current user are found, use a short plain-English imperativ
 
 Describe why the repository changed, not the mechanics of editing. Keep each subject concise and specific.
 
+### Write Plain English
+
+- Match the user's formatting conventions, not unclear wording from past commits.
+- Describe the behavior or purpose with a direct verb. Prefer what changes for the caller or user over internal field names and implementation terms.
+- Keep technical terms when they add precision, but make their relationship explicit. Avoid compressed phrases such as "reconciled failures" that leave the reader to infer what happened.
+- Prefer a slightly longer, clear subject over a shorter noun-heavy one. Do not omit connecting words just to shorten the message.
+- Preserve the actual scope and guarantees. Simpler wording must not imply more than the diff does.
+
+Before committing, read the subject without the diff: can a reader tell what changes and when? If understanding it requires expanding shorthand, rewrite it.
+
+Example:
+- Unclear: `gate rebuild on stale manifest detection`
+- Clear: `rebuild only when the manifest is older than its source files`
+
 ## Message-only Requests
 
 Do not stage files, modify files, run tests, review code, or commit.

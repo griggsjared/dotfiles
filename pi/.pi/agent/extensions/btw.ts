@@ -13,6 +13,7 @@ import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/
 
 const SYSTEM_PROMPT =
 	"You are answering a side question about the current conversation. Answer the question directly and concisely. Do not continue the main task, call tools, or propose changes unless the question explicitly asks for them.";
+const OVERLAY_MARGIN = 1;
 
 type Operation = {
 	controller: AbortController;
@@ -62,6 +63,24 @@ export function transcript(turns: Turn[]): string {
 		blocks.unshift(block);
 	}
 	return [TRANSCRIPT_HEADER, ...blocks].join("\n\n").trim();
+}
+
+export function fitModalBody(
+	lines: string[],
+	requestedScrollTop: number,
+	terminalRows: number,
+	chromeRows: number,
+): { lines: string[]; scrollTop: number; viewportRows: number; maxScroll: number } {
+	const maxOverlayRows = Math.max(1, Math.floor(terminalRows) - OVERLAY_MARGIN * 2);
+	const viewportRows = Math.max(0, maxOverlayRows - chromeRows - 2);
+	const maxScroll = Math.max(0, lines.length - viewportRows);
+	const scrollTop = Math.min(maxScroll, Math.max(0, requestedScrollTop));
+	return {
+		lines: lines.slice(scrollTop, scrollTop + viewportRows),
+		scrollTop,
+		viewportRows,
+		maxScroll,
+	};
 }
 
 function boxed(lines: string[], width: number, theme: { fg(color: string, text: string): string }, title: string): string[] {
@@ -156,6 +175,7 @@ export default function (pi: ExtensionAPI) {
 						const startLoading = (nextQuestion: string) => {
 							pendingQuestion = nextQuestion;
 							loading = true;
+							scrollTop = Number.MAX_SAFE_INTEGER;
 							tui.requestRender();
 						};
 
@@ -234,20 +254,21 @@ export default function (pi: ExtensionAPI) {
 								const maxWidth = Math.max(1, Math.floor(width));
 								const innerWidth = Math.max(1, maxWidth - 2);
 								contentWidth = innerWidth;
-								viewportRows = Math.max(1, tui.terminal.rows - (loading ? 7 : 6));
 								try {
 									const body = answerLines(turns, innerWidth, loading ? pendingQuestion : undefined);
-									const maxScroll = Math.max(0, body.length - viewportRows);
-									scrollTop = Math.min(maxScroll, Math.max(0, scrollTop));
-									const visible = body.slice(scrollTop, scrollTop + viewportRows);
-									const lines = [...visible];
-									lines.push(...replyInput.render(innerWidth));
+									const inputLines = replyInput.render(innerWidth);
+									const chromeRows = inputLines.length + (loading ? 1 : 0) + 1;
+									const fitted = fitModalBody(body, scrollTop, tui.terminal.rows, chromeRows);
+									scrollTop = fitted.scrollTop;
+									viewportRows = fitted.viewportRows;
+									const lines = [...fitted.lines, ...inputLines];
 									if (loading) lines.push(theme.fg("dim", "Thinking…"));
+									const scrollHint = fitted.maxScroll > 0 ? `PgUp/PgDn scroll (${scrollTop + 1}/${fitted.maxScroll + 1}) · ` : "";
 									const hint = loading
-										? "Esc close"
+										? `${scrollHint}Esc close`
 										: turns.length > 0
-											? "PgUp/PgDn scroll · Enter send · Ctrl+S send to agent · Esc close"
-											: "PgUp/PgDn scroll · Enter send · Esc close";
+											? `${scrollHint}Enter send · Ctrl+S send to agent · Esc close`
+											: `${scrollHint}Enter send · Esc close`;
 									lines.push(theme.fg("dim", hint));
 									return boxed(lines, maxWidth, theme, "btw");
 								} catch (caught) {
@@ -269,10 +290,10 @@ export default function (pi: ExtensionAPI) {
 								}
 								if (matchesKey(data, Key.pageUp) || matchesKey(data, Key.pageDown)) {
 									try {
-										const bodyLength = answerLines(turns, contentWidth).length;
-										const page = viewportRows;
+										const bodyLength = answerLines(turns, contentWidth, loading ? pendingQuestion : undefined).length;
+										const page = Math.max(1, viewportRows);
 										scrollTop += matchesKey(data, Key.pageUp) ? -page : page;
-										const maxScroll = Math.max(0, bodyLength - page);
+										const maxScroll = Math.max(0, bodyLength - viewportRows);
 										scrollTop = Math.min(maxScroll, Math.max(0, scrollTop));
 									} catch (caught) {
 										scheduleFail(caught);
@@ -289,7 +310,16 @@ export default function (pi: ExtensionAPI) {
 							},
 						};
 					},
-					{ overlay: true, overlayOptions: { anchor: "center", width: "100%", minWidth: 60, maxHeight: "100%", margin: 1 } },
+					{
+						overlay: true,
+						overlayOptions: {
+							anchor: "bottom-center",
+							width: "100%",
+							minWidth: 60,
+							maxHeight: "100%",
+							margin: OVERLAY_MARGIN,
+						},
+					},
 				);
 
 				if (result === null && error) ctx.ui.notify("btw request failed", "error");

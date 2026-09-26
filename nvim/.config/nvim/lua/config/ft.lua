@@ -39,7 +39,7 @@ local registry = {
 	php = {
 		parsers = { "php", "php_only" },
 		lsp = { "intelephense", "laravel_lsp" },
-		commentstring = "//%s",
+		commentstring = "// %s",
 		bo = { tabstop = 4, shiftwidth = 4 },
 	},
 	python = {

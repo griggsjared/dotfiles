@@ -133,6 +133,42 @@ local function open_cli()
 	end)
 end
 
+local function cli_width(count)
+	return math.max(
+		1,
+		math.min(
+			140,
+			math.max(80, math.floor(vim.o.columns * (count == 1 and 0.33 or 0.45))),
+			math.floor((vim.o.columns - 60) / count)
+		)
+	)
+end
+
+local function resize_clis(tab)
+	local wins = vim.tbl_filter(function(win)
+		return vim.w[win].sidekick_session_id ~= nil
+	end, vim.api.nvim_tabpage_list_wins(tab))
+	if #wins == 0 then
+		return
+	end
+	local width = cli_width(#wins)
+	for _, win in ipairs(wins) do
+		vim.api.nvim_win_set_width(win, width)
+	end
+end
+
+vim.api.nvim_create_autocmd("WinNew", {
+	callback = function()
+		local win = vim.api.nvim_get_current_win()
+		local tab = vim.api.nvim_get_current_tabpage()
+		vim.schedule(function()
+			if vim.api.nvim_win_is_valid(win) and vim.w[win].sidekick_session_id then
+				resize_clis(tab)
+			end
+		end)
+	end,
+})
+
 local cycle_editor ---@type integer?
 
 local function cycle_clis()
@@ -297,6 +333,9 @@ return {
 				cursor = { cmd = { "cursor-agent", "--mode", "ask" } },
 			},
 			win = {
+				config = function(terminal)
+					terminal.opts.split.width = cli_width(1)
+				end,
 				wo = {
 					winhighlight = "",
 				},

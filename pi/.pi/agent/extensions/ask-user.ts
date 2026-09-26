@@ -12,16 +12,17 @@ import {
 import { Type } from "typebox";
 
 const OTHER_VALUE = "__other__";
+const CHAT_VALUE = "__chat__";
 const DONE_VALUE = "__done__";
 const MAX_OPTIONS = 4;
 const MIN_OPTIONS = 2;
 const RESERVED_OPTION_RE =
-	/^(other(?: \(specify\))?|custom(?: answer)?|something else|type (?:my|your) own(?: answer)?|write-in)$/i;
+	/^(other(?: \(specify\))?|custom(?: answer)?|something else|type (?:my|your) own(?: answer)?|write-in|let['’]?s chat about this)$/i;
 
 const OptionParams = Type.Object({
 	label: Type.String({
 		description:
-			"Concrete option label shown in the picker. Do not provide an Other, Custom, write-in, or free-text option.",
+			"Concrete option label shown in the picker. Do not provide an Other, Custom, write-in, free-text, or chat option.",
 	}),
 	description: Type.Optional(
 		Type.String({ description: "One-line explanation shown under the label" }),
@@ -39,7 +40,7 @@ const QuestionParams = Type.Object({
 	options: Type.Array(OptionParams, {
 		minItems: MIN_OPTIONS,
 		maxItems: MAX_OPTIONS,
-		description: `${MIN_OPTIONS}-${MAX_OPTIONS} concrete options; the UI automatically adds an Other (specify) option`,
+		description: `${MIN_OPTIONS}-${MAX_OPTIONS} concrete options; the UI automatically adds Other (specify) and Let's chat about this`,
 	}),
 	multiple: Type.Optional(
 		Type.Boolean({
@@ -75,6 +76,7 @@ type InitialState = {
 };
 
 type PickResult =
+	| { kind: "chat" }
 	| { kind: "item"; item: SelectItem; context?: string }
 	| { kind: "other"; text: string }
 	| {
@@ -105,6 +107,11 @@ function buildItems(question: {
 		label: "Other (specify)",
 		description: "Type a custom answer",
 	});
+	items.push({
+		value: CHAT_VALUE,
+		label: "Let's chat about this",
+		description: "Return to chat without submitting answers",
+	});
 	return items;
 }
 
@@ -122,6 +129,7 @@ function pickSimple(
 		(picked) => {
 			if (picked === undefined) return null;
 			const item = items.find((item) => item.label === picked);
+			if (item?.value === CHAT_VALUE) return { kind: "chat" };
 			return item ? { kind: "item", item } : null;
 		},
 	);
@@ -148,6 +156,7 @@ function pickMultiSimple(
 					values.add(items[n - 1]!.value);
 				}
 			}
+			if (values.has(CHAT_VALUE)) return { kind: "chat" };
 			return {
 				kind: "multi",
 				values: [...values],
@@ -353,6 +362,10 @@ function pickTui(
 			Math.max(0, items.findIndex((item) => item.value === initial?.values?.[0])),
 		);
 		selectList.onSelect = (item) => {
+			if (item.value === CHAT_VALUE) {
+				done({ kind: "chat" });
+				return;
+			}
 			if (item.value === OTHER_VALUE) {
 				beginOther();
 				return;
@@ -402,12 +415,16 @@ function pickTui(
 				if (kb.matches(data, "tui.input.tab") || data === "tab") {
 					const item = selectList.getSelectedItem();
 					if (item?.value === OTHER_VALUE) beginOther();
-					else if (item) beginContext(item);
+					else if (item && item.value !== CHAT_VALUE) beginContext(item);
 					return;
 				}
 				if (/^[1-9]$/.test(data)) {
 					const item = items[Number(data) - 1];
 					if (item) {
+						if (item.value === CHAT_VALUE) {
+							done({ kind: "chat" });
+							return;
+						}
 						if (item.value === OTHER_VALUE) {
 							beginOther();
 							return;
@@ -531,6 +548,10 @@ function pickMultiTui(
 			updateTextInput();
 		};
 		const toggle = (value: string) => {
+			if (value === CHAT_VALUE) {
+				done({ kind: "chat" });
+				return;
+			}
 			if (value === OTHER_VALUE) {
 				beginTyping(value);
 				return;
@@ -593,7 +614,7 @@ function pickMultiTui(
 				}
 				if (kb.matches(data, "tui.input.tab") || data === "tab") {
 					const item = listHolder.getSelectedItem();
-					if (item && item.value !== DONE_VALUE) beginTyping(item.value);
+					if (item && item.value !== DONE_VALUE && item.value !== CHAT_VALUE) beginTyping(item.value);
 					return;
 				}
 				if (data === "space") {
@@ -689,10 +710,7 @@ async function confirmAnswers(
 		if (picked === null) return null;
 		return items.findIndex((item) => item.value === picked.value);
 	}
-	const options = [
-		"Confirm answers",
-		...Array.from({ length: items.length - 1 }, (_, index) => `Re-answer question ${index + 1}`),
-	];
+	const options = items.map((item) => item.label);
 	return pickConfirmSimple(ctx.ui, options, signal);
 }
 
@@ -726,12 +744,13 @@ export default function (pi: ExtensionAPI) {
 		name: "ask_user",
 		label: "Ask User",
 		description:
-			"Ask the user multiple-choice questions when the task needs direction or clarification. Renders an interactive picker in the TUI (single-select or multi-select), then a confirmation step with per-question re-answer, and returns the chosen options, or free text via the 'Other (specify)' fallback. Each question has 2-4 options.",
+			"Ask the user multiple-choice questions when the task needs direction or clarification. Renders an interactive picker in the TUI (single-select or multi-select), then a confirmation step with per-question re-answer, and returns the chosen options, or free text via the 'Other (specify)' fallback. Each question has 2-4 options. The built-in 'Let's chat about this' choice submits no answers and invites discussion in chat.",
 		promptSnippet: "Ask the user multiple-choice questions when direction is needed",
 		promptGuidelines: [
 			"When the task needs direction — ambiguous requirements, multiple valid approaches, or choices with trade-offs — ask the user with ask_user instead of guessing or asking in prose.",
 			"One decision per question: keep questions and option labels short, and add a one-line description to each option when it clarifies the trade-off.",
-			"Use 2-4 concrete options per question. Set multiple when several options can apply at once (e.g. 'which features?'). The ask_user UI automatically adds an 'Other (specify)' free-text option; never include an Other, Custom, write-in, or free-text choice in options.",
+			"Use 2-4 concrete options per question. Set multiple when several options can apply at once (e.g. 'which features?'). The ask_user UI automatically adds 'Other (specify)' and 'Let's chat about this'; never include an Other, Custom, write-in, free-text, or chat choice in options.",
+			"If the user chooses chat, briefly restate the question and invite discussion in prose, then wait for their reply. Do not pick a default, continue the task, or reopen the picker.",
 			"If the user cancels, ask in prose or proceed with the most reasonable default and state your assumption.",
 		],
 		parameters: AskUserParams,
@@ -753,10 +772,12 @@ export default function (pi: ExtensionAPI) {
 			}
 			const answers: Answer[] = [];
 			let cancelled = false;
+			let chat = false;
+			let chatQuestion: string | undefined;
 			const askOne = async (
 				question: (typeof params.questions)[number],
 				previous?: Answer,
-			): Promise<Answer | null> => {
+			): Promise<Answer | typeof CHAT_VALUE | null> => {
 				const initial: InitialState | undefined = previous
 					? "items" in previous.selected
 						? {
@@ -790,6 +811,10 @@ export default function (pi: ExtensionAPI) {
 							? await pickMultiSimple(ctx.ui, question, items, signal)
 							: await pickSimple(ctx.ui, question, items, signal);
 				if (result === null) return null;
+				if (result.kind === "chat") {
+					chatQuestion = question.question;
+					return CHAT_VALUE;
+				}
 				if (result.kind === "multi") {
 					const otherToggled = result.values.includes(OTHER_VALUE);
 					const multi: MultiSelected = {
@@ -835,6 +860,10 @@ export default function (pi: ExtensionAPI) {
 
 			for (const question of params.questions) {
 				const answer = await askOne(question);
+				if (answer === CHAT_VALUE) {
+					chat = true;
+					break;
+				}
 				if (answer === null) {
 					cancelled = true;
 					break;
@@ -842,7 +871,7 @@ export default function (pi: ExtensionAPI) {
 				answers.push(answer);
 			}
 
-			if (!cancelled) {
+			if (!cancelled && !chat) {
 				while (true) {
 					const items: SelectItem[] = [
 						{ value: "confirm", label: "Confirm answers", description: "Use these answers" },
@@ -851,6 +880,7 @@ export default function (pi: ExtensionAPI) {
 							label: `Re-answer question ${index + 1}`,
 							description: choiceText(answers[index].selected),
 						})),
+						{ value: CHAT_VALUE, label: "Let's chat about this", description: "Return to chat without submitting answers" },
 					];
 					const summary = params.questions.map(
 						(question, index) =>
@@ -861,14 +891,28 @@ export default function (pi: ExtensionAPI) {
 						cancelled = true;
 						break;
 					}
+					if (items[confirmIndex].value === CHAT_VALUE) {
+						chat = true;
+						break;
+					}
 					if (confirmIndex === 0) break;
 					const reanswered = await askOne(params.questions[confirmIndex - 1], answers[confirmIndex - 1]);
+					if (reanswered === CHAT_VALUE) {
+						chat = true;
+						break;
+					}
 					if (reanswered === null) {
 						cancelled = true;
 						break;
 					}
 					answers[confirmIndex - 1] = reanswered;
 				}
+			}
+			if (chat) {
+				return {
+					content: [{ type: "text", text: `User chose to chat instead of submitting answers. Briefly restate the question and invite discussion in prose, then wait for their reply. Do not pick a default, continue the task, or reopen the picker.\n\nDiscuss: ${chatQuestion ?? params.questions.map((question) => question.question).join("\n")}` }],
+					details: { answers: [], cancelled: false, chat: true },
+				};
 			}
 			return {
 				content: [{ type: "text", text: formatAnswers(answers, cancelled) }],

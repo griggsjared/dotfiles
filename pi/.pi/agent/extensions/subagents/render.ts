@@ -32,7 +32,7 @@ export function renderFullWidget(registry: JobRegistry, fg: Fg, width = 80): str
     const elapsed = formatDuration(now - job.startTime);
     const title = job.title ? `: ${job.title}` : "";
     lines.push(truncateToWidth(
-      fg("accent", `◐ #${job.id} ${job.agent}`) +
+      fg("accent", `⊙ #${job.id} ${job.agent}`) +
         fg("muted", ` (${elapsed})`) +
         (title ? fg("dim", title) : ""),
       maxWidth,

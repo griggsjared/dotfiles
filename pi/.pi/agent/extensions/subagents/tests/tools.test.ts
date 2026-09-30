@@ -250,7 +250,7 @@ test("subagent status includes compact model and effort", async () => {
   const result = await tool.execute("call1", {}, undefined, undefined, {} as never);
   const text = (result.content[0] as { text: string }).text;
   assert.doesNotMatch(text, /profile/i);
-  assert.match(text, /◐ #1 scout .*openai-codex\/gpt-5\.6-luna:minimal/);
+  assert.match(text, /⊙ #1 scout .*openai-codex\/gpt-5\.6-luna:minimal/);
   assert.match(text, /openai-codex\/gpt-5\.6-luna:high/);
 });
 
@@ -427,6 +427,7 @@ test("status, cancel, and send tools render job-aware output", async () => {
   const taggedAggregate = renderText(
     statusTool.renderResult!(aggregateResult, { expanded: false, isPartial: false }, taggedStatusTheme, {} as never),
   );
+  assert.match(taggedAggregate, /\[accent\]⊙ /);
   assert.match(taggedAggregate, /\[accent\]#1 scout/);
   assert.match(taggedAggregate, /\[muted\] \([^)]*\)/);
   assert.match(taggedAggregate, /\[dim\]: Inspect the error path/);
@@ -1645,7 +1646,7 @@ test("renderFullWidget: shows one line per active agent", () => {
   const output = lines.join("\n");
   assert.equal(lines.length, 1);
   assert.ok(lines.every((line) => visibleWidth(line) <= 80));
-  assert.match(output, new RegExp(`◐ #${id} scout`));
+  assert.match(output, new RegExp(`⊙ #${id} scout`));
   assert.doesNotMatch(output, /profile/i);
   assert.doesNotMatch(output, /reading files/);
   assert.doesNotMatch(output, /openai-codex\/gpt-5\.6-luna:high/);
@@ -1705,7 +1706,7 @@ test("renderResult: renders launched/failed/completed summaries", () => {
   assert.equal(renderText(launched).trim(), "");
   assert.ok(renderable(render({ status: "failed" })));
   assert.ok(renderable(render({ status: "completed" })));
-  assert.match(renderText(render({ status: "running" })).trim(), /◐ s/);
+  assert.match(renderText(render({ status: "running" })).trim(), /⊙ s/);
   assert.match(renderText(render({ status: "cancelled" })).trim(), /⊘ s/);
   const completedWithJob = tool.renderResult!(
     { content: [{ type: "text", text: "done" }], details: { status: "completed", jobIds: [1] } } as never,

@@ -627,7 +627,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
       const summary = capOutput(rawSummary ?? "(no output)", 500);
       const status = result.details?.status;
       if (status === "launched" || result.details?.jobIds?.length) return new Text("", 0, 0);
-      if (status === "running") return new Text(theme.fg("accent", "◐ ") + theme.fg("muted", summary), 0, 0);
+      if (status === "running") return new Text(theme.fg("accent", "⊙ ") + theme.fg("muted", summary), 0, 0);
       const failed = status === "failed";
       const cancelled = status === "cancelled";
       return new Text(

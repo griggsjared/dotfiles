@@ -71,7 +71,7 @@ function renderStatusText(
       return theme.fg("toolTitle", theme.bold(heading[1]));
     }
 
-    const job = line.match(/^- ([◐✓⊘✗]) (#\d+) (\S+)(.*)$/);
+    const job = line.match(/^- ([⊙✓⊘✗]) (#\d+) (\S+)(.*)$/);
     if (job?.[1] && job[2] && job[3] !== undefined && job[4] !== undefined) {
       bodyColor = undefined;
       waitingForParent = false;
@@ -122,7 +122,7 @@ function formatJob(job: StatusJob, now: number): string {
       ? " — waiting for parent"
       : job.progress ? ` — ${job.progress}` : "";
     const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
-    return `- ◐ #${job.id} ${job.agent} (${elapsed}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}${progress}`;
+    return `- ⊙ #${job.id} ${job.agent} (${elapsed}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}${progress}`;
   }
   const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
   const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";

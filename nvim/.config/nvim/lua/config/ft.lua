@@ -11,7 +11,7 @@ local registry = {
 	bash = { parsers = { "bash" } },
 	blade = {
 		parsers = { "blade", "html", "php", "php_only" },
-		lsp = { "html", "phpantom_lsp" },
+		lsp = { "html", "intelephense" },
 		commentstring = "{{--%s--}}",
 	},
 	c = { parsers = { "c" }, lsp = { "clangd" } },
@@ -38,7 +38,7 @@ local registry = {
 	},
 	php = {
 		parsers = { "php", "php_only" },
-		lsp = { "phpantom_lsp" },
+		lsp = { "intelephense" },
 		commentstring = "// %s",
 		bo = { tabstop = 4, shiftwidth = 4 },
 	},

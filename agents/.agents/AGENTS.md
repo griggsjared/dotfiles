@@ -24,6 +24,13 @@ These rules are ordered. When two conflict, the earlier one wins.
 - Follow the existing test patterns: same helpers, same factories, same assertion style.
 - Run the tests you touched, filtered, before saying the work is done. Paste real failures. Never call something passing without a run.
 
+## Completion message
+
+- After finishing a code change, give a short ELI5-style walkthrough: what changed, what it means in practice, what remains, and what was tested.
+- Use plain language, short steps, and concrete examples when useful. Assume no knowledge of the implementation, not a lack of intelligence. Avoid baby talk and unexplained jargon.
+- Report what checks ran and whether they passed. Distinguish unfinished work and unresolved failures from completed work.
+- Keep it to a few short paragraphs or bullets, not just a list of files. This overrides the no-recap rule in Prose for completion messages only.
+
 ## Comments
 
 - Default to no comment. Add one only to explain why, never what.
@@ -51,4 +58,4 @@ Every time:
 1. The diff contains only what was asked.
 2. No comment restates code.
 3. Tests for changed behavior are updated and were run.
-4. The reply survived a cut-pass.
+4. After code changes, the reply includes the completion walkthrough. Every reply contains no filler.

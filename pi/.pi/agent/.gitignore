@@ -12,6 +12,7 @@
 !extensions/web-search.ts
 !extensions/ask-user.ts
 !extensions/btw.ts
+!extensions/agents-local.ts
 !extensions/ollama.ts
 !extensions/subagents/**
 !extensions/tests/**

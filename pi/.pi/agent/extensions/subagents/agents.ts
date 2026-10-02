@@ -15,7 +15,6 @@ export interface SubagentProfile {
 }
 
 export interface SubagentSettings {
-  defaultProfile: string;
   profiles: Record<string, SubagentProfile>;
   extensions: string[];
 }
@@ -31,7 +30,7 @@ export interface AgentConfig {
 }
 
 const EMPTY_PROFILE: SubagentProfile = { defaults: {}, agents: {} };
-const EMPTY_SETTINGS: SubagentSettings = { defaultProfile: "default", profiles: { default: EMPTY_PROFILE }, extensions: [] };
+const EMPTY_SETTINGS: SubagentSettings = { profiles: {}, extensions: [] };
 const PACKAGE_SPEC = /^npm:(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 function validModel(value: unknown): value is string {
@@ -87,6 +86,7 @@ export async function resolveExtensionPaths(
 function parseProfile(value: unknown): SubagentProfile | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const config = value as Record<string, unknown>;
+  if (config.enabled === false) return undefined;
   const agents: Record<string, AgentSettings> = {};
   if (config.agents && typeof config.agents === "object" && !Array.isArray(config.agents)) {
     for (const [name, settings] of Object.entries(config.agents)) {
@@ -119,12 +119,7 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
     if (legacy) profiles.default = legacy;
   }
   if (Object.keys(profiles).length === 0) return { ...EMPTY_SETTINGS, extensions };
-
-  const requested = config.defaultProfile;
-  const defaultProfile = isValidProfileName(requested) && profiles[requested]
-    ? requested
-    : profiles.default ? "default" : Object.keys(profiles)[0]!;
-  return { defaultProfile, profiles, extensions };
+  return { profiles, extensions };
 }
 
 export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent", "settings.json")): Promise<SubagentSettings> {
@@ -135,8 +130,10 @@ export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent"
   }
 }
 
-export function getSubagentProfile(settings: SubagentSettings, profileName = settings.defaultProfile): SubagentProfile {
-  return settings.profiles[profileName] ?? settings.profiles[settings.defaultProfile] ?? EMPTY_PROFILE;
+export function getSubagentProfile(settings: SubagentSettings, profileName?: string): SubagentProfile {
+  if (profileName !== undefined) return Object.hasOwn(settings.profiles, profileName) ? settings.profiles[profileName]! : EMPTY_PROFILE;
+  const names = Object.keys(settings.profiles);
+  return names.length === 1 ? settings.profiles[names[0]!]! : EMPTY_PROFILE;
 }
 
 export function resolveAgentSettings(agent: AgentConfig, settings: SubagentSettings, profileName?: string): AgentConfig {

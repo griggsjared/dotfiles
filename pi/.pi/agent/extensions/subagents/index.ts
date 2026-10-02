@@ -15,15 +15,16 @@ import {
 import { createSubagentTool } from "./tools.ts";
 import { PROFILE_ENTRY_TYPE, STATUS_KEY, WIDGET_KEY } from "./types.ts";
 
-export function restoreActiveProfile(entries: readonly unknown[], settings: SubagentSettings): string {
+export function restoreActiveProfile(entries: readonly unknown[], settings: SubagentSettings): string | undefined {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index] as { type?: unknown; customType?: unknown; data?: { name?: unknown } } | undefined;
     const name = entry?.data?.name;
-    if (entry?.type === "custom" && entry.customType === PROFILE_ENTRY_TYPE && typeof name === "string" && settings.profiles[name]) {
+    if (entry?.type === "custom" && entry.customType === PROFILE_ENTRY_TYPE && typeof name === "string" && Object.hasOwn(settings.profiles, name)) {
       return name;
     }
   }
-  return settings.defaultProfile;
+  const names = Object.keys(settings.profiles);
+  return names.length === 1 ? names[0] : undefined;
 }
 
 /** A main-model change re-arms the profile gate; `restore` is a resume, not a change. */
@@ -32,6 +33,10 @@ export function reArmsProfileGate(source: string): boolean {
 }
 
 export default async function (pi: ExtensionAPI) {
+  pi.registerFlag("subagent-profile", {
+    description: "Subagent profile to use",
+    type: "string",
+  });
   const [agents, settings] = await Promise.all([
     discoverAgents(__dirname),
     loadSubagentSettings(),
@@ -39,7 +44,7 @@ export default async function (pi: ExtensionAPI) {
   const extensionPaths = await resolveExtensionPaths(settings.extensions);
   const registry = createJobRegistry();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
-  let activeProfile = settings.defaultProfile;
+  let activeProfile = restoreActiveProfile([], settings);
   let profileConfirmed = false;
   let lastUiContext: UiContext | undefined;
 
@@ -57,7 +62,12 @@ export default async function (pi: ExtensionAPI) {
     agents,
     settings,
     getActiveProfile: () => activeProfile,
-    confirmProfile: (ctx, onPause) => confirmSubagentProfile(pi, profileDeps, ctx, onPause),
+    confirmProfile: async (ctx, onPause) => {
+      if (activeProfile !== undefined && !Object.hasOwn(settings.profiles, activeProfile)) {
+        throw new Error(`Unknown subagent profile "${activeProfile}". Available: ${Object.keys(settings.profiles).join(", ") || "none"}`);
+      }
+      return confirmSubagentProfile(pi, profileDeps, ctx, onPause);
+    },
     discover: () => discoverAgents(__dirname),
     registry,
     activeTickers,
@@ -81,8 +91,11 @@ export default async function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", (_event, ctx) => {
-    activeProfile = restoreActiveProfile(ctx.sessionManager.getEntries(), settings);
-    profileConfirmed = false;
+    const requested = pi.getFlag("subagent-profile");
+    activeProfile = typeof requested === "string"
+      ? requested
+      : restoreActiveProfile(ctx.mode === "tui" ? ctx.sessionManager.getEntries() : [], settings);
+    profileConfirmed = typeof requested === "string";
   });
 
   pi.on("model_select", (event) => {

@@ -61,7 +61,7 @@ const SubagentParams = Type.Object({
 
 type SubagentParamsType = Static<typeof SubagentParams>;
 type TaskItemType = Static<typeof TaskItem>;
-type ResolvedAgent = AgentConfig & { profile: string };
+type ResolvedAgent = AgentConfig & { profile?: string };
 type LaunchMetadata = Pick<ResolvedAgent, "model" | "thinkingLevel" | "profile">;
 
 interface SingleRequest {
@@ -332,7 +332,7 @@ export interface SubagentToolDeps {
   /** Machine-local settings loaded when the extension initializes. */
   settings: SubagentSettings;
   /** Session-local profile selected for new jobs. */
-  getActiveProfile: () => string;
+  getActiveProfile: () => string | undefined;
   /** Resolves once a profile is chosen for this session; false if the user cancels. */
   confirmProfile: (ctx: ExtensionContext, onPause?: (message: string) => void) => Promise<boolean>;
   /** Re-discovered on every execute so agent file edits take effect immediately. */

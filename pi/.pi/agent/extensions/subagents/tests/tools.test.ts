@@ -1,11 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
-import { spawn } from "node:child_process";
+import childProcess, { spawn } from "node:child_process";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
+import os, { tmpdir } from "node:os";
+import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, SubagentSettings } from "../agents.ts";
-import { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
+import subagentsExtension, { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
 import { Batch, CompletionMailbox, createSubagentTool, resolveMode } from "../tools.ts";
@@ -540,7 +544,6 @@ test("/subagent-status shares the status formatter", async () => {
 
 test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and persist profiles", async () => {
   const settings = {
-    defaultProfile: "primary",
     profiles: {
       primary: { defaults: { model: "primary/model" }, agents: {} },
       backup: { defaults: { model: "backup/model" }, agents: {} },
@@ -615,18 +618,153 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
 
 test("restoreActiveProfile uses the latest valid session selection", () => {
   const settings = {
-    defaultProfile: "primary",
     profiles: {
       primary: { defaults: {}, agents: {} },
       backup: { defaults: {}, agents: {} },
     },
     extensions: [],
   };
-  assert.equal(restoreActiveProfile([], settings), "primary");
+  assert.equal(restoreActiveProfile([], settings), undefined);
+  assert.equal(restoreActiveProfile([], { profiles: {}, extensions: [] }), undefined);
+  assert.equal(restoreActiveProfile([], { profiles: { primary: settings.profiles.primary }, extensions: [] }), "primary");
+  assert.equal(restoreActiveProfile([
+    { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "removed" } },
+    { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "constructor" } },
+  ], settings), undefined);
   assert.equal(restoreActiveProfile([
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "backup" } },
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "removed" } },
   ], settings), "backup");
+});
+
+test("extension selects profiles explicitly and uses the headless fallback", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "subagents-test-"));
+  const extensionDir = join(dir, "extensions", "subagents");
+  const settingsDir = join(dir, ".pi", "agent");
+  const dirname = Object.getOwnPropertyDescriptor(globalThis, "__dirname");
+  t.after(async () => {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+    if (dirname) Object.defineProperty(globalThis, "__dirname", dirname);
+    else Reflect.deleteProperty(globalThis, "__dirname");
+    await rm(dir, { recursive: true, force: true });
+  });
+  await mkdir(join(extensionDir, "agents"), { recursive: true });
+  await mkdir(settingsDir, { recursive: true });
+  await writeFile(join(extensionDir, "agents", "scout.md"), "---\nname: scout\nthinkingLevel: high\n---\nYou are a scout.");
+  Object.defineProperty(globalThis, "__dirname", { configurable: true, value: extensionDir });
+  t.mock.method(os, "homedir", () => dir);
+  syncBuiltinESMExports();
+
+  const profiles = {
+    primary: { defaults: { model: "primary/model" }, agents: {} },
+    backup: { defaults: { model: "backup/model" }, agents: { scout: { thinkingLevel: "medium" } } },
+  };
+  const cases: Array<{
+    name: string; mode: "print" | "tui"; profiles: Record<string, unknown>; flag?: string;
+    profile?: string; model?: string; thinking?: string; error?: RegExp; rearm?: boolean;
+  }> = [
+    { name: "zero profiles", mode: "print", profiles: {}, model: "p/m", thinking: "high" },
+    { name: "sole profile", mode: "print", profiles: { primary: profiles.primary }, profile: "primary", model: "primary/model", thinking: "high" },
+    { name: "headless ignores a restored choice among multiple profiles", mode: "print", profiles, model: "p/m", thinking: "high" },
+    { name: "headless flag selects a profile", mode: "print", profiles, flag: "backup", profile: "backup", model: "backup/model", thinking: "medium" },
+    { name: "unknown flag rejects the launch", mode: "print", profiles, flag: "missing", error: /Unknown subagent profile "missing"/ },
+    { name: "inherited object properties are not profiles", mode: "print", profiles, flag: "constructor", error: /Unknown subagent profile "constructor"/ },
+    { name: "disabled flag rejects the launch", mode: "print", profiles: { ...profiles, backup: { ...profiles.backup, enabled: false } }, flag: "backup", error: /Unknown subagent profile "backup"/ },
+    { name: "interactive launch requires a choice", mode: "tui", profiles, profile: "primary", model: "primary/model", thinking: "high" },
+    { name: "interactive flag confirms a choice until the model changes", mode: "tui", profiles, flag: "backup", profile: "backup", model: "backup/model", thinking: "medium", rearm: true },
+  ];
+  for (const entry of cases) {
+    await t.test(entry.name, async (t) => {
+      await writeFile(join(settingsDir, "settings.json"), JSON.stringify({ subagents: { profiles: entry.profiles } }));
+      const children = [new FakeChild(), new FakeChild()];
+      const { spawnFn, calls } = fakeSpawnChildren(children);
+      t.mock.method(childProcess, "spawn", spawnFn);
+      syncBuiltinESMExports();
+      const tools = new Map<string, ReturnType<typeof createSubagentTool>>();
+      const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+      const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
+      const flags: Array<[string, string]> = [];
+      const entries = spy();
+      const titles: string[] = [];
+      const notices: string[] = [];
+      const pi = {
+        registerFlag: (name: string, options: { type: string }) => flags.push([name, options.type]),
+        getFlag: () => entry.flag,
+        registerTool: (tool: ReturnType<typeof createSubagentTool>) => tools.set(tool.name, tool),
+        registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+        registerShortcut: () => {},
+        registerEntryRenderer: () => {},
+        registerMessageRenderer: () => {},
+        on: (event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(event, handler),
+        appendEntry: entries.fn,
+        sendMessage: () => {},
+      } as unknown as ExtensionAPI;
+      const ctx = {
+        cwd: dir,
+        mode: entry.mode,
+        model: { provider: "p", id: "m" },
+        thinkingLevel: "minimal",
+        hasUI: entry.mode === "tui",
+        isIdle: () => true,
+        sessionManager: {
+          getEntries: () => entry.mode === "tui" && entry.flag === undefined ? [] : [
+            { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "primary" } },
+          ],
+        },
+        ui: {
+          notify: (text: string) => notices.push(text),
+          select: async (title: string) => { titles.push(title); return "primary"; },
+          setWidget: () => {},
+          setStatus: () => {},
+        },
+      } as unknown as ExtensionContext;
+      try {
+        await subagentsExtension(pi);
+        assert.deepEqual(flags, [["subagent-profile", "string"]]);
+        await handlers.get("session_start")!({}, ctx);
+        const tool = tools.get("subagent")!;
+        if (entry.error) {
+          await assert.rejects(tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx), entry.error);
+          assert.equal(calls.length, 0);
+          const status = await tools.get("subagent_status")!.execute("status", {}, undefined, undefined, ctx);
+          assert.match((status.content[0] as { text: string }).text, /Running:\*\* none/);
+          return;
+        }
+        if (Object.keys(entry.profiles).length === 0) {
+          await commands.get("subagent-profile")!.handler("", { ...ctx, hasUI: true });
+          assert.deepEqual(notices, ["Active subagent profile: none. Available: none"]);
+        }
+        const result = await tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+        assert.equal(result.details.profile, entry.profile);
+        assert.deepEqual(titles, entry.mode === "tui" && !entry.flag ? ["Subagent profile (active: none)"] : []);
+        await sleep(10);
+        assert.equal(calls.length, 1);
+        const args = calls[0]!.args;
+        assert.equal(args[args.indexOf("--model") + 1], entry.model);
+        assert.equal(args[args.indexOf("--thinking") + 1], entry.thinking);
+        children[0]!.stdout.emit("data", Buffer.from(endEvent("done")));
+        children[0]!.finish(0);
+        await sleep(20);
+        if (entry.rearm) {
+          await handlers.get("model_select")!({ source: "set" }, ctx);
+          const next = await tool.execute("next", { agent: "scout", task: "t" }, undefined, undefined, ctx);
+          assert.equal(next.details.profile, "primary");
+          assert.deepEqual(titles, ["Subagent profile (active: backup)"]);
+          assert.ok(entries.calls.some((call) => call[0] === PROFILE_ENTRY_TYPE));
+          await sleep(10);
+          assert.equal(calls.length, 2);
+          children[1]!.stdout.emit("data", Buffer.from(endEvent("done")));
+          children[1]!.finish(0);
+          await sleep(20);
+        }
+      } finally {
+        await handlers.get("session_shutdown")?.({}, ctx);
+        t.mock.restoreAll();
+        syncBuiltinESMExports();
+      }
+    });
+  }
 });
 
 test("reArmsProfileGate re-arms on model changes but not on resume", () => {
@@ -637,7 +775,6 @@ test("reArmsProfileGate re-arms on model changes but not on resume", () => {
 
 test("confirmSubagentProfile gates the first launch and persists the choice", async () => {
   const settings = {
-    defaultProfile: "primary",
     profiles: {
       primary: { defaults: {}, agents: {} },
       backup: { defaults: {}, agents: {} },
@@ -683,7 +820,6 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
 
 test("confirmSubagentProfile returns false when the picker is dismissed", async () => {
   const settings = {
-    defaultProfile: "primary",
     profiles: {
       primary: { defaults: {}, agents: {} },
       backup: { defaults: {}, agents: {} },
@@ -720,7 +856,7 @@ test("confirmSubagentProfile skips the picker for one profile or a non-TUI conte
     ui: { notify: () => {}, select: async () => { selects += 1; return "primary"; } },
   } as unknown as ExtensionContext;
   const single = {
-    settings: { defaultProfile: "primary", profiles: { primary: { defaults: {}, agents: {} } }, extensions: [] },
+    settings: { profiles: { primary: { defaults: {}, agents: {} } }, extensions: [] },
     getActiveProfile: () => "primary",
     setActiveProfile: () => {},
     needsConfirmation: () => true,
@@ -729,7 +865,6 @@ test("confirmSubagentProfile skips the picker for one profile or a non-TUI conte
 
   const multiple = {
     settings: {
-      defaultProfile: "primary",
       profiles: { primary: { defaults: {}, agents: {} }, backup: { defaults: {}, agents: {} } },
       extensions: [],
     },
@@ -895,8 +1030,8 @@ test("/subagent-send reports rejected messages", async () => {
 
 function makeTool(
   spawnOverride?: { spawnFn: typeof spawn },
-  settings: SubagentSettings = { defaultProfile: "default", profiles: { default: { defaults: {}, agents: {} } }, extensions: [] },
-  activeProfile = settings.defaultProfile,
+  settings: SubagentSettings = { profiles: {}, extensions: [] },
+  activeProfile: string | undefined = restoreActiveProfile([], settings),
   confirmProfile: (ctx: ExtensionContext, onPause?: (message: string) => void) => Promise<boolean> = async () => true,
 ) {
   const registry = createJobRegistry();
@@ -987,7 +1122,6 @@ test("execute: local settings set child model and thinking level", async () => {
   const { tool, ctx } = makeTool(
     { spawnFn },
     {
-      defaultProfile: "default",
       profiles: {
         default: {
           defaults: { model: "default-model", thinkingLevel: "low" },
@@ -1009,7 +1143,7 @@ test("execute: local settings set child model and thinking level", async () => {
   assert.equal(args[args.indexOf("--thinking") + 1], "high");
 });
 
-test("execute: default settings set child model and thinking level", async () => {
+test("execute: sole profile defaults set child model and thinking level", async () => {
   const child = new FakeChild();
   const calls: SpawnCall[] = [];
   const spawnFn = ((cmd: string, args: string[], options?: Record<string, unknown>) => {
@@ -1019,7 +1153,6 @@ test("execute: default settings set child model and thinking level", async () =>
   const { tool, ctx } = makeTool(
     { spawnFn },
     {
-      defaultProfile: "default",
       profiles: { default: { defaults: { model: "default-model", thinkingLevel: "low" }, agents: {} } },
       extensions: [],
     },
@@ -1038,7 +1171,6 @@ test("execute: default settings set child model and thinking level", async () =>
 
 test("execute: selected profile controls new jobs and completion metadata", async () => {
   const settings = {
-    defaultProfile: "primary",
     profiles: {
       primary: { defaults: { model: "primary/model", thinkingLevel: "low" }, agents: {} },
       backup: { defaults: { model: "backup/model", thinkingLevel: "high" }, agents: {} },
@@ -1117,7 +1249,7 @@ test("execute: legacy sync input cannot make a single job block", async () => {
     status: "launched",
     jobIds: [1],
     jobScope: registry.scope,
-    profile: "default",
+    profile: undefined,
   });
 
   await sleep(10); // let runSubagent attach stream listeners

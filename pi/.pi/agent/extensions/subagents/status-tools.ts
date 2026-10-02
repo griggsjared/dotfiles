@@ -491,7 +491,7 @@ export function createReplyTool(deps: { registry: JobRegistry }): ToolDefinition
 
 interface ProfileCommandDeps {
   settings: SubagentSettings;
-  getActiveProfile: () => string;
+  getActiveProfile: () => string | undefined;
   setActiveProfile: (name: string) => void;
   /** True while the session still needs a profile choice before subagents run. */
   needsConfirmation?: () => boolean;
@@ -503,7 +503,7 @@ async function chooseProfile(
   ctx: ExtensionContext,
 ): Promise<string | undefined> {
   const names = Object.keys(profiles.settings.profiles);
-  const current = profiles.getActiveProfile();
+  const current = profiles.getActiveProfile() ?? "none";
   const options = [...names];
   const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
   if (!selected) return undefined;
@@ -543,11 +543,11 @@ export function registerStatusCommands(
     const profiles = deps.profiles;
     if (!profiles) return;
     const names = Object.keys(profiles.settings.profiles);
-    const current = profiles.getActiveProfile();
+    const current = profiles.getActiveProfile() ?? "none";
     const name = requested.trim();
     if (!name) {
       if (ctx.mode !== "tui" || names.length <= 1) {
-        if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ")}`, "info");
+        if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ") || "none"}`, "info");
         return;
       }
       await chooseProfile(pi, profiles, ctx);

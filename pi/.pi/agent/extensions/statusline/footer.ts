@@ -56,13 +56,18 @@ export function formatFooterBalance(balance: UsageBalance): string {
 	return `b:${symbol}${balance.amount.toFixed(2)}`;
 }
 
-export function calculateFooterCost(entries: ReadonlyArray<{ type: string; message?: unknown }>): number {
+export function calculateFooterCost(entries: ReadonlyArray<{ type: string; message?: unknown; usage?: unknown }>): number {
 	let cost = 0;
 	for (const entry of entries) {
-		if (entry.type !== "message" || !entry.message || typeof entry.message !== "object") continue;
-		const message = entry.message as { role?: unknown; usage?: unknown };
-		if (message.role !== "assistant" || !message.usage || typeof message.usage !== "object") continue;
-		const usage = message.usage as { cost?: unknown };
+		let directUsage: unknown;
+		if (entry.type === "message" && entry.message && typeof entry.message === "object") {
+			const message = entry.message as { role?: unknown; usage?: unknown };
+			if (message.role === "assistant" || message.role === "toolResult") directUsage = message.usage;
+		} else if (entry.type === "usage" || entry.type === "compaction" || entry.type === "branch_summary") {
+			directUsage = entry.usage;
+		}
+		if (!directUsage || typeof directUsage !== "object") continue;
+		const usage = directUsage as { cost?: unknown };
 		if (!usage.cost || typeof usage.cost !== "object") continue;
 		const total = (usage.cost as { total?: unknown }).total;
 		if (typeof total === "number" && Number.isFinite(total)) cost += total;

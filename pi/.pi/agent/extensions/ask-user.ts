@@ -875,7 +875,7 @@ export default function (pi: ExtensionAPI) {
 				while (true) {
 					const items: SelectItem[] = [
 						{ value: "confirm", label: "Confirm answers", description: "Use these answers" },
-						...params.questions.map((question, index) => ({
+						...params.questions.map((_question, index) => ({
 							value: `re-${index}`,
 							label: `Re-answer question ${index + 1}`,
 							description: choiceText(answers[index].selected),

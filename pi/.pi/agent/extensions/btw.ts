@@ -1,5 +1,4 @@
 import { uuidv7, type AssistantMessage, type Message } from "@earendil-works/pi-ai";
-import { complete as completeLlm } from "@earendil-works/pi-ai/compat";
 import {
 	AssistantMessageComponent,
 	buildSessionContext,
@@ -132,7 +131,8 @@ export default function (pi: ExtensionAPI) {
 
 			const model = ctx.model;
 			const snapshot = buildSessionContext(ctx.sessionManager.getEntries(), ctx.sessionManager.getLeafId());
-			const messages: Message[] = [...convertToLlm(snapshot.messages)];
+			// Main-session system entries include prompt changes and tool declarations.
+			const messages: Message[] = convertToLlm(snapshot.messages).filter((message) => message.role !== "system");
 			const operation: Operation = { controller: new AbortController(), generation: ++generation };
 			active = operation;
 			let error: unknown;
@@ -148,7 +148,6 @@ export default function (pi: ExtensionAPI) {
 						let contentWidth = 1;
 						let viewportRows = 1;
 						const turns: Turn[] = [];
-						let auth: Awaited<ReturnType<typeof ctx.modelRegistry.getApiKeyAndHeaders>> | undefined;
 
 						const finish = (value: string | null) => {
 							if (settled) return;
@@ -204,30 +203,21 @@ export default function (pi: ExtensionAPI) {
 
 						const request = async (nextQuestion: string) => {
 							if (!model) throw new Error("No model selected");
-							if (!auth) {
-								auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-								if (!auth.ok) throw new Error(auth.error);
-							}
 							if (
 								operation.controller.signal.aborted ||
 								active !== operation ||
 								operation.generation !== generation
 							) return;
 							messages.push({ role: "user", content: [{ type: "text", text: nextQuestion }], timestamp: Date.now() });
-							const resolvedAuth = auth;
-							if (!resolvedAuth || !resolvedAuth.ok) throw new Error(resolvedAuth?.error ?? "Authentication unavailable");
-							const response = await completeLlm(
+							const response = await ctx.modelRegistry.streamSimple(
 								model,
 								{ systemPrompt: SYSTEM_PROMPT, messages },
 								{
 									signal: operation.controller.signal,
-									apiKey: resolvedAuth.apiKey,
-									headers: resolvedAuth.headers,
-									env: resolvedAuth.env,
 									cacheRetention: "none",
 									sessionId: uuidv7(),
 								},
-							);
+							).result();
 							if (response.stopReason === "aborted") {
 								close();
 								return;

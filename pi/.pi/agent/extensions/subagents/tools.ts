@@ -357,6 +357,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     label: "Subagent",
     description: "Delegate work to specialized subagents. Jobs always run asynchronously and deliver their results as follow-up messages.",
     parameters: SubagentParams,
+    exposure: "model-only",
     promptGuidelines: buildGuidelines(deps.agents),
     // The profile gate below opens a modal picker on first use; parallel tool
     // calls would each open one and deadlock the selector.

@@ -535,15 +535,26 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query." }),
 		}),
+		outputSchema: Type.Object({
+			backend: Type.Union([Type.Literal("duckduckgo-lite"), Type.Literal("tavily")]),
+			query: Type.String(),
+			results: Type.Array(Type.Object({
+				title: Type.String(),
+				url: Type.String(),
+				snippet: Type.String(),
+			})),
+		}),
 		async execute(_toolCallId, params, signal) {
 			const query = params.query.trim();
 			if (!query) throw new Error("Query must not be empty.");
 			const cached = getCached(query);
 			const response = cached ?? (await searchWithFallback(query, signal));
 			if (!cached) setCached(query, response);
+			const details = { backend: response.backend, query, results: response.results };
 			return {
 				content: [{ type: "text", text: formatResults(query, response.results) }],
-				details: { backend: response.backend, query, results: response.results },
+				details,
+				structuredContent: details,
 			};
 		},
 	});
@@ -559,6 +570,15 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({
 			url: Type.String({ description: "URL of the page to fetch and read." }),
 		}),
+		outputSchema: Type.Object({
+			backend: Type.Literal("http"),
+			url: Type.String(),
+			title: Type.String(),
+			description: Type.String(),
+			text: Type.String(),
+			charCount: Type.Integer({ minimum: 0 }),
+			truncated: Type.Boolean(),
+		}),
 		async execute(_toolCallId, params, signal) {
 			const url = params.url.trim();
 			if (!url) throw new Error("URL must not be empty.");
@@ -573,6 +593,7 @@ export default function (pi: ExtensionAPI) {
 					charCount: page.charCount,
 					truncated: page.truncated,
 				},
+				structuredContent: { backend: "http", ...page },
 			};
 		},
 	});

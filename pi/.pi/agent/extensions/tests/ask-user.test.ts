@@ -65,6 +65,10 @@ function assertChat(result: Awaited<ReturnType<typeof execute>>) {
 	assert.match(text, /Do not pick a default, continue the task, or reopen the picker/);
 }
 
+test("ask_user is registered as model-only", () => {
+	assert.equal(tool().exposure, "model-only");
+});
+
 for (const multiple of [false, true]) {
 	for (const keys of [["4"], ["up", "enter"], ["up", "tab", "enter"]]) {
 		test(`chat exits ${multiple ? "multi" : "single"}-select via ${keys.join(", ")}`, async () => {

@@ -7,6 +7,7 @@ import { syncBuiltinESMExports } from "node:module";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import { Check } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, SubagentSettings } from "../agents.ts";
 import subagentsExtension, { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
@@ -307,6 +308,134 @@ test("subagent peek returns bounded incremental semantic events", async () => {
   });
   const raw = await tool.execute("peek9", { jobId: rawId }, undefined, undefined, {} as never);
   assert.equal((raw.content[0] as { text: string }).text, "[1] read success: one · 2 lines\nnextCursor: 1");
+  assert.ok(tool.outputSchema);
+  assert.equal(tool.exposure ?? "direct", "direct");
+  for (const result of [first, next, fromStart, capped, terminal, dropped, raw]) {
+    assert.ok(Check(tool.outputSchema, result.structuredContent));
+    if (result !== raw) assert.deepEqual(result.structuredContent, result.details);
+    assert.equal(result.details.jobId, result === dropped ? ringId : result === raw ? rawId : runningId);
+  }
+  assert.deepEqual(raw.structuredContent, {
+    ...raw.details,
+    events: [{ ...raw.details.events[0]!, summary: "read success: one · 2 lines" }],
+  });
+  const tiny = await tool.execute("tiny", { jobId: runningId, since: 0, maxChars: 1 }, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, tiny.structuredContent));
+  assert.deepEqual(tiny.structuredContent, { jobId: runningId, agent: "scout", status: "completed", events: [], nextCursor: 0 });
+  assert.deepEqual(tiny.content, [{ type: "text", text: "" }]);
+  const emptyId = registry.add("worker", "no events");
+  const empty = await tool.execute("empty", { jobId: emptyId }, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, empty.structuredContent));
+  assert.deepEqual(empty.structuredContent, { jobId: emptyId, agent: "worker", status: "running", events: [], nextCursor: 0 });
+  assert.deepEqual(empty.content, [{ type: "text", text: "nextCursor: 0" }]);
+});
+
+test("subagent peek structured summaries share the bounded human preview without raw tool bodies", async () => {
+  const registry = createJobRegistry({ now: () => 1234 });
+  const jobId = registry.add("worker", "bounded tool results");
+  registry.appendEvent(jobId, { kind: "state", summary: "started" });
+  const prefix = "read success: ";
+  const large = prefix + JSON.stringify({
+    content: [{ type: "text", text: `\u001b]2;pwned\u0007${"x".repeat(100000)}\nRAW_TOOL_BODY` }],
+  });
+  const wrapper = JSON.stringify({ content: [{ type: "text", text: "" }] });
+  const runnerSummary = prefix + JSON.stringify({
+    content: [{ type: "text", text: "y".repeat(500 - prefix.length - wrapper.length) }],
+  });
+  assert.equal(runnerSummary.length, 500);
+  registry.appendEvent(jobId, { kind: "tool-end", summary: large });
+  registry.appendEvent(jobId, { kind: "tool-end", summary: runnerSummary });
+  registry.appendEvent(jobId, { kind: "assistant", summary: "z".repeat(500) });
+  for (let i = 0; i < 97; i++) registry.appendEvent(jobId, { kind: "state", summary: "running" });
+  const tool = createPeekTool({ registry });
+  const maxChars = 350;
+  const result = await tool.execute("bounded", { jobId, since: 0, limit: 100, maxChars }, undefined, undefined, {} as never);
+  const summaries = [
+    `${prefix}${"x".repeat(119)}… · 2 lines`,
+    `${prefix}${"y".repeat(119)}… · 1 line`,
+  ];
+  const preview = `[history dropped before 2]\n[2] ${summaries[0]}\n[3] ${summaries[1]}`;
+  assert.deepEqual(result.content, [{ type: "text", text: `${preview}\nnextCursor: 3` }]);
+  assert.ok((result.content[0] as { text: string }).text.length <= maxChars);
+  assert.deepEqual(result.details, {
+    jobId, agent: "worker", status: "running",
+    events: [
+      { seq: 2, timestamp: 1234, kind: "tool-end", summary: large },
+      { seq: 3, timestamp: 1234, kind: "tool-end", summary: runnerSummary },
+    ],
+    nextCursor: 3, droppedBefore: 2,
+  });
+  const serialized = JSON.stringify(result.structuredContent);
+  const structured = JSON.parse(serialized);
+  assert.ok(tool.outputSchema);
+  assert.ok(Check(tool.outputSchema, structured));
+  assert.deepEqual(structured, {
+    ...result.details,
+    events: result.details.events.map((event, index) => ({ ...event, summary: summaries[index]! })),
+  });
+  assert.ok(structured.events.reduce((length: number, event: { summary: string }) => length + event.summary.length, 0) <= maxChars);
+  assert.ok(serialized.length < 1000);
+  assert.doesNotMatch(serialized, /RAW_TOOL_BODY|pwned|content|\\u001b/);
+  assert.deepEqual(registry.readEvents(jobId, { since: 0, limit: 2 })?.events, result.details.events);
+
+  const next = await tool.execute("next", { jobId, since: structured.nextCursor, limit: 1, maxChars: 600 }, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, JSON.parse(JSON.stringify(next.structuredContent))));
+  assert.deepEqual(next.structuredContent, next.details);
+  assert.deepEqual(next.details.events, [{ seq: 4, timestamp: 1234, kind: "assistant", summary: "z".repeat(500) }]);
+  assert.equal(next.details.nextCursor, 4);
+  assert.equal(next.details.droppedBefore, undefined);
+  assert.deepEqual(next.content, [{ type: "text", text: `[4] ${"z".repeat(500)}\nnextCursor: 4` }]);
+});
+
+test("subagent status structured results preserve empty, filtered, and unknown snapshots", async () => {
+  const registry = createJobRegistry();
+  const tool = createStatusTool({ registry });
+  assert.ok(tool.outputSchema);
+  assert.equal(tool.exposure ?? "direct", "direct");
+  const empty = await tool.execute("empty", {}, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, empty.structuredContent));
+  assert.deepEqual(empty.structuredContent, { text: "**Running:** none", jobs: [] });
+  assert.deepEqual(empty.content, [{ type: "text", text: "**Running:** none" }]);
+
+  const runningId = registry.add("scout", "running task", "Running title");
+  const recentId = registry.add("worker", "recent task");
+  registry.complete(recentId, { agent: "worker", task: "recent task", text: "done", exitCode: 0, error: "" });
+  const oldRegistry = createJobRegistry({ now: () => Date.now() - 61000 });
+  const oldId = oldRegistry.add("old", "old task");
+  oldRegistry.complete(oldId, { agent: "old", task: "old task", text: "done", exitCode: 0, error: "" });
+  const oldTool = createStatusTool({ registry: oldRegistry });
+  const old = await oldTool.execute("old", {}, undefined, undefined, {} as never);
+  assert.ok(Check(oldTool.outputSchema!, old.structuredContent));
+  assert.deepEqual(old.structuredContent, { text: "**Running:** none", jobs: [] });
+
+  const aggregate = await tool.execute("all", {}, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, aggregate.structuredContent));
+  assert.deepEqual(aggregate.structuredContent, {
+    text: aggregate.details.text,
+    jobs: [
+      { jobId: runningId, agent: "scout", status: "running", label: "Running title" },
+      { jobId: recentId, agent: "worker", status: "completed", label: "recent task" },
+    ],
+  });
+  registry.updateLive(runningId, { text: "x".repeat(5000) });
+  const individual = await tool.execute("one", { jobId: runningId }, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, individual.structuredContent));
+  assert.deepEqual(individual.structuredContent, {
+    text: individual.details.text,
+    jobId: runningId,
+    jobs: [{ jobId: runningId, agent: "scout", status: "running", label: "Running title" }],
+  });
+  assert.deepEqual(individual.content, [{ type: "text", text: individual.details.text }]);
+  assert.match(individual.details.text, /Latest output:\n/);
+  assert.ok(individual.details.text.includes(`${"x".repeat(4000)}\n…`));
+  assert.ok(!individual.details.text.includes("x".repeat(4001)));
+  const unknown = await tool.execute("unknown", { jobId: 999 }, undefined, undefined, {} as never);
+  assert.ok(Check(tool.outputSchema, unknown.structuredContent));
+  assert.deepEqual(unknown.structuredContent, {
+    text: "Unknown subagent job ID: 999", jobId: 999, jobs: [], error: "Unknown subagent job ID: 999",
+  });
+  assert.deepEqual(unknown.content, [{ type: "text", text: "Unknown subagent job ID: 999" }]);
+  assert.equal(unknown.isError, undefined);
 });
 
 test("subagent peek renderer labels events and compacts structured results", () => {
@@ -1234,6 +1363,7 @@ test("subagent schema has no execution mode", () => {
 test("subagent tool runs sequentially so parallel calls cannot double-open the picker", () => {
   const { tool } = makeTool();
   assert.equal(tool.executionMode, "sequential");
+  assert.equal(tool.exposure, "model-only");
 });
 
 test("execute: legacy sync input cannot make a single job block", async () => {
@@ -1564,6 +1694,8 @@ test("execute: partial-unknown batch launches known jobs and reports skipped cou
   assert.equal(result.details.status, "launched");
   assert.equal(result.details.skipped, 1);
   assert.equal(result.details.count, 1);
+  assert.deepEqual(result.details.jobIds, [1, 2]);
+  assert.equal(result.details.jobScope, registry.scope);
 
   await sleep(10);
   child.stdout.emit("data", Buffer.from(endEvent("scouted")));

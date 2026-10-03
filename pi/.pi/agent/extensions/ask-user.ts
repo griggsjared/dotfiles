@@ -742,6 +742,7 @@ function formatAnswers(answers: Answer[], cancelled: boolean): string {
 export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "ask_user",
+		exposure: "model-only",
 		label: "Ask User",
 		description:
 			"Ask the user multiple-choice questions when the task needs direction or clarification. Renders an interactive picker in the TUI (single-select or multi-select), then a confirmation step with per-question re-answer, and returns the chosen options, or free text via the 'Other (specify)' fallback. Each question has 2-4 options. The built-in 'Let's chat about this' choice submits no answers and invites discussion in chat.",

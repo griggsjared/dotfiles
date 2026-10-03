@@ -26,6 +26,37 @@ const PeekParams = Type.Object({
   maxChars: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })),
 });
 
+const JobStatus = Type.Union([
+  Type.Literal("running"), Type.Literal("completed"), Type.Literal("failed"), Type.Literal("cancelled"),
+]);
+const StatusOutput = Type.Object({
+  text: Type.String(),
+  jobId: Type.Optional(Type.Integer({ minimum: 1 })),
+  jobs: Type.Array(Type.Object({
+    jobId: Type.Integer({ minimum: 1 }),
+    agent: Type.String(),
+    status: JobStatus,
+    label: Type.String(),
+  })),
+  error: Type.Optional(Type.String()),
+});
+const PeekOutput = Type.Object({
+  jobId: Type.Integer({ minimum: 1 }),
+  agent: Type.String(),
+  status: JobStatus,
+  events: Type.Array(Type.Object({
+    seq: Type.Integer({ minimum: 1 }),
+    timestamp: Type.Number(),
+    kind: Type.Union([
+      Type.Literal("assistant"), Type.Literal("tool-start"), Type.Literal("tool-end"),
+      Type.Literal("question"), Type.Literal("state"),
+    ]),
+    summary: Type.String(),
+  }), { maxItems: 100 }),
+  nextCursor: Type.Integer({ minimum: 0 }),
+  droppedBefore: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+
 const MAX_STATUS_OUTPUT = 4000;
 const DEFAULT_PEEK_LIMIT = 20;
 const DEFAULT_PEEK_CHARS = 2000;
@@ -194,13 +225,24 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
     label: "Subagent Status",
     description: "Inspect running and recently completed subagents when needed. Async jobs deliver results automatically; do not poll for normal completion.",
     parameters: StatusParams,
+    outputSchema: StatusOutput,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const text = formatStatus(deps.registry, params.jobId);
+      const now = Date.now();
+      const text = formatStatus(deps.registry, params.jobId, now);
       const job = params.jobId === undefined ? undefined : deps.registry.get(params.jobId);
       const output = job?.text ? capOutput(job.text, MAX_STATUS_OUTPUT) : undefined;
       const error = job?.error ? capOutput(job.error, MAX_STATUS_OUTPUT) : undefined;
+      const jobs = params.jobId !== undefined
+        ? job ? [job] : []
+        : [...deps.registry.running(), ...deps.registry.recent(20).filter((item) => item.endTime && now - item.endTime < 60000)];
       return {
         content: [{ type: "text", text }],
+        structuredContent: {
+          text,
+          ...(params.jobId !== undefined ? { jobId: params.jobId } : {}),
+          jobs: jobs.map((item) => ({ jobId: item.id, agent: item.agent, status: item.status, label: jobLabel(item, params.jobId !== undefined ? 160 : 80) })),
+          ...(params.jobId !== undefined && !job ? { error: text } : {}),
+        },
         details: {
           text,
           jobId: params.jobId,
@@ -235,6 +277,7 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       "Use subagent_peek for an explicit bounded look at a job; pass nextCursor as since for incremental reads and do not poll for normal completion.",
     ],
     parameters: PeekParams,
+    outputSchema: PeekOutput,
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
       const job = deps.registry.get(params.jobId);
       if (!job) throw new Error(`Unknown subagent job ID: ${params.jobId}`);
@@ -245,13 +288,16 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       if (!read) throw new Error(`Unknown subagent job ID: ${params.jobId}`);
       const maxChars = params.maxChars ?? DEFAULT_PEEK_CHARS;
       const events: JobEvent[] = [];
+      const structuredEvents: JobEvent[] = [];
       const droppedNotice = read.droppedBefore === undefined ? undefined : `[history dropped before ${read.droppedBefore}]`;
       const lines: string[] = droppedNotice && droppedNotice.length <= maxChars ? [droppedNotice] : [];
       for (const event of read.events) {
-        const line = `[${event.seq}] ${formatEventSummary(event)}`;
+        const summary = formatEventSummary(event);
+        const line = `[${event.seq}] ${summary}`;
         const text = lines.length > 0 ? `${lines.join("\n")}\n${line}` : line;
         if (text.length > maxChars) break;
         events.push({ ...event });
+        structuredEvents.push({ ...event, summary });
         lines.push(line);
       }
       const nextCursor = events.at(-1)?.seq ?? (params.since ?? 0);
@@ -265,16 +311,18 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
           : body.length + compactCursor.length + 1 <= maxChars
             ? `${body}\n${compactCursor}`
             : body;
+      const details = {
+        jobId: job.id,
+        agent: job.agent,
+        status: job.status,
+        events,
+        nextCursor,
+        ...(read.droppedBefore !== undefined ? { droppedBefore: read.droppedBefore } : {}),
+      };
       return {
         content: [{ type: "text", text }],
-        details: {
-          jobId: job.id,
-          agent: job.agent,
-          status: job.status,
-          events,
-          nextCursor,
-          ...(read.droppedBefore !== undefined ? { droppedBefore: read.droppedBefore } : {}),
-        },
+        structuredContent: { ...details, events: structuredEvents.map((event) => ({ ...event })) },
+        details,
       };
     },
     renderCall(args, theme, _context) {

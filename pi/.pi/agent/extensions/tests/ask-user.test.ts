@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import askUser from "../ask-user.ts";
 
 const CHAT_LABEL = "Let's chat about this";
@@ -11,7 +11,7 @@ const question = {
 
 function tool() {
 	let registered!: Parameters<ExtensionAPI["registerTool"]>[0];
-	askUser({ registerTool: (definition) => { registered = definition; } } as ExtensionAPI);
+	askUser({ registerTool: (definition) => { registered = definition as typeof registered; } } as ExtensionAPI);
 	return registered;
 }
 
@@ -49,7 +49,12 @@ function tui(screens: string[][]): ExtensionContext {
 }
 
 function execute(ctx: ExtensionContext, questions: (typeof question & { multiple?: boolean })[] = [question]) {
-	return tool().execute("test", { questions }, undefined, undefined, ctx);
+	const toolCtx: ExtensionToolContext = {
+		...ctx,
+		tools: [],
+		executeTool: async () => assert.fail("unexpected nested tool call"),
+	};
+	return tool().execute("test", { questions }, undefined, undefined, toolCtx);
 }
 
 function assertChat(result: Awaited<ReturnType<typeof execute>>) {

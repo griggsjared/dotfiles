@@ -32,18 +32,22 @@ test("discovers installed Ollama models at startup and refreshes additions and r
 	assert.equal(config.authHeader, false);
 	assert.deepEqual(config.models?.map(({ id }) => id), ["gemma4:e4b-mlx", "muse-glimmer:30b-mlx", "qwen3.8:27b-mlx", "other-8b-q4_k_m"]);
 	assert.deepEqual(config.models?.map(({ name }) => name), ["Gemma 4", "Muse Glimmer", "Qwen 3.8", "Other"]);
-	assert.deepEqual(config.models?.[0]?.input, ["text", "image"]);
-	assert.equal(config.models?.[0]?.contextWindow, 131072);
-	assert.equal(config.models?.[0]?.reasoning, true);
-	assert.equal(config.models?.[0]?.cost.input, 0);
+	const model = config.models?.[0];
+	assert.ok(model && (model.type === undefined || model.type === "chat"));
+	assert.deepEqual(model.input, ["text", "image"]);
+	assert.equal(model.contextWindow, 131072);
+	assert.equal(model.reasoning, true);
+	assert.equal(model.cost.input, 0);
 
 	installed = ["other:latest"];
 	const refreshed = await config.refreshModels!({ signal: new AbortController().signal } as Parameters<NonNullable<ProviderConfig["refreshModels"]>>[0]);
 	assert.deepEqual(refreshed.map(({ id }) => id), ["other:latest"]);
-	assert.equal(refreshed[0].name, "Other");
-	assert.deepEqual(refreshed[0].input, ["text"]);
-	assert.equal(refreshed[0].contextWindow, 4096);
-	assert.equal(refreshed[0].reasoning, false);
+	const refreshedModel = refreshed[0];
+	assert.ok(refreshedModel && (refreshedModel.type === undefined || refreshedModel.type === "chat"));
+	assert.equal(refreshedModel.name, "Other");
+	assert.deepEqual(refreshedModel.input, ["text"]);
+	assert.equal(refreshedModel.contextWindow, 4096);
+	assert.equal(refreshedModel.reasoning, false);
 	assert.equal(requests.filter((path) => path === "/api/tags").length, 2);
 });
 

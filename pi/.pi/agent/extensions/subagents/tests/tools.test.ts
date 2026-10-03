@@ -7,7 +7,7 @@ import { syncBuiltinESMExports } from "node:module";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, SubagentSettings } from "../agents.ts";
 import subagentsExtension, { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
@@ -702,6 +702,8 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
       } as unknown as ExtensionAPI;
       const ctx = {
         cwd: dir,
+        tools: [],
+        executeTool: async () => assert.fail("unexpected nested tool call"),
         mode: entry.mode,
         model: { provider: "p", id: "m" },
         thinkingLevel: "minimal",
@@ -718,7 +720,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           setWidget: () => {},
           setStatus: () => {},
         },
-      } as unknown as ExtensionContext;
+      } as unknown as ExtensionToolContext;
       try {
         await subagentsExtension(pi);
         assert.deepEqual(flags, [["subagent-profile", "string"]]);
@@ -1066,11 +1068,13 @@ function makeTool(
   });
   const ctx = {
     cwd: "/tmp",
+    tools: [],
+    executeTool: async () => assert.fail("unexpected nested tool call"),
     model: { provider: "p", id: "m" },
     thinkingLevel: undefined,
     hasUI: false,
     isIdle: () => true,
-  } as unknown as ExtensionContext;
+  } as unknown as ExtensionToolContext;
   return { tool, registry, sendMessage, sendUserMessage, appendEntry, handlers, activeTickers, activeProcs, child, ctx };
 }
 

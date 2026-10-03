@@ -6,10 +6,11 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/*.test.ts\""
   },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "^0.83.0"
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.0",
     "@types/node": "^24",
     "typescript": "^5"
   }

@@ -8,7 +8,6 @@
 !extensions/header.ts
 !extensions/statusline/**
 !extensions/working-indicator/**
-!extensions/workspace-guard/**
 !extensions/web-search.ts
 !extensions/ask-user.ts
 !extensions/btw.ts

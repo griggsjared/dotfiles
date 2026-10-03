@@ -357,7 +357,7 @@ test("runSubagent: forwards allowlisted package extensions and ignores relative 
   assert.ok(flags.includes("--no-extensions"));
 });
 
-test("runSubagent: loads the workspace guard extension without enabling recursive extensions", async () => {
+test("runSubagent: ignores obsolete workspace guard extension configuration", async () => {
   const child = new FakeChild();
   const calls: SpawnCall[] = [];
   const previousExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
@@ -384,14 +384,14 @@ test("runSubagent: loads the workspace guard extension without enabling recursiv
   const { args, options } = calls[0]!;
   const flags = args.slice(1);
   const extensionValues = flags.flatMap((flag, index) => flag === "--extension" ? [flags[index + 1]] : []);
-  assert.deepEqual(extensionValues, [BRIDGE_EXTENSION, "/workspace/guard-extension.ts"]);
+  assert.deepEqual(extensionValues, [BRIDGE_EXTENSION]);
   assert.ok(flags.includes("--no-extensions"));
   assert.equal(options.cwd, "/tmp");
-  assert.equal((options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, "1");
+  assert.equal((options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, "parent");
   assert.match(String((options.env as { NODE_OPTIONS?: string }).NODE_OPTIONS), /--max-old-space-size=8192/);
 });
 
-test("runSubagent: ignores absent, empty, and relative workspace guard extension paths", async () => {
+test("runSubagent: preserves inherited environment without activating obsolete workspace guard paths", async () => {
   const previousExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
   const previousChild = process.env.PI_WORKSPACE_GUARD_CHILD;
   const previousOther = process.env.PI_WORKSPACE_GUARD_OTHER;
@@ -417,7 +417,7 @@ test("runSubagent: ignores absent, empty, and relative workspace guard extension
       const flags = call.args.slice(1);
       const extensionValues = flags.flatMap((flag, index) => flag === "--extension" ? [flags[index + 1]] : []);
       assert.deepEqual(extensionValues, [BRIDGE_EXTENSION]);
-      assert.equal((call.options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, undefined);
+      assert.equal((call.options.env as { PI_WORKSPACE_GUARD_CHILD?: string }).PI_WORKSPACE_GUARD_CHILD, "parent");
       assert.equal((call.options.env as { PI_WORKSPACE_GUARD_OTHER?: string }).PI_WORKSPACE_GUARD_OTHER, "keep");
       assert.equal(call.options.cwd, "/tmp");
       assert.match(String((call.options.env as { NODE_OPTIONS?: string }).NODE_OPTIONS), /--max-old-space-size=8192/);

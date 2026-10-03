@@ -170,8 +170,6 @@ export async function runSubagent(
     ...(agent.tools ?? DEFAULT_TOOLS),
     ...(hasBridgeExtension ? ["ask_parent"] : []),
   ])].join(",");
-  const guardExtension = process.env.PI_WORKSPACE_GUARD_EXTENSION;
-  const hasGuardExtension = !!guardExtension && isAbsolute(guardExtension);
   const extraExtensions = (options.extensionPaths ?? []).filter(isAbsolute);
   const args = [
     ...base.args,
@@ -180,7 +178,6 @@ export async function runSubagent(
     "--no-session",
     "--no-extensions",
     ...(hasBridgeExtension ? ["--extension", bridgeExtension] : []),
-    ...(hasGuardExtension ? ["--extension", guardExtension] : []),
     ...extraExtensions.flatMap((path) => ["--extension", path]),
     "--no-context-files",
     ...(model ? ["--model", model] : []),
@@ -200,8 +197,6 @@ export async function runSubagent(
       ? `${process.env.NODE_OPTIONS} --max-old-space-size=8192`
       : "--max-old-space-size=8192";
     const childEnv: NodeJS.ProcessEnv = { ...process.env, NODE_OPTIONS: nodeOptions };
-    delete childEnv.PI_WORKSPACE_GUARD_CHILD;
-    if (hasGuardExtension) childEnv.PI_WORKSPACE_GUARD_CHILD = "1";
     proc = (options.spawnFn ?? spawn)(base.cmd, args, {
       cwd,
       shell: false,

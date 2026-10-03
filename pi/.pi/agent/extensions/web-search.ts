@@ -510,7 +510,7 @@ async function fetchPage(url: string, signal?: AbortSignal): Promise<FetchedPage
 	};
 }
 
-function formatPage(url: string, page: FetchedPage): string {
+function formatPage(_url: string, page: FetchedPage): string {
 	const lines: string[] = [];
 	if (page.title) lines.push(`Title: ${page.title}`);
 	lines.push(`URL: ${page.url}`);

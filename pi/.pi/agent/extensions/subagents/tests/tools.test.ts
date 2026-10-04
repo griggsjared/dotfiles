@@ -1954,6 +1954,145 @@ test("refreshUi: keeps one widget component and requests in-place renders", () =
   assert.equal(widgetContent, undefined);
 });
 
+test("refreshUi: clicks open the rendered job's tail and leave other mouse gestures alone", async (t) => {
+  const registry = createJobRegistry();
+  const completedId = registry.add("scout", "finished task");
+  const runningId = registry.add("worker", "running task");
+  complete(registry, completedId);
+  type Widget = {
+    render(width: number): string[];
+    handleMouse(event: { type: string; button: string; y: number }): unknown;
+    dispose(): void;
+  };
+  type Tail = { render(width: number): string[]; handleInput(data: string): void; dispose(): void };
+  let widget: Widget | undefined;
+  const tails: Tail[] = [];
+  const options: unknown[] = [];
+  const tui = { requestRender: () => {} };
+  const ui = {
+    setWidget: (_key: string, factory: unknown) => {
+      if (typeof factory === "function") widget = factory(tui, fakeTheme());
+    },
+    custom: (
+      factory: (tui: unknown, theme: unknown, keybindings: unknown, done: () => void) => Tail,
+      overlayOptions: unknown,
+    ) => new Promise<void>((resolve) => {
+      options.push(overlayOptions);
+      tails.push(factory(tui, fakeTheme(), {}, resolve));
+    }),
+  };
+  t.after(() => { widget?.dispose(); for (const tail of tails) tail.dispose(); });
+  refreshUi({ hasUI: true, ui } as never, registry);
+  assert.ok(widget);
+  const lines = widget.render(80);
+  assert.match(lines[0]!, new RegExp(`#${runningId} worker`));
+  assert.match(lines[1]!, new RegExp(`#${completedId}`));
+
+  for (const type of ["press", "release", "move", "drag", "wheel"]) {
+    assert.equal(widget.handleMouse({ type, button: "left", y: 0 }), undefined);
+  }
+  for (const button of ["middle", "right", "none"]) {
+    assert.equal(widget.handleMouse({ type: "click", button, y: 0 }), undefined);
+  }
+  for (const y of [-1, 0.5, 2, NaN]) {
+    assert.equal(widget.handleMouse({ type: "click", button: "left", y }), undefined);
+  }
+  assert.equal(tails.length, 0);
+
+  const addedId = registry.add("worker", "new task");
+  assert.deepEqual(widget.handleMouse({ type: "click", button: "left", y: 0 }), { handled: true });
+  assert.match(renderText(tails[0]), new RegExp(`Subagent #${runningId}`));
+  assert.deepEqual(options[0], {
+    overlay: true,
+    overlayOptions: { anchor: "center", width: "100%", minWidth: 60, maxHeight: "100%", margin: 1 },
+  });
+  assert.deepEqual(widget.handleMouse({ type: "click", button: "left", y: 1 }), { handled: true });
+  assert.equal(tails.length, 1);
+  tails[0]!.handleInput("q");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(widget.handleMouse({ type: "click", button: "left", y: 1 }), { handled: true });
+  assert.match(renderText(tails[1]), new RegExp(`Subagent #${completedId}`));
+  tails[1]!.handleInput("\x1b");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  widget.render(30);
+  assert.deepEqual(widget.handleMouse({ type: "click", button: "left", y: 1 }), { handled: true });
+  assert.match(renderText(tails[2]), new RegExp(`Subagent #${addedId}`));
+  tails[2]!.handleInput("q");
+});
+
+test("refreshUi: failed tail opens recover and disposed widgets cannot open tails", async () => {
+  const registry = createJobRegistry();
+  registry.add("scout", "task");
+  type Widget = {
+    render(width: number): string[];
+    handleMouse(event: { type: string; button: string; y: number }): unknown;
+    dispose(): void;
+  };
+  const widgets: Widget[] = [];
+  let opens = 0;
+  const ui = {
+    setWidget: (_key: string, factory: unknown) => {
+      if (typeof factory === "function") widgets.push(factory({ requestRender: () => {} }, fakeTheme()));
+    },
+    custom: () => {
+      opens += 1;
+      if (opens === 1) throw new Error("synchronous open failure");
+      if (opens === 2) return Promise.reject(new Error("asynchronous open failure"));
+      return new Promise<void>(() => {});
+    },
+  };
+  const ctx = { hasUI: true, ui } as never;
+  refreshUi(ctx, registry);
+  const widget = widgets[0]!;
+  widget.render(80);
+  const click = { type: "click", button: "left", y: 0 };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    assert.doesNotThrow(() => widget.handleMouse(click));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(opens, attempt + 1);
+  }
+  widget.dispose();
+  assert.equal(widget.handleMouse(click), undefined);
+  assert.deepEqual(widget.render(80), []);
+  refreshUi(ctx, registry);
+  assert.equal(widgets.length, 2);
+  const replacement = widgets[1]!;
+  replacement.render(80);
+  assert.deepEqual(replacement.handleMouse(click), { handled: true });
+  assert.equal(opens, 4);
+  replacement.dispose();
+});
+
+test("refreshUi: truncation rows and vanished jobs are not clickable", () => {
+  const registry = createJobRegistry();
+  for (let index = 0; index < 11; index += 1) registry.add("scout", `task ${index}`);
+  let widget: {
+    render(width: number): string[];
+    handleMouse(event: { type: string; button: string; y: number }): unknown;
+    dispose(): void;
+  } | undefined;
+  let opens = 0;
+  const ui = {
+    setWidget: (_key: string, factory: unknown) => {
+      if (typeof factory === "function") widget = factory({ requestRender: () => {} }, fakeTheme());
+    },
+    custom: () => { opens += 1; return Promise.resolve(); },
+  };
+  refreshUi({ hasUI: true, ui } as never, registry);
+  assert.ok(widget);
+  const lines = widget.render(20);
+  assert.equal(lines.length, 10);
+  assert.ok(lines.every((line) => visibleWidth(line) <= 20));
+  assert.match(lines[9]!, /widget truncate/);
+  assert.equal(widget.handleMouse({ type: "click", button: "left", y: 9 }), undefined);
+  registry.jobs.delete(1);
+  assert.equal(widget.handleMouse({ type: "click", button: "left", y: 0 }), undefined);
+  assert.equal(opens, 0);
+  widget.dispose();
+});
+
 test("renderFullWidget: shows one line per active agent", () => {
   const registry = createJobRegistry();
   const id = registry.add("scout", "task", "a".repeat(60), {

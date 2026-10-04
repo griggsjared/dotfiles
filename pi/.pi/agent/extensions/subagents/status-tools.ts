@@ -4,7 +4,8 @@ import { Type } from "typebox";
 import type { SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
-import { SubagentTail, eventColor, eventKindLabel, formatEventSummary } from "./tail.ts";
+import { openSubagentTail } from "./render.ts";
+import { eventColor, eventKindLabel, formatEventSummary } from "./tail.ts";
 import { PROFILE_ENTRY_TYPE, type JobEvent } from "./types.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
@@ -639,19 +640,7 @@ export function registerStatusCommands(
         ctx.ui.notify(`Unknown subagent job ID: ${jobId}`, "error");
         return;
       }
-      await ctx.ui.custom<void>(
-        (tui, theme, _keybindings, done) => new SubagentTail(tui, theme, deps.registry, jobId, () => done(undefined)),
-        {
-          overlay: true,
-          overlayOptions: {
-            anchor: "center",
-            width: "100%",
-            minWidth: 60,
-            maxHeight: "100%",
-            margin: 1,
-          },
-        },
-      );
+      await openSubagentTail(ctx.ui, deps.registry, jobId);
     },
   });
 

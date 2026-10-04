@@ -83,6 +83,23 @@ test("starts and settles the observable working indicator lifecycle", () => {
 	assert.equal(calls.visibility.at(-1), false);
 });
 
+test("uses one color for the spinner and message throughout a word", () => {
+	const handlers = register();
+	const { calls, ctx } = createContext();
+	ctx.ui.theme.fg = (color, text) => `<${color}>${text}</${color}>`;
+
+	emit(handlers, "session_start", ctx);
+	emit(handlers, "agent_start", ctx);
+
+	const messageColor = calls.messages.at(-1)?.match(/<([^>]+)>/)?.[1];
+	const indicator = calls.indicators.at(-1) as { frames: string[] };
+	assert.ok(messageColor);
+	assert.ok(indicator.frames.length > 0);
+	assert.ok(indicator.frames.slice(0, 60).every((frame) => frame.startsWith(`<${messageColor}>`)));
+
+	cleanup(handlers, ctx);
+});
+
 test("shutdown invalidates the local generation before cleanup", () => {
 	const handlers = register();
 	const { calls, ctx } = createContext();
@@ -138,7 +155,7 @@ test("terminal thinking and tool-call events estimate content when no delta arri
 	cleanup(handlers, ctx);
 });
 
-test("message updates render at most once per color frame", () => {
+test("message updates render at most once for identical state", () => {
 	const handlers = register();
 	const { calls, ctx } = createContext();
 	emit(handlers, "session_start", ctx);

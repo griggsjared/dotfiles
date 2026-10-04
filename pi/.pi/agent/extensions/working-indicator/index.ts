@@ -274,15 +274,9 @@ function messageCharacters(content: readonly { type: string; text?: string; thin
 function styleWorkingText(
 	text: string,
 	colorize: (color: PatternColor, text: string) => string,
-	pattern: WorkingPattern,
-	offset: number,
-	colors: PaletteColor[],
-	intensityDirection: IntensityDirection,
+	color: PatternColor,
 ): string {
-	const characters = [...text];
-	return characters.map((character, index) =>
-		colorize(patternColor(pattern, index, characters.length, offset, colors, intensityDirection), character),
-	).join("");
+	return colorize(color, text);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -342,11 +336,10 @@ export default function (pi: ExtensionAPI) {
 			const intensityDirection: IntensityDirection = randomizeIntensity && Math.random() < 0.5
 				? "darken"
 				: "brighten";
-			return {
-				pattern,
-				colors: pattern === "rainbow" || pattern === "palettePulse" ? [...THEME_COLORS] : [color],
-				intensityDirection,
-			};
+			const colors = pattern === "rainbow" || pattern === "palettePulse" ? [...THEME_COLORS] : [color];
+			const sharedColor = colors[Math.floor(Math.random() * colors.length)] ?? "accent";
+			const intensity = patternColor(pattern, 0, 1, 0, colors, intensityDirection).intensity;
+			return { color: { color: sharedColor, intensity } };
 		});
 		const spinnerFramesPerWord = WORD_INTERVAL_MS / SPINNER_INTERVAL_MS;
 		const styleColor = (styledColor: PatternColor, text: string): string => {
@@ -355,16 +348,11 @@ export default function (pi: ExtensionAPI) {
 			if (styledColor.intensity === "dim") return `\x1b[2m${colored}\x1b[22m`;
 			return colored;
 		};
-		const spinnerFrames = plans.flatMap(({ pattern, colors, intensityDirection }) => {
+		const spinnerFrames = plans.flatMap(({ color }) => {
 			const symbols = SPINNER_SYMBOLS;
 			return Array.from({ length: spinnerFramesPerWord }, (_, frameIndex) => {
-				const symbolIndex = frameIndex % symbols.length;
-				const colorOffset = Math.floor(frameIndex * SPINNER_INTERVAL_MS / COLOR_INTERVAL_MS);
-				const symbol = symbols[symbolIndex] ?? symbols[0] ?? "✻";
-				return styleColor(
-					patternColor(pattern, symbolIndex, symbols.length, colorOffset, colors, intensityDirection),
-					symbol,
-				);
+				const symbol = symbols[frameIndex % symbols.length] ?? symbols[0] ?? "✻";
+				return styleColor(color, symbol);
 			});
 		});
 		let lastWordCycle = -1;
@@ -374,7 +362,6 @@ export default function (pi: ExtensionAPI) {
 		let lastWorkingSecond = -1;
 		let lastWorkingBucket = "";
 		let lastWorkingTokens = "";
-		let lastWorkingColorFrame = -1;
 		renderWorkingMessage = () => {
 			if (runId !== workingRunId || !isCurrentWorkingGeneration(generation)) return;
 			const elapsed = Date.now() - startedAt;
@@ -389,20 +376,14 @@ export default function (pi: ExtensionAPI) {
 			if (!plan) return;
 			const second = Math.floor(elapsed / 1000);
 			const tokenDisplay = formatTokens(outputTokens);
-			const colorFrame = Math.floor(elapsed / COLOR_INTERVAL_MS);
-			if (second === lastWorkingSecond && bucket === lastWorkingBucket && tokenDisplay === lastWorkingTokens && colorFrame === lastWorkingColorFrame) return;
+			if (second === lastWorkingSecond && bucket === lastWorkingBucket && tokenDisplay === lastWorkingTokens) return;
 			lastWorkingSecond = second;
 			lastWorkingBucket = bucket;
 			lastWorkingTokens = tokenDisplay;
-			lastWorkingColorFrame = colorFrame;
-			const { pattern, colors, intensityDirection } = plan;
 			const message = styleWorkingText(
 				`${currentWord}…`,
-				(style, character) => styleColor(style, character),
-				pattern,
-				colorFrame,
-				colors,
-				intensityDirection,
+				(style, text) => styleColor(style, text),
+				plan.color,
 			);
 			const details = `(${formatDuration(elapsed)} · ↓ ${tokenDisplay} tokens)`;
 			const workingMessage = `${message} ${ctx.ui.theme.fg("dim", details)}`;

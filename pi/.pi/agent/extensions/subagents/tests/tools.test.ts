@@ -23,7 +23,7 @@ import {
   createStatusTool,
   registerStatusCommands,
 } from "../status-tools.ts";
-import { EMPTY_USAGE, ENTRY_TYPE, PROFILE_ENTRY_TYPE, QUESTION_ENTRY_TYPE } from "../types.ts";
+import { EMPTY_USAGE, ENTRY_TYPE, PROFILE_ENTRY_TYPE, QUESTION_ENTRY_TYPE, STATUS_KEY } from "../types.ts";
 import {
   FakeChild,
   fakeSpawn,
@@ -792,6 +792,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
   const cases: Array<{
     name: string; mode: "print" | "tui"; profiles: Record<string, unknown>; flag?: string;
     profile?: string; model?: string; thinking?: string; error?: RegExp; rearm?: boolean;
+    restored?: string; live?: boolean;
   }> = [
     { name: "zero profiles", mode: "print", profiles: {}, model: "p/m", thinking: "high" },
     { name: "sole profile", mode: "print", profiles: { primary: profiles.primary }, profile: "primary", model: "primary/model", thinking: "high" },
@@ -800,7 +801,10 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
     { name: "unknown flag rejects the launch", mode: "print", profiles, flag: "missing", error: /Unknown subagent profile "missing"/ },
     { name: "inherited object properties are not profiles", mode: "print", profiles, flag: "constructor", error: /Unknown subagent profile "constructor"/ },
     { name: "disabled flag rejects the launch", mode: "print", profiles: { ...profiles, backup: { ...profiles.backup, enabled: false } }, flag: "backup", error: /Unknown subagent profile "backup"/ },
-    { name: "interactive launch requires a choice", mode: "tui", profiles, profile: "primary", model: "primary/model", thinking: "high" },
+    { name: "interactive zero profiles", mode: "tui", profiles: {}, model: "p/m", thinking: "high" },
+    { name: "interactive sole profile is inferred", mode: "tui", profiles: { primary: profiles.primary }, profile: "primary", model: "primary/model", thinking: "high", rearm: true },
+    { name: "interactive restored profile still requires confirmation", mode: "tui", profiles, restored: "backup", profile: "primary", model: "primary/model", thinking: "high" },
+    { name: "interactive launch requires a choice", mode: "tui", profiles, profile: "primary", model: "primary/model", thinking: "high", live: true },
     { name: "interactive flag confirms a choice until the model changes", mode: "tui", profiles, flag: "backup", profile: "backup", model: "backup/model", thinking: "medium", rearm: true },
   ];
   for (const entry of cases) {
@@ -813,8 +817,11 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
       const tools = new Map<string, ReturnType<typeof createSubagentTool>>();
       const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
       const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
+      const shortcuts = new Map<string, { handler: (ctx: unknown) => Promise<void> | void }>();
       const flags: Array<[string, string]> = [];
       const entries = spy();
+      const statuses = spy();
+      let latestStatuses = statuses;
       const titles: string[] = [];
       const notices: string[] = [];
       const pi = {
@@ -822,7 +829,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         getFlag: () => entry.flag,
         registerTool: (tool: ReturnType<typeof createSubagentTool>) => tools.set(tool.name, tool),
         registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
-        registerShortcut: () => {},
+        registerShortcut: (key: string, shortcut: { handler: (ctx: unknown) => Promise<void> | void }) => shortcuts.set(key, shortcut),
         registerEntryRenderer: () => {},
         registerMessageRenderer: () => {},
         on: (event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(event, handler),
@@ -839,21 +846,25 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         hasUI: entry.mode === "tui",
         isIdle: () => true,
         sessionManager: {
-          getEntries: () => entry.mode === "tui" && entry.flag === undefined ? [] : [
-            { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "primary" } },
+          getEntries: () => entry.mode === "tui" && entry.flag === undefined && !entry.restored ? [] : [
+            { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: entry.restored ?? "primary" } },
           ],
         },
         ui: {
           notify: (text: string) => notices.push(text),
           select: async (title: string) => { titles.push(title); return "primary"; },
           setWidget: () => {},
-          setStatus: () => {},
+          setStatus: statuses.fn,
         },
       } as unknown as ExtensionToolContext;
       try {
         await subagentsExtension(pi);
         assert.deepEqual(flags, [["subagent-profile", "string"]]);
+        assert.deepEqual(statuses.calls, []);
         await handlers.get("session_start")!({}, ctx);
+        const names = Object.keys(entry.profiles);
+        const initialProfile = entry.flag ?? entry.restored ?? (names.length === 1 ? names[0] : undefined);
+        assert.deepEqual(statuses.calls, entry.mode === "tui" ? [[PROFILE_ENTRY_TYPE, initialProfile]] : []);
         const tool = tools.get("subagent")!;
         if (entry.error) {
           await assert.rejects(tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx), entry.error);
@@ -868,7 +879,8 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         }
         const result = await tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx);
         assert.equal(result.details.profile, entry.profile);
-        assert.deepEqual(titles, entry.mode === "tui" && !entry.flag ? ["Subagent profile (active: none)"] : []);
+        assert.deepEqual(titles, entry.mode === "tui" && !entry.flag && names.length > 1 ? [`Subagent profile (active: ${initialProfile ?? "none"})`] : []);
+        assert.deepEqual(statuses.calls.at(-1), entry.mode === "tui" ? [PROFILE_ENTRY_TYPE, entry.profile] : undefined);
         await sleep(10);
         assert.equal(calls.length, 1);
         const args = calls[0]!.args;
@@ -878,19 +890,59 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         children[0]!.finish(0);
         await sleep(20);
         if (entry.rearm) {
+          const beforeModelSelect = [...statuses.calls];
+          await handlers.get("model_select")!({ source: "restore" }, ctx);
+          assert.deepEqual(statuses.calls, beforeModelSelect);
           await handlers.get("model_select")!({ source: "set" }, ctx);
+          const hasMultipleProfiles = Object.keys(entry.profiles).length > 1;
+          assert.deepEqual(statuses.calls, hasMultipleProfiles
+            ? [...beforeModelSelect, [PROFILE_ENTRY_TYPE, undefined]]
+            : beforeModelSelect);
           const next = await tool.execute("next", { agent: "scout", task: "t" }, undefined, undefined, ctx);
           assert.equal(next.details.profile, "primary");
-          assert.deepEqual(titles, ["Subagent profile (active: backup)"]);
-          assert.ok(entries.calls.some((call) => call[0] === PROFILE_ENTRY_TYPE));
+          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "primary"]);
+          assert.deepEqual(titles, hasMultipleProfiles ? ["Subagent profile (active: none)"] : []);
+          assert.equal(entries.calls.some((call) => call[0] === PROFILE_ENTRY_TYPE), hasMultipleProfiles);
           await sleep(10);
           assert.equal(calls.length, 2);
           children[1]!.stdout.emit("data", Buffer.from(endEvent("done")));
           children[1]!.finish(0);
           await sleep(20);
         }
+        if (entry.live) {
+          const command = commands.get("subagent-profile")!;
+          await command.handler("backup", ctx);
+          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
+          const beforeInvalid = [...statuses.calls];
+          await command.handler("missing", ctx);
+          assert.deepEqual(statuses.calls, beforeInvalid);
+          await command.handler("", ctx);
+          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "primary"]);
+          await shortcuts.get("ctrl+shift+l")!.handler({
+            ...ctx,
+            ui: { ...ctx.ui, select: async () => "backup" },
+          });
+          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
+
+          const resetStatuses = spy();
+          const resetCtx = { ...ctx, ui: { ...ctx.ui, setStatus: resetStatuses.fn } };
+          await handlers.get("session_start")!({}, resetCtx);
+          latestStatuses = resetStatuses;
+          assert.deepEqual(resetStatuses.calls, [[PROFILE_ENTRY_TYPE, undefined]]);
+          const beforeReset = [...statuses.calls];
+          for (const key of ["hasUI", "ui"]) {
+            Object.defineProperty(ctx, key, { get: () => { throw new Error("stale context"); } });
+          }
+          await command.handler("backup", resetCtx);
+          assert.deepEqual(resetStatuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
+          assert.deepEqual(statuses.calls, beforeReset);
+        }
       } finally {
         await handlers.get("session_shutdown")?.({}, ctx);
+        assert.deepEqual(latestStatuses.calls.slice(-2), entry.mode === "tui" ? [
+          [STATUS_KEY, undefined],
+          [PROFILE_ENTRY_TYPE, undefined],
+        ] : []);
         t.mock.restoreAll();
         syncBuiltinESMExports();
       }

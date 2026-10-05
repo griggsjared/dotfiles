@@ -51,7 +51,11 @@ export default async function (pi: ExtensionAPI) {
   const profileDeps = {
     settings,
     getActiveProfile: () => activeProfile,
-    setActiveProfile: (name: string) => { activeProfile = name; profileConfirmed = true; },
+    setActiveProfile: (name: string) => {
+      activeProfile = name;
+      profileConfirmed = true;
+      if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, activeProfile);
+    },
     needsConfirmation: () => !profileConfirmed,
   };
 
@@ -74,8 +78,8 @@ export default async function (pi: ExtensionAPI) {
     bridgeExtensionPath: join(__dirname, "child-bridge.ts"),
     extensionPaths,
     onUiContext: ({ hasUI, ui }) => {
-      // Only hasUI/ui are used later (session_shutdown widget clearing); keep
-      // just that subset so the full context isn't pinned for the session.
+      // Only hasUI/ui are used later; keep just that subset so the full
+      // context isn't pinned for the session.
       lastUiContext = { hasUI, ui };
     },
     refresh: (ctx) => refreshUi(ctx, registry),
@@ -96,10 +100,18 @@ export default async function (pi: ExtensionAPI) {
       ? requested
       : restoreActiveProfile(ctx.mode === "tui" ? ctx.sessionManager.getEntries() : [], settings);
     profileConfirmed = typeof requested === "string";
+    const { hasUI, ui } = ctx;
+    lastUiContext = { hasUI, ui };
+    if (hasUI) ui.setStatus(PROFILE_ENTRY_TYPE, activeProfile);
   });
 
   pi.on("model_select", (event) => {
-    if (reArmsProfileGate(event.source)) profileConfirmed = false;
+    if (!reArmsProfileGate(event.source)) return;
+    profileConfirmed = false;
+    if (Object.keys(settings.profiles).length > 1) {
+      activeProfile = undefined;
+      if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
+    }
   });
 
   pi.on("session_shutdown", () => {
@@ -110,6 +122,7 @@ export default async function (pi: ExtensionAPI) {
       try {
         lastUiContext.ui.setWidget(WIDGET_KEY, []);
         lastUiContext.ui.setStatus(STATUS_KEY, undefined);
+        lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
       } catch { /* stale ctx after session change */ }
     }
   });

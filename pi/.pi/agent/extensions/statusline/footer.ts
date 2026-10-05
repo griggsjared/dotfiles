@@ -138,6 +138,11 @@ export function registerStatusline(pi: ExtensionAPI) {
 						line += theme.fg("success", ` ${ctx.thinkingLevel}`);
 					}
 
+					const profile = statuses.get("subagent-profile");
+					if (profile) {
+						line += theme.fg("accent", ` s:${profile}`);
+					}
+
 					//Context usage
 					const contextUsage = ctx.getContextUsage();
 					if (contextUsage && contextUsage.tokens !== null && contextUsage.contextWindow > 0) {
@@ -165,16 +170,6 @@ export function registerStatusline(pi: ExtensionAPI) {
 					const providerText = model?.provider ?? "";
 					const reserved = providerText ? visibleWidth(providerText) + 3 : 0;
 					const fitsLine = (text: string) => visibleWidth(line) + 1 + visibleWidth(text) + reserved <= width;
-					if (usageReady && usage.windows.length > 0) {
-						const usageWidth = Math.max(0, width - visibleWidth(line) - reserved);
-						line += ` ${theme.fg("dim", formatFooterUsage(usage, Date.now(), usageWidth))}`;
-					} else if (isQuotaProvider(model?.provider) && !usageReady) {
-						line += ` ${theme.fg("dim", "quota:?")}`;
-					}
-					if (usageReady && usage.balance) {
-						const text = formatFooterBalance(usage.balance);
-						if (fitsLine(text)) line += ` ${theme.fg("dim", text)}`;
-					}
 					const cost = costCache.cost;
 					if (cost > 0 && !isQuotaProvider(model?.provider)) {
 						const text = `s:$${cost.toFixed(3)}`;
@@ -182,16 +177,31 @@ export function registerStatusline(pi: ExtensionAPI) {
 					}
 
 					// ── Provider (right-aligned) ──
+					let right = "";
+					if (usageReady && usage.windows.length > 0) {
+						const usageWidth = Math.max(0, width - visibleWidth(line) - reserved);
+						const text = formatFooterUsage(usage, Date.now(), usageWidth);
+						if (text) right = theme.fg("dim", text);
+					} else if (isQuotaProvider(model?.provider) && !usageReady) {
+						right = theme.fg("dim", "quota:?");
+					}
+					if (usageReady && usage.balance) {
+						const text = formatFooterBalance(usage.balance);
+						if (visibleWidth(line) + visibleWidth(right) + (right ? 1 : 0) + visibleWidth(text) + reserved <= width) {
+							right += `${right ? " " : ""}${theme.fg("dim", text)}`;
+						}
+					}
 					const provider = providerText ? theme.fg("muted", providerText) : "";
-					const gap = width - visibleWidth(line) - visibleWidth(provider);
+					right += `${right && provider ? " " : ""}${provider}`;
+					const gap = width - visibleWidth(line) - visibleWidth(right);
 
 					const result = gap >= 2
-						? line + " ".repeat(gap) + provider
+						? line + " ".repeat(gap) + right
 						: truncateToWidth(line, Math.max(0, width - visibleWidth("...")), "...");
 
 					// ── Show remaining extension statuses on subsequent lines ──
 					const rest = Array.from(statuses.entries())
-						.filter(([key]) => key !== "modes" && key !== USAGE_STATUS_KEY)
+						.filter(([key]) => key !== "modes" && key !== "subagent-profile" && key !== USAGE_STATUS_KEY)
 						.sort(([a], [b]) => a.localeCompare(b))
 						.map(([, text]) => text);
 					if (rest.length > 0) {

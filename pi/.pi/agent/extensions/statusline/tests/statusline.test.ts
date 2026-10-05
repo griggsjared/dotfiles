@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { calculateFooterCacheHit, calculateFooterCost, decodeFooterUsageStatus, formatFooterBalance, formatFooterReset, formatFooterUsage, registerStatusline } from "../footer.ts";
 
 test("formats shared usage status", () => {
@@ -171,7 +172,7 @@ test("formats balances by currency", () => {
 	assert.equal(formatFooterBalance({ amount: 1, currency: "EUR" }), "b:EUR 1.00");
 });
 
-test("shows session cost and remaining balance together for DeepSeek", () => {
+test("keeps session cost left and right-aligns balance beside DeepSeek", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
@@ -189,14 +190,17 @@ test("shows session cost and remaining balance together for DeepSeek", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const line = rendered.render(120)[0];
-		assert.match(line, /b:\$42\.50/);
-		assert.match(line, /s:\$0\.042/);
+		assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}b:\$42\.50 deepseek$/);
+		assert.equal(line.length, 120);
+		assert.equal(rendered.render(47)[0], "DeepSeek V4.1 Flash s:$0.042  b:$42.50 deepseek");
+		assert.doesNotMatch(rendered.render(46)[0], /b:/);
+		assert.equal(rendered.render(39)[0], "DeepSeek V4.1 Flash s:$0.042   deepseek");
 	} finally {
 		rendered?.dispose();
 	}
 });
 
-test("shows session cost for a balance provider even when the balance is missing", () => {
+test("keeps session cost left for nonquota providers without a balance", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
@@ -211,32 +215,65 @@ test("shows session cost for a balance provider even when the balance is missing
 	try {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
-		const line = rendered.render(120)[0];
-		assert.match(line, /s:\$0\.042/);
-		assert.doesNotMatch(line, /quota:\?/);
+		for (const provider of ["deepseek", "anthropic"]) {
+			context.model.provider = provider;
+			const line = rendered.render(120)[0];
+			assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}/);
+			assert.ok(line.endsWith(provider));
+			assert.equal(line.length, 120);
+			assert.doesNotMatch(line, /quota:\?/);
+		}
 	} finally {
 		rendered?.dispose();
 	}
 });
 
-test("keeps the quota placeholder and hides cost for quota providers", () => {
+test("right-aligns quota windows and the pending marker beside the provider without session cost", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
-	const statuses = new Map([["provider-usage", JSON.stringify({ provider: "openai-codex", state: "unknown", capturedAtMs: 0, windows: [] })]]);
+	const statuses = new Map([
+		["provider-usage", JSON.stringify({ provider: "openai-codex", state: "unknown", capturedAtMs: 0, windows: [] })],
+		["subagent-profile", "review"],
+	]);
 	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
 	const context = {
-		model: { name: "GPT-5.6 Luna", provider: "openai-codex" }, thinkingLevel: "off",
-		getContextUsage: () => undefined,
-		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.042 } } } }] },
+		model: { name: "GPT-5.6 Luna", provider: "openai-codex" }, thinkingLevel: "high",
+		getContextUsage: () => ({ tokens: 1000, contextWindow: 200000 }),
+		sessionManager: { getLeafId: () => null, getBranch: () => [{ type: "message", message: { role: "assistant", usage: { input: 25, cacheRead: 75, cacheWrite: 0, cost: { total: 0.042 } } } }] },
 		ui: { setFooter(callback: any) { footer = callback; } },
 	};
 	try {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		const left = "GPT-5.6 Luna high s:review 1.0k/200k C75%";
+		const pending = "quota:? openai-codex";
 		const line = rendered.render(120)[0];
-		assert.match(line, /quota:\?/);
+		assert.equal(line, left + " ".repeat(120 - left.length - pending.length) + pending);
+		assert.equal(rendered.render(left.length + 2 + pending.length)[0], `${left}  ${pending}`);
 		assert.doesNotMatch(line, /s:\$/);
+		assert.deepEqual(rendered.render(120).slice(1), []);
+
+		statuses.set("provider-usage", JSON.stringify({
+			provider: "openai-codex", state: "ready", capturedAtMs: 0,
+			windows: [
+				{ kind: "monthly", label: "30d", usedPercent: 30, resetAtMs: 1 },
+				{ kind: "rolling", label: "5h", usedPercent: 10, resetAtMs: 1 },
+				{ kind: "weekly", label: "7d", usedPercent: 20, resetAtMs: 1 },
+			],
+			balance: { amount: 42.5, currency: "USD" },
+		}));
+		const right = "10%(now) 20%(now) 30%(now) b:$42.50 openai-codex";
+		assert.equal(rendered.render(120)[0], left + " ".repeat(120 - left.length - right.length) + right);
+		assert.deepEqual(rendered.render(120).slice(1), []);
+		const compact = "10% 20% 30% openai-codex";
+		assert.equal(rendered.render(left.length + 2 + compact.length)[0], `${left}  ${compact}`);
+		const truncated = "10% openai-codex";
+		assert.equal(rendered.render(left.length + 2 + truncated.length)[0].replace(/\x1b\[[0-9;]*m/g, ""), `${left}  ${truncated}`);
+		for (const width of [0, 1, 2, 4, 20, 40, 80, 120]) {
+			assert.ok(visibleWidth(rendered.render(width)[0]) <= width);
+			assert.doesNotMatch(rendered.render(width)[0], /s:\$/);
+		}
 	} finally {
 		rendered?.dispose();
 	}
@@ -260,11 +297,58 @@ test("never clips balance or cost mid-number on narrow footers", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const wide = rendered.render(120)[0];
-		assert.match(wide, /b:\$123456\.78/);
-		assert.match(wide, /s:\$0\.042/);
+		assert.match(wide, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}b:\$123456\.78 deepseek$/);
+		assert.equal(wide.length, 120);
 		const narrow = rendered.render(36)[0].replace(/\x1b\[[0-9;]*m/g, "");
 		assert.doesNotMatch(narrow, /b:|s:/);
-		assert.match(narrow, /deepseek/);
+		assert.match(narrow, /deepseek$/);
+		for (let width = 0; width <= 120; width++) {
+			const line = rendered.render(width)[0];
+			assert.ok(visibleWidth(line) <= width);
+			if (line.includes("b:")) assert.match(line, /b:\$123456\.78 deepseek$/);
+			if (line.includes("s:$")) assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}/);
+		}
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("renders the subagent profile inline and reflects updates without duplicating job rows", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: any;
+	let rendered: any;
+	const statuses = new Map([["subagents", "jobs:1 running"], ["modes", "plan"], ["other", "other status"]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "model", provider: "anthropic" }, thinkingLevel: "high" as string | undefined,
+		getContextUsage: () => ({ tokens: 1000, contextWindow: 200000 }),
+		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => statuses });
+		const absent = rendered.render(120);
+		assert.match(absent[0], /^\[p\] model high 1\.0k\/200k/);
+		assert.doesNotMatch(absent[0], /s:/);
+		assert.deepEqual(absent.slice(1), ["other status", "jobs:1 running"]);
+		statuses.set("subagent-profile", "review");
+		const active = rendered.render(120);
+		assert.match(active[0], /^\[p\] model high s:review 1\.0k\/200k/);
+		assert.deepEqual(active.slice(1), ["other status", "jobs:1 running"]);
+		statuses.set("subagent-profile", "implement");
+		const updated = rendered.render(120);
+		assert.match(updated[0], /^\[p\] model high s:implement 1\.0k\/200k/);
+		assert.doesNotMatch(updated[0], /review/);
+		for (const effort of ["off", undefined]) {
+			context.thinkingLevel = effort;
+			assert.match(rendered.render(120)[0], /^\[p\] model s:implement 1\.0k\/200k/);
+		}
+		statuses.delete("subagent-profile");
+		const unset = rendered.render(120);
+		assert.match(unset[0], /^\[p\] model 1\.0k\/200k/);
+		assert.doesNotMatch(unset[0], /s:/);
+		assert.deepEqual(unset.slice(1), ["other status", "jobs:1 running"]);
 	} finally {
 		rendered?.dispose();
 	}
@@ -274,7 +358,11 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: any;
 	let rendered: any;
-	const statuses = new Map([["provider-usage", JSON.stringify({ provider: "openai-codex", state: "ready", capturedAtMs: 0, windows: [{ kind: "rolling", label: "5h", usedPercent: 42, resetAtMs: 0 }] })]]);
+	const statuses = new Map([
+		["provider-usage", JSON.stringify({ provider: "openai-codex", state: "ready", capturedAtMs: 0, windows: [{ kind: "rolling", label: "5h", usedPercent: 42, resetAtMs: 0 }] })],
+		["subagent-profile", "a-very-long-selected-profile-name"],
+		["subagents", "jobs:1 running"],
+	]);
 	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
 	let contextTokens = 1000;
 	const context = {
@@ -286,18 +374,26 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 	try {
 		handlers.get("session_start")?.({}, context);
 		const ansi = (color: string, value: string) => {
-			const codes: Record<string, number> = { success: 32, error: 31, warning: 33, borderAccent: 34, dim: 2, muted: 90 };
+			const codes: Record<string, number | string> = { accent: "38;2;230;151;92", success: 32, error: 31, warning: 33, borderAccent: 34, dim: 2, muted: 90 };
 			return `\x1b[${codes[color] ?? 37}m${value}\x1b[0m`;
 		};
 		rendered = footer({ invalidate() {} }, { fg: ansi, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
+		assert.match(rendered.render(120)[0], /\x1b\[38;2;230;151;92m s:a-very-long-selected-profile-name\x1b\[0m/);
 		assert.match(rendered.render(120)[0], /\x1b\[34m1\.0k\/1m\x1b\[0m/);
 		assert.match(rendered.render(120)[0], /\x1b\[33mC75%\x1b\[0m/);
+		const wide = rendered.render(120)[0].replace(/\x1b\[[0-9;]*m/g, "");
+		assert.match(wide, /^a-very-long-model-name s:a-very-long-selected-profile-name 1\.0k\/1m C75% {2,}42% openai-codex$/);
+		assert.equal(wide.length, 120);
 		contextTokens = 200000;
 		assert.match(rendered.render(120)[0], /\x1b\[31m200k\/1m\x1b\[0m/);
 		const lines = rendered.render(20);
-		assert.equal(lines.length, 1);
-		assert.ok([...lines[0]].length >= 0);
-		assert.ok(lines[0].replace(/\x1b\[[0-9;]*m/g, "").length <= 20);
+		assert.equal(lines.length, 2);
+		assert.equal(lines[1], "jobs:1 running");
+		for (const width of [0, 1, 2, 4, 20, 40, 80, 120]) {
+			for (const line of rendered.render(width)) {
+				assert.ok(visibleWidth(line) <= width);
+			}
+		}
 	} finally {
 		rendered?.dispose();
 	}

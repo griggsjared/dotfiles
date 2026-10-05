@@ -241,7 +241,7 @@ function patternColor(
 			return index === first ? primary : index === second ? secondary : base;
 		}
 		case "rainbow":
-			return { color: colors[(index + offset) % colors.length] ?? color, intensity: "normal" };
+			return { color: colors[offset % colors.length] ?? color, intensity: "normal" };
 		case "palettePulse": {
 			const colorIndex = Math.floor(offset * COLOR_INTERVAL_MS / PALETTE_PULSE_INTERVAL_MS) % colors.length;
 			return { color: colors[colorIndex] ?? color, intensity: "normal" };
@@ -274,9 +274,15 @@ function messageCharacters(content: readonly { type: string; text?: string; thin
 function styleWorkingText(
 	text: string,
 	colorize: (color: PatternColor, text: string) => string,
-	color: PatternColor,
+	pattern: WorkingPattern,
+	offset: number,
+	colors: PaletteColor[],
+	intensityDirection: IntensityDirection,
 ): string {
-	return colorize(color, text);
+	const characters = [...text];
+	return characters.map((character, index) =>
+		colorize(patternColor(pattern, index, characters.length, offset, colors, intensityDirection), character),
+	).join("");
 }
 
 export default function (pi: ExtensionAPI) {
@@ -336,25 +342,19 @@ export default function (pi: ExtensionAPI) {
 			const intensityDirection: IntensityDirection = randomizeIntensity && Math.random() < 0.5
 				? "darken"
 				: "brighten";
-			const colors = pattern === "rainbow" || pattern === "palettePulse" ? [...THEME_COLORS] : [color];
-			const sharedColor = colors[Math.floor(Math.random() * colors.length)] ?? "accent";
-			const intensity = patternColor(pattern, 0, 1, 0, colors, intensityDirection).intensity;
-			return { color: { color: sharedColor, intensity } };
+			return {
+				pattern,
+				colors: pattern === "rainbow" || pattern === "palettePulse" ? [...THEME_COLORS] : [color],
+				intensityDirection,
+			};
 		});
-		const spinnerFramesPerWord = WORD_INTERVAL_MS / SPINNER_INTERVAL_MS;
 		const styleColor = (styledColor: PatternColor, text: string): string => {
 			const colored = ctx.ui.theme.fg(styledColor.color, text);
 			if (styledColor.intensity === "bright") return ctx.ui.theme.bold(colored);
 			if (styledColor.intensity === "dim") return `\x1b[2m${colored}\x1b[22m`;
 			return colored;
 		};
-		const spinnerFrames = plans.flatMap(({ color }) => {
-			const symbols = SPINNER_SYMBOLS;
-			return Array.from({ length: spinnerFramesPerWord }, (_, frameIndex) => {
-				const symbol = symbols[frameIndex % symbols.length] ?? symbols[0] ?? "✻";
-				return styleColor(color, symbol);
-			});
-		});
+		let lastSpinnerFrame = "";
 		let lastWordCycle = -1;
 		let lastBucket = "";
 		let currentWord = "";
@@ -362,6 +362,7 @@ export default function (pi: ExtensionAPI) {
 		let lastWorkingSecond = -1;
 		let lastWorkingBucket = "";
 		let lastWorkingTokens = "";
+		let lastWorkingColorFrame = -1;
 		renderWorkingMessage = () => {
 			if (runId !== workingRunId || !isCurrentWorkingGeneration(generation)) return;
 			const elapsed = Date.now() - startedAt;
@@ -374,16 +375,29 @@ export default function (pi: ExtensionAPI) {
 			}
 			const plan = plans[cycle % plans.length];
 			if (!plan) return;
+			const { pattern, colors, intensityDirection } = plan;
+			const colorFrame = Math.floor(elapsed / COLOR_INTERVAL_MS);
+			const text = `${currentWord}…`;
+			const symbol = SPINNER_SYMBOLS[Math.floor(elapsed / SPINNER_INTERVAL_MS) % SPINNER_SYMBOLS.length] ?? "✻";
+			const spinnerFrame = styleColor(patternColor(pattern, 0, [...text].length, colorFrame, colors, intensityDirection), symbol);
+			if (spinnerFrame !== lastSpinnerFrame) {
+				lastSpinnerFrame = spinnerFrame;
+				ctx.ui.setWorkingIndicator({ frames: [spinnerFrame], intervalMs: SPINNER_INTERVAL_MS });
+			}
 			const second = Math.floor(elapsed / 1000);
 			const tokenDisplay = formatTokens(outputTokens);
-			if (second === lastWorkingSecond && bucket === lastWorkingBucket && tokenDisplay === lastWorkingTokens) return;
+			if (second === lastWorkingSecond && bucket === lastWorkingBucket && tokenDisplay === lastWorkingTokens && colorFrame === lastWorkingColorFrame) return;
 			lastWorkingSecond = second;
 			lastWorkingBucket = bucket;
 			lastWorkingTokens = tokenDisplay;
+			lastWorkingColorFrame = colorFrame;
 			const message = styleWorkingText(
-				`${currentWord}…`,
-				(style, text) => styleColor(style, text),
-				plan.color,
+				text,
+				(style, character) => styleColor(style, character),
+				pattern,
+				colorFrame,
+				colors,
+				intensityDirection,
 			);
 			const details = `(${formatDuration(elapsed)} · ↓ ${tokenDisplay} tokens)`;
 			const workingMessage = `${message} ${ctx.ui.theme.fg("dim", details)}`;
@@ -394,30 +408,15 @@ export default function (pi: ExtensionAPI) {
 		};
 		renderWorkingMessage();
 		ctx.ui.setWorkingVisible(true);
-		const resyncSpinner = (cycle: number) => {
-			const start = (cycle % plans.length) * spinnerFramesPerWord;
-			ctx.ui.setWorkingIndicator({
-				frames: [...spinnerFrames.slice(start), ...spinnerFrames.slice(0, start)],
-				intervalMs: SPINNER_INTERVAL_MS,
-			});
-		};
-		const startCycle = Math.floor((Date.now() - startedAt) / WORD_INTERVAL_MS);
-		resyncSpinner(startCycle);
 		let timer: ReturnType<typeof setInterval>;
-		let lastCycle = startCycle;
 		timer = setInterval(() => {
 			if (runId !== workingRunId || !isCurrentWorkingGeneration(generation)) {
 				clearInterval(timer);
 				liveTimers().delete(timer);
 				return;
 			}
-			const cycle = Math.floor((Date.now() - startedAt) / WORD_INTERVAL_MS);
-			if (cycle !== lastCycle) {
-				lastCycle = cycle;
-				resyncSpinner(cycle);
-			}
 			renderWorkingMessage?.();
-		}, COLOR_INTERVAL_MS);
+		}, SPINNER_INTERVAL_MS);
 		timer.unref?.();
 		liveTimers().add(timer);
 	});

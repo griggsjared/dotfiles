@@ -83,22 +83,47 @@ test("starts and settles the observable working indicator lifecycle", () => {
 	assert.equal(calls.visibility.at(-1), false);
 });
 
-test("uses one color for the spinner and message throughout a word", () => {
-	const handlers = register();
-	const { calls, ctx } = createContext();
-	ctx.ui.theme.fg = (color, text) => `<${color}>${text}</${color}>`;
+for (const [patternIndex, pattern] of ["shimmer", "bounce", "karaoke", "ripple", "sparkle", "rainbow", "palettePulse"].entries()) {
+	for (const direction of ["brighten", "darken"]) {
+		test(`${pattern} animates while keeping spinner and text colors synced (${direction})`, (t) => {
+			t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 50000 });
+			let draws = 0;
+			t.mock.method(Math, "random", () => draws++ === 0 ? patternIndex / 7 : direction === "brighten" ? 0.75 : 0.25);
+			const handlers = register();
+			const { calls, ctx } = createContext();
+			ctx.ui.theme.fg = (color, text) => `<${color}>${text}</${color}>`;
+			ctx.ui.theme.bold = (text) => `\x1b[1m${text}\x1b[22m`;
+			t.after(() => cleanup(handlers, ctx));
+			emit(handlers, "session_start", ctx);
+			emit(handlers, "agent_start", ctx);
 
-	emit(handlers, "session_start", ctx);
-	emit(handlers, "agent_start", ctx);
+			const initialMessage = calls.messages.at(-1);
+			const initialIndicator = calls.indicators.at(-1);
+			t.mock.timers.tick(150);
+			assert.notDeepEqual(calls.indicators.at(-1), initialIndicator);
+			assert.equal(calls.messages.at(-1), initialMessage);
+			t.mock.timers.tick(150);
+			if (pattern === "palettePulse") {
+				assert.equal(calls.messages.at(-1), initialMessage);
+				t.mock.timers.tick(1200);
+			}
+			assert.notEqual(calls.messages.at(-1), initialMessage);
 
-	const messageColor = calls.messages.at(-1)?.match(/<([^>]+)>/)?.[1];
-	const indicator = calls.indicators.at(-1) as { frames: string[] };
-	assert.ok(messageColor);
-	assert.ok(indicator.frames.length > 0);
-	assert.ok(indicator.frames.slice(0, 60).every((frame) => frame.startsWith(`<${messageColor}>`)));
-
-	cleanup(handlers, ctx);
-});
+			for (let frameIndex = 0; frameIndex < 64; frameIndex++) {
+				const message = calls.messages.at(-1);
+				assert.ok(message);
+				const indicator = calls.indicators.at(-1) as { frames: string[] };
+				assert.equal(indicator.frames.length, 1);
+				const frame = indicator.frames[0]!;
+				const firstCharacter = message.replace(/\x1b\[[\d;]*m|<\/?[^>]+>/g, "")[0]!;
+				assert.ok(message.startsWith(frame.replace(/[✻✽✾]/u, firstCharacter)));
+				const wordColors = [...message.split("<dim>")[0]!.matchAll(/<([^/>]+)>/g)].map((match) => match[1]);
+				assert.ok(wordColors.every((color) => color === wordColors[0]));
+				t.mock.timers.tick(150);
+			}
+		});
+	}
+}
 
 test("shutdown invalidates the local generation before cleanup", () => {
 	const handlers = register();
@@ -155,7 +180,8 @@ test("terminal thinking and tool-call events estimate content when no delta arri
 	cleanup(handlers, ctx);
 });
 
-test("message updates render at most once for identical state", () => {
+test("message updates render at most once for identical state in an animation frame", (t) => {
+	t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 50000 });
 	const handlers = register();
 	const { calls, ctx } = createContext();
 	emit(handlers, "session_start", ctx);
@@ -164,8 +190,10 @@ test("message updates render at most once for identical state", () => {
 	const event = { message: assistantMessage(content), assistantMessageEvent: { type: "text_end" } };
 	emit(handlers, "message_update", ctx, event);
 	const count = calls.messages.length;
+	const indicatorCount = calls.indicators.length;
 	emit(handlers, "message_update", ctx, event);
 	assert.equal(calls.messages.length, count);
+	assert.equal(calls.indicators.length, indicatorCount);
 	cleanup(handlers, ctx);
 });
 
@@ -207,12 +235,18 @@ test("a newer runtime makes stale callbacks harmless", () => {
 	cleanup(second, secondContext.ctx);
 });
 
-test("session shutdown clears the active indicator", () => {
+test("session shutdown clears the active indicator and stops animation", (t) => {
+	t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 50000 });
 	const handlers = register();
 	const { calls, ctx } = createContext();
 	emit(handlers, "session_start", ctx);
 	emit(handlers, "agent_start", ctx);
 	emit(handlers, "session_shutdown", ctx);
+	const messageCount = calls.messages.length;
+	const indicatorCount = calls.indicators.length;
+	t.mock.timers.tick(1500);
+	assert.equal(calls.messages.length, messageCount);
+	assert.equal(calls.indicators.length, indicatorCount);
 
 	assert.equal(calls.messages.at(-1), undefined);
 	assert.equal(calls.indicators.at(-1), undefined);

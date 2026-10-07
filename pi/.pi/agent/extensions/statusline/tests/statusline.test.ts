@@ -128,31 +128,34 @@ test("refreshes footer leaf cache for persisted usage and keeps totals branch-lo
 		});
 		handlers.get("session_start")?.({}, context);
 		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => new Map() });
-		assert.match(rendered.render(120)[0], /C75%.*s:\$1\.000/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 1);
 		rendered.render(120);
 		assert.equal(branchReads, 1);
 		const warm = sessionManager.appendUsage("cache_warm", "deepseek", "model", { ...usage(2), input: 100, cacheRead: 0 });
 		assert.equal(sessionManager.getLeafId(), warm.id);
 		assert.equal(warm.parentId, assistantId);
-		assert.match(rendered.render(120)[0], /C75%.*s:\$3\.000/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 3);
 		assert.equal(branchReads, 2);
 		sessionManager.appendUsage("other", "deepseek", "model", usage(3));
-		assert.match(rendered.render(120)[0], /s:\$6\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 6);
 		sessionManager.appendMessage({ role: "toolResult", toolCallId: "call", toolName: "tool", content: [], isError: false, timestamp: 0, usage: usage(4) });
-		assert.match(rendered.render(120)[0], /s:\$10\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 10);
 		sessionManager.appendCompaction("summary", null, 100, undefined, false, usage(5));
-		assert.match(rendered.render(120)[0], /s:\$15\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 15);
 		const summaryId = sessionManager.branchWithSummary(assistantId, "branch", undefined, false, usage(6));
-		assert.match(rendered.render(120)[0], /C75%.*s:\$7\.000/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 7);
 		assert.equal(calculateFooterCost(sessionManager.getEntries()), 21);
 		sessionManager.appendCompaction("legacy", null, 100);
-		assert.match(rendered.render(120)[0], /s:\$7\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 7);
 		sessionManager.branch(assistantId);
-		assert.match(rendered.render(120)[0], /s:\$1\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 1);
 		sessionManager.branch(summaryId);
-		assert.match(rendered.render(120)[0], /s:\$7\.000/);
+		assert.equal(calculateFooterCost(sessionManager.getBranch()), 7);
 		sessionManager.resetLeaf();
-		assert.doesNotMatch(rendered.render(120)[0], /s:\$|C75%/);
+		assert.equal(rendered.render(120)[0], "model" + " ".repeat(107) + "deepseek");
 	} finally {
 		rendered?.dispose();
 		rmSync(directory, { recursive: true, force: true });
@@ -172,7 +175,7 @@ test("formats balances by currency", () => {
 	assert.equal(formatFooterBalance({ amount: 1, currency: "EUR" }), "b:EUR 1.00");
 });
 
-test("keeps session cost left and right-aligns balance beside DeepSeek", () => {
+test("right-aligns balance beside DeepSeek", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
@@ -190,17 +193,17 @@ test("keeps session cost left and right-aligns balance beside DeepSeek", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const line = rendered.render(120)[0];
-		assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}b:\$42\.50 deepseek$/);
+		assert.match(line, /^DeepSeek V4\.1 Flash {2,}b:\$42\.50 deepseek$/);
 		assert.equal(line.length, 120);
-		assert.equal(rendered.render(47)[0], "DeepSeek V4.1 Flash s:$0.042  b:$42.50 deepseek");
-		assert.doesNotMatch(rendered.render(46)[0], /b:/);
-		assert.equal(rendered.render(39)[0], "DeepSeek V4.1 Flash s:$0.042   deepseek");
+		assert.equal(rendered.render(38)[0], "DeepSeek V4.1 Flash  b:$42.50 deepseek");
+		assert.doesNotMatch(rendered.render(37)[0], /b:/);
+		assert.equal(rendered.render(30)[0], "DeepSeek V4.1 Flash   deepseek");
 	} finally {
 		rendered?.dispose();
 	}
 });
 
-test("keeps session cost left for nonquota providers without a balance", () => {
+test("right-aligns nonquota providers without a balance", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
@@ -218,7 +221,7 @@ test("keeps session cost left for nonquota providers without a balance", () => {
 		for (const provider of ["deepseek", "anthropic"]) {
 			context.model.provider = provider;
 			const line = rendered.render(120)[0];
-			assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}/);
+			assert.equal(line, "DeepSeek V4.1 Flash" + " ".repeat(120 - context.model.name.length - provider.length) + provider);
 			assert.ok(line.endsWith(provider));
 			assert.equal(line.length, 120);
 			assert.doesNotMatch(line, /quota:\?/);
@@ -246,7 +249,7 @@ test("right-aligns quota windows and the pending marker beside the provider with
 	try {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
-		const left = "GPT-5.6 Luna high s:review 1.0k/200k C75%";
+		const left = "GPT-5.6 Luna high s:review 1.0k/200k c:75%";
 		const pending = "quota:? openai-codex";
 		const line = rendered.render(120)[0];
 		assert.equal(line, left + " ".repeat(120 - left.length - pending.length) + pending);
@@ -279,7 +282,98 @@ test("right-aligns quota windows and the pending marker beside the provider with
 	}
 });
 
-test("never clips balance or cost mid-number on narrow footers", () => {
+test("colors each quota window at usage thresholds across footer widths", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: any;
+	let rendered: any;
+	const statuses = new Map<string, string>();
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "model", provider: "openai-codex" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		const ansi = (color: string, value: string) => {
+			const codes: Record<string, number> = { error: 31, warning: 33, dim: 2, muted: 90 };
+			return `\x1b[${codes[color] ?? 37}m${value}\x1b[0m`;
+		};
+		rendered = footer({ invalidate() {} }, { fg: ansi }, { getExtensionStatuses: () => statuses });
+		for (const [usedPercent, color] of [[89.99, "dim"], [90, "warning"], [94.99, "warning"], [95, "error"], [100, "error"]] as const) {
+			statuses.set("provider-usage", JSON.stringify({
+				provider: "openai-codex", state: "ready", capturedAtMs: 0,
+				windows: [{ kind: "rolling", label: "5h", usedPercent, resetAtMs: 1 }],
+			}));
+			assert.ok(rendered.render(120)[0].includes(ansi(color, `${Math.round(usedPercent)}%(now)`)));
+			assert.ok(rendered.render(24)[0].includes(ansi(color, `${Math.round(usedPercent)}%`)));
+		}
+		statuses.set("provider-usage", JSON.stringify({
+			provider: "openai-codex", state: "ready", capturedAtMs: 0,
+			windows: [
+				{ kind: "monthly", label: "30d", usedPercent: 20, resetAtMs: 1 },
+				{ kind: "rolling", label: "5h", usedPercent: 95, resetAtMs: 1 },
+				{ kind: "weekly", label: "7d", usedPercent: 90, resetAtMs: 1 },
+			],
+		}));
+		assert.ok(rendered.render(120)[0].includes(`${ansi("error", "95%(now)")} ${ansi("warning", "90%(now)")} ${ansi("dim", "20%(now)")}`));
+		assert.ok(rendered.render(31)[0].includes(`${ansi("error", "95%")} ${ansi("warning", "90%")} ${ansi("dim", "20%")}`));
+		assert.ok(rendered.render(23)[0].includes(ansi("error", "95%")));
+		for (let width = 0; width <= 120; width++) {
+			const line = rendered.render(width)[0];
+			assert.ok(visibleWidth(line) <= width);
+			if (line.includes("openai-codex")) assert.ok(line.endsWith(ansi("muted", "openai-codex")));
+		}
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("colors dollar balances below one dollar and fifty cents", () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: any;
+	let rendered: any;
+	const statuses = new Map<string, string>();
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "model", provider: "deepseek" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		const ansi = (color: string, value: string) => {
+			const codes: Record<string, number> = { error: 31, warning: 33, dim: 2, muted: 90 };
+			return `\x1b[${codes[color] ?? 37}m${value}\x1b[0m`;
+		};
+		rendered = footer({ invalidate() {} }, { fg: ansi }, { getExtensionStatuses: () => statuses });
+		for (const [amount, color] of [[1, "dim"], [0.99, "warning"], [0.5, "warning"], [0.49, "error"], [0, "error"]] as const) {
+			statuses.set("provider-usage", JSON.stringify({
+				provider: "deepseek", state: "ready", capturedAtMs: 0, windows: [], balance: { amount, currency: "USD" },
+			}));
+			const line = rendered.render(120)[0];
+			assert.ok(line.endsWith(`${ansi(color, `b:$${amount.toFixed(2)}`)} ${ansi("muted", "deepseek")}`));
+			assert.equal(visibleWidth(line), 120);
+			const minWidth = 16 + `b:$${amount.toFixed(2)}`.length;
+			assert.ok(rendered.render(minWidth)[0].includes(ansi(color, `b:$${amount.toFixed(2)}`)));
+			for (let width = 0; width < minWidth; width++) {
+				const narrow = rendered.render(width)[0];
+				assert.ok(visibleWidth(narrow) <= width);
+				assert.doesNotMatch(narrow, /b:/);
+			}
+		}
+		statuses.set("provider-usage", JSON.stringify({
+			provider: "deepseek", state: "ready", capturedAtMs: 0, windows: [], balance: { amount: 0.49, currency: "CNY" },
+		}));
+		assert.ok(rendered.render(120)[0].includes(ansi("dim", "b:¥0.49")));
+	} finally {
+		rendered?.dispose();
+	}
+});
+
+test("never clips balance mid-number on narrow footers", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: ((...args: any[]) => any) | undefined;
 	let rendered: any;
@@ -297,16 +391,15 @@ test("never clips balance or cost mid-number on narrow footers", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const wide = rendered.render(120)[0];
-		assert.match(wide, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}b:\$123456\.78 deepseek$/);
+		assert.match(wide, /^DeepSeek V4\.1 Flash {2,}b:\$123456\.78 deepseek$/);
 		assert.equal(wide.length, 120);
 		const narrow = rendered.render(36)[0].replace(/\x1b\[[0-9;]*m/g, "");
-		assert.doesNotMatch(narrow, /b:|s:/);
+		assert.doesNotMatch(narrow, /b:/);
 		assert.match(narrow, /deepseek$/);
 		for (let width = 0; width <= 120; width++) {
 			const line = rendered.render(width)[0];
 			assert.ok(visibleWidth(line) <= width);
 			if (line.includes("b:")) assert.match(line, /b:\$123456\.78 deepseek$/);
-			if (line.includes("s:$")) assert.match(line, /^DeepSeek V4\.1 Flash s:\$0\.042 {2,}/);
 		}
 	} finally {
 		rendered?.dispose();
@@ -380,9 +473,9 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 		rendered = footer({ invalidate() {} }, { fg: ansi, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		assert.match(rendered.render(120)[0], /\x1b\[38;2;230;151;92m s:a-very-long-selected-profile-name\x1b\[0m/);
 		assert.match(rendered.render(120)[0], /\x1b\[34m1\.0k\/1m\x1b\[0m/);
-		assert.match(rendered.render(120)[0], /\x1b\[33mC75%\x1b\[0m/);
+		assert.match(rendered.render(120)[0], /\x1b\[33mc:75%\x1b\[0m/);
 		const wide = rendered.render(120)[0].replace(/\x1b\[[0-9;]*m/g, "");
-		assert.match(wide, /^a-very-long-model-name s:a-very-long-selected-profile-name 1\.0k\/1m C75% {2,}42% openai-codex$/);
+		assert.match(wide, /^a-very-long-model-name s:a-very-long-selected-profile-name 1\.0k\/1m c:75% {2,}42% openai-codex$/);
 		assert.equal(wide.length, 120);
 		contextTokens = 200000;
 		assert.match(rendered.render(120)[0], /\x1b\[31m200k\/1m\x1b\[0m/);

@@ -1,10 +1,10 @@
 /**
  * Custom footer that mimics the Claude Code statusline format.
  *
- * Shows mode, model name, thinking level, context usage, session cost or provider
+ * Shows mode, model name, thinking level, context usage, provider balance or
  * rate limits, and provider — all in a compact Claude-style layout.
  */
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
 	decodeUsageStatus,
@@ -34,18 +34,21 @@ export function formatFooterReset(resetAtMs: number | undefined, now = Date.now(
 	return `${minutes}m`;
 }
 
-export function formatFooterUsage(status: UsageStatus, now = Date.now(), maxWidth = Infinity): string {
+export function formatFooterUsage(status: UsageStatus, now = Date.now(), maxWidth = Infinity, theme?: Pick<Theme, "fg">): string {
 	const windows = [...status.windows]
 		.sort((a, b) => WINDOW_ORDER.indexOf(a.kind) - WINDOW_ORDER.indexOf(b.kind));
-	const full = windows.map((window) => {
-		const reset = formatFooterReset(window.resetAtMs, now);
-		return `${Math.round(window.usedPercent)}%${reset ? `(${reset})` : ""}`;
-	}).join(" ");
+	const formatWindow = (window: UsageStatus["windows"][number], withReset: boolean): string => {
+		const reset = withReset ? formatFooterReset(window.resetAtMs, now) : undefined;
+		const text = `${Math.round(window.usedPercent)}%${reset ? `(${reset})` : ""}`;
+		const color = window.usedPercent >= 95 ? "error" : window.usedPercent >= 90 ? "warning" : "dim";
+		return theme ? theme.fg(color, text) : text;
+	};
+	const full = windows.map((window) => formatWindow(window, true)).join(" ");
 	if (maxWidth === Infinity) return full;
 
 	const width = Number.isFinite(maxWidth) ? Math.max(0, Math.floor(maxWidth)) : 0;
 	if (visibleWidth(full) <= width) return full;
-	const compact = windows.map((window) => `${Math.round(window.usedPercent)}%`).join(" ");
+	const compact = windows.map((window) => formatWindow(window, false)).join(" ");
 	if (visibleWidth(compact) <= width) return compact;
 	const truncated = truncateToWidth(compact, width, "");
 	return visibleWidth(truncated) <= width ? truncated : "";
@@ -103,7 +106,7 @@ function formatTokens(count: number): string {
 
 export function registerStatusline(pi: ExtensionAPI) {
 	let costVersion = 0;
-	let costCache: { version: number; leafId: string | null; cost: number; cacheHit?: number } | undefined;
+	let costCache: { version: number; leafId: string | null; cacheHit?: number } | undefined;
 	const invalidateCost = (): void => {
 		costVersion++;
 	};
@@ -157,38 +160,33 @@ export function registerStatusline(pi: ExtensionAPI) {
 						costCache = {
 							version: costVersion,
 							leafId,
-							cost: calculateFooterCost(branch),
 							cacheHit: calculateFooterCacheHit(branch),
 						};
 					}
 					if (costCache.cacheHit !== undefined) {
-						line += ` ${theme.fg("warning", `C${Math.round(costCache.cacheHit)}%`)}`;
+						line += ` ${theme.fg("warning", `c:${Math.round(costCache.cacheHit)}%`)}`;
 					}
 
 					const usage = decodeFooterUsageStatus(statuses.get(USAGE_STATUS_KEY));
 					const usageReady = usage?.state === "ready" && usage.provider === model?.provider;
 					const providerText = model?.provider ?? "";
 					const reserved = providerText ? visibleWidth(providerText) + 3 : 0;
-					const fitsLine = (text: string) => visibleWidth(line) + 1 + visibleWidth(text) + reserved <= width;
-					const cost = costCache.cost;
-					if (cost > 0 && !isQuotaProvider(model?.provider)) {
-						const text = `s:$${cost.toFixed(3)}`;
-						if (fitsLine(text)) line += ` ${theme.fg("dim", text)}`;
-					}
 
 					// ── Provider (right-aligned) ──
 					let right = "";
 					if (usageReady && usage.windows.length > 0) {
 						const usageWidth = Math.max(0, width - visibleWidth(line) - reserved);
-						const text = formatFooterUsage(usage, Date.now(), usageWidth);
-						if (text) right = theme.fg("dim", text);
+						const text = formatFooterUsage(usage, Date.now(), usageWidth, theme);
+						if (text) right = text;
 					} else if (isQuotaProvider(model?.provider) && !usageReady) {
 						right = theme.fg("dim", "quota:?");
 					}
 					if (usageReady && usage.balance) {
 						const text = formatFooterBalance(usage.balance);
 						if (visibleWidth(line) + visibleWidth(right) + (right ? 1 : 0) + visibleWidth(text) + reserved <= width) {
-							right += `${right ? " " : ""}${theme.fg("dim", text)}`;
+							const color = usage.balance.currency === "USD" && usage.balance.amount < 0.5 ? "error"
+								: usage.balance.currency === "USD" && usage.balance.amount < 1 ? "warning" : "dim";
+							right += `${right ? " " : ""}${theme.fg(color, text)}`;
 						}
 					}
 					const provider = providerText ? theme.fg("muted", providerText) : "";

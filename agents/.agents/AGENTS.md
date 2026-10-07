@@ -4,38 +4,30 @@ These rules are ordered. When two conflict, the earlier one wins.
 
 ## Editing code
 
-- Read the file you are changing, plus one sibling, before the first edit. Match their naming, structure, error handling, and layout. Existing patterns win over your preference, even when yours is better.
-- Ship the smallest diff that fully solves the request. If a line does not have to change, leave it.
-- Do not rename, reformat, reorder, or restructure code you were not asked to change. Formatting the lines you already touched is fine; formatting the rest of the file is not.
-- Add no new helper, wrapper, base class, interface, config flag, or dependency unless the request cannot be finished without it. Two call sites do not justify an abstraction — prefer the duplication.
-- Prefer editing an existing file to creating a new one.
-- Never create a commit without explicit user direction. If the user has not directed you to commit, ask first.
+- Before editing, read the file and one sibling. Match their naming, structure, error handling, and layout; existing patterns win over personal preference.
+- Make the smallest diff that solves the request. Do not rename, reformat, reorder, or restructure unrelated code. Prefer editing existing files.
+- Add no helper, wrapper, base class, interface, config flag, or dependency unless the request requires it. Two call sites alone do not justify an abstraction.
+- Never commit without explicit user direction.
 
 ## Scope
 
 - Touch only the files the request names or requires. If the change needs more than three files, list them and wait before editing.
-- No opportunistic cleanup. Problems you notice outside the scope get one line at the end of your reply, not a fix.
-- Extras nobody asked for — docs, README updates, CLI flags, migration paths, error-handling "while I'm here" — are out of scope.
+- No opportunistic cleanup or unrequested extras, including docs, CLI flags, migration paths, and error handling. Report out-of-scope problems in one line at the end, rather than fixing them.
 
 ## Tests
 
-- Find the test file covering what you changed. If it exists, update it. If none exists and the change is behavioral, say so.
-- Test observable behavior, side effects, edge cases, and failure paths. Do not test framework behavior, getters, or private internals.
-- Follow the existing test patterns: same helpers, same factories, same assertion style.
-- Run the tests you touched, filtered, before saying the work is done. Paste real failures. Never call something passing without a run.
+- Find covering tests and update them when the changed behavior requires it. If no tests cover a behavioral change, say so.
+- Test observable behavior, side effects, edge cases, and failure paths—not framework behavior, trivial getters, or private internals. Follow existing helpers, factories, and assertion styles.
+- Run touched tests with a focused filter before declaring completion. Include actual failures; never claim an unrun check passed.
 
 ## Completion message
 
-- After finishing a code change, give a short ELI5-style walkthrough: what changed, what it means in practice, what remains, and what was tested.
-- Use plain language, short steps, and concrete examples when useful. Assume no knowledge of the implementation, not a lack of intelligence. Avoid baby talk and unexplained jargon.
-- Report what checks ran and whether they passed. Distinguish unfinished work and unresolved failures from completed work.
-- Keep it to a few short paragraphs or bullets, not just a list of files. This overrides the no-recap rule in Prose for completion messages only.
+- After code changes, explain what changed, what it means in practice, and what remains. Use plain language and concrete examples when useful; assume no knowledge of the implementation, not a lack of intelligence.
+- Report checks actually run, their results, and unresolved failures. Keep the walkthrough to a few short paragraphs or bullets, not just file names. This overrides Prose's no-recap rule for completion messages.
 
 ## Comments
 
-- Default to no comment. Add one only to explain why, never what.
-- A comment that restates the line below it does not get written.
-- Never add changelog comments, "Added X" notes, or section dividers.
+- Default to no comment. Explain non-obvious reasons, not what the code does. Do not add changelog comments, "Added X" notes, or section dividers.
 
 ## Prose
 
@@ -53,9 +45,4 @@ For searches spanning many files or naming conventions, delegate to a read-only 
 
 ## Before you finish
 
-Every time:
-
-1. The diff contains only what was asked.
-2. No comment restates code.
-3. Tests for changed behavior are updated and were run.
-4. After code changes, the reply includes the completion walkthrough. Every reply contains no filler.
+Inspect the diff for scope and confirm the applicable testing and reporting rules above were followed.

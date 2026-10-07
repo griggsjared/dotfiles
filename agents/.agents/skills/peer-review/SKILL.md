@@ -1,152 +1,86 @@
 ---
 name: peer-review
-description: Use when asked for peer review, code review, PR review, branch review, or reviewing a diff for correctness, design quality, production readiness, risks, and missing tests.
+description: Use for read-only code reviews and audits of diffs, branches, or existing files. Report actionable correctness, security, design, and testing risks within the requested scope.
 ---
 
 # Peer Review
 
-You are performing a peer review. Your job is to act as a senior engineer reviewing code for correctness, design quality, and production readiness. You are not a linter. You are a thinking reviewer.
+Review correctness, design, and production risks—not formatting or personal preferences. Report only issues that would change the author's action or prevent a concrete failure. Remain read-only unless the user explicitly asks for fixes.
 
-## How to Begin
+## Establish Scope
 
-1. Determine what to review from the request and repository state:
-   - For staged or index changes, use `git diff --cached`.
-   - For working-tree or current changes, inspect staged, unstaged, and relevant untracked files.
-   - For a branch or PR, diff from its merge base with the requested base branch, or the repository's default branch when none is named.
-   - For named files, restrict findings to those files while still reading their callers, dependencies, and tests as context.
-   - If no target is specified, review staged changes first, then other working-tree changes; if the tree is clean, review the current branch against the default branch.
-2. Read the full diff first. Understand its intent before commenting.
-3. Read the surrounding code and related tests. Changed lines alone rarely show the full behavior.
-4. Identify the changed invariants, trust boundaries, and failure paths before forming findings.
+Classify the request before choosing a Git target:
 
-## Core Philosophy
+- **Change review:** inspect the requested staged, working-tree, branch, or PR changes. Report defects introduced or materially worsened by those changes.
+- **Current-state audit:** inspect the requested files or subsystem as they exist now. Existing defects are in scope; no diff is required.
 
-- **You are not a linter.** Do not nitpick formatting, spacing, or trivial style issues. Those are caught by automated tools.
-- **Think like a reviewer, not a compiler.** Your value is in catching problems that tools cannot: flawed logic, bad design decisions, missing edge cases, and performance traps.
-- **Every comment should be worth the author's time.** If a comment wouldn't change the author's behavior or prevent a bug, don't make it.
+Named scope overrides the default Git review target. In both change reviews and audits, restrict findings to the named files; read callers, dependencies, and tests outside that scope only as context. Do not include unrelated working-tree changes. If the review mode is ambiguous and the distinction changes what you would inspect, ask.
 
-## Adversarial Pass
+For change reviews:
 
-Assume the happy path works and try to falsify the change's assumptions with concrete counterexamples. Apply only the checks relevant to the diff:
+1. For staged/index changes, use `git diff --cached`.
+2. For working-tree/current changes, inspect staged, unstaged, and relevant untracked files.
+3. For a branch or PR, diff from its merge base with the requested base, or the repository's default branch when none is named.
+4. Without a specified target, review staged changes first, then other working-tree changes; if clean, compare the current branch against the default branch.
+5. Read the full scoped diff before forming findings. Understand its intent, then read surrounding code, callers, dependencies, and related tests.
+
+For current-state audits, read the named material and relevant callers, dependencies, or consuming instructions. Use history or diffs only when they help explain current behavior. Do not reject a current defect because it predates the latest change.
+
+## Challenge the Assumptions
+
+Identify relevant invariants, trust boundaries, and failure paths. Assume the happy path works, then try concrete counterexamples:
 
 - malformed, hostile, empty, boundary, or oversized input
 - legacy, nullable, stale, or partially migrated state
 - timeouts, partial failure, retries, duplicate delivery, and non-idempotent behavior
-- concurrency, ordering, races, cancellation, cleanup, and lifecycle transitions
+- concurrency, ordering, cancellation, cleanup, and lifecycle transitions
 - authorization, tenant isolation, privacy, and other trust boundaries
 - realistic load, query growth, memory growth, and resource exhaustion
-- rollout, rollback, and compatibility with existing callers or data
+- rollout, rollback, and compatibility with callers or stored data
 
-For each candidate issue, trace a reachable entry point through the changed code to an observable impact. Inspect existing guards, callers, and tests that might disprove it. Report it only if the diff introduces or materially worsens the risk. Be adversarial toward assumptions, not the author, and do not manufacture findings to fill a checklist.
+Trace each candidate from a reachable entry point to an observable impact. Inspect guards, callers, and tests that might disprove it. In a change review, also establish how the change introduced or worsened the risk. In an audit, establish that the defect exists in the requested current state. Do not manufacture findings to fill a checklist.
 
-## Review Guidelines
+Apply only relevant checks:
 
-### Design Decisions
-- Does the approach make sense for the problem being solved?
-- Is there a simpler way to achieve the same result?
-- Does the change introduce unnecessary abstraction or complexity?
-- Are responsibilities placed in the right classes, methods, or layers?
-- Does it follow existing patterns in the codebase, or deviate without good reason?
+- **Design:** responsibility boundaries, unnecessary abstractions, simpler alternatives, and documented conventions. Length, duplication, or naming alone is not a defect without a concrete maintenance risk.
+- **Data and queries:** old records, defaults, migrations and rollback, transactions, preserved column attributes, N+1 queries, round trips, indexes, batching, and unbounded loading.
+- **Failures and security:** external input, API timeouts/statuses/malformed responses, failure-state integrity, access controls, injection, and secrets in storage, responses, or logs.
+- **Tests:** owned behavior, meaningful assertions, changed expectations, and distinct failure or edge cases. Missing coverage needs a concrete risk, not a coverage quota.
+- **Frontend:** loading/error states, accessibility, response types, stale state, and user-facing behavior when applicable.
 
-### Data & State
-- How does old/existing data interact with the new code? Will records created before this change break under new assumptions?
-- Are there migration concerns — columns being added, removed, or changed that affect existing rows?
-- Could nullable fields, empty collections, or missing relationships cause unexpected behavior?
-- Are default values sensible for both new and existing records?
+Prioritize high-impact paths when scope is large, but do not silently omit requested areas. Be adversarial toward assumptions, not the author.
 
-### Performance
-- Are there N+1 query problems? Check for loops that trigger lazy-loaded relationships.
-- Could a query be batched, chunked, or eager-loaded instead?
-- Are there unnecessary round trips to the database where a single query or join would suffice?
-- Is work being done inside a loop that could be done once outside it?
-- Are large datasets being loaded into memory when they could be streamed or paginated?
-- Could any of this work be deferred to a queue?
-
-### Query & Database Concerns
-- Count the query round trips. Could multiple queries be collapsed into one?
-- Are indexes being used effectively? Will new `where` clauses or `orderBy` columns hit unindexed paths?
-- Are transactions used where atomicity is required?
-- Do migrations properly handle rollback (`down()` method)?
-- When modifying columns, are all existing attributes preserved in the migration?
-
-### Conventions & Cleanliness
-- Does the code follow the conventions established by sibling files and existing patterns?
-- Are names descriptive and intention-revealing?
-- Is there dead code, commented-out code, or leftover debugging artifacts?
-- Are there magic numbers or hardcoded strings that should be constants or config values?
-- Is the code DRY without being over-abstracted?
-
-### Error Handling & Edge Cases
-- What happens with arbitrary, unexpected, or malicious data?
-- Are external inputs validated before use?
-- Are error states handled gracefully, or will they produce cryptic failures?
-- What happens at boundaries — empty arrays, null values, zero-length strings, negative numbers, extremely large inputs?
-- Are API responses and external service calls handled for failure cases (timeouts, 4xx/5xx, malformed responses)?
-
-### Security
-- Are authorization checks in place? Can a user access or modify data they shouldn't?
-- Is user input sanitized before being used in queries, rendered in views, or passed to shell commands?
-- Are sensitive fields (passwords, tokens, secrets) properly protected and never exposed in responses or logs?
-- Do new API endpoints have appropriate middleware (auth, throttle, etc.)?
-
-### Testing
-- Are the changes covered by tests? Are the tests meaningful?
-- Do tests cover the happy path, failure path, and edge cases?
-- Are test assertions actually verifying the right behavior, or just checking that code runs without crashing?
-- If behavior changed, were existing tests updated to reflect the new expectations?
-
-### Frontend (when applicable)
-- Are loading and error states handled?
-- Is the UI accessible and responsive?
-- Are API responses typed correctly in TypeScript?
-- Is state management clean — no stale state, no unnecessary re-renders?
-- Are user-facing strings appropriate and consistent?
-
-## Finding Bar
+## Finding Requirements
 
 Report a finding only when you can identify:
 
 - a concrete, reachable trigger or failure scenario
-- the resulting user, security, data, performance, or maintenance impact
-- how the diff introduced or materially worsened it
-- a specific file and line, plus a practical fix direction
+- its user, security, data, performance, or maintenance impact
+- for change reviews, how the reviewed change introduced or materially worsened it; for audits, evidence of the current defect
+- an exact file and line, plus a practical correction
 
-Include only high- or medium-confidence findings. Resolve uncertainty from the code when possible; otherwise ask a focused question under **Consider** only when the answer could change correctness. Deduplicate findings that share one root cause.
+Include only high- or medium-confidence findings. Resolve uncertainty from the source where possible; otherwise ask a focused question under **Consider** only if the answer could change correctness. Deduplicate findings with one root cause.
 
-## Output Format
+Do not report intentional, well-supported choices as defects merely because you prefer another approach. Do not treat optional hardening or absent tests as defects without a concrete failure scenario. For change reviews, exclude pre-existing problems the change does not expose or worsen.
 
-Structure your review as follows:
+## Report and Validate
+
+Use this structure:
 
 ### Summary
-A 2-3 sentence overview of what the change does and your overall assessment (approve, request changes, or comment).
+
+Give a brief assessment of the reviewed scope. For change reviews, explain what changed and state approve, request changes, or comment; for audits, summarize the current risks without implying a pending patch.
 
 ### Issues
-List each issue found, ordered by severity. For each issue:
-- **File and line reference** — point to exactly where the problem is.
-- **What the problem is** — describe it clearly and concisely.
-- **Why it matters** — explain the impact (bug, performance, security, maintainability).
-- **Suggested fix** — offer a concrete recommendation when possible.
-- **Confidence** — high or medium.
 
-Categorize issues as:
-- **Must fix** — Bugs, security issues, data corruption risks, or broken functionality.
-- **Should fix** — Performance problems, convention violations, missing edge cases.
-- **Consider** — Material design risks or questions that could affect correctness.
+Order findings by impact. Include the file and line, problem, reachable scenario, impact, practical fix direction, and confidence. Categorize as:
 
-If no findings meet the bar, write `None.` under **Issues**. Do not invent an issue to avoid an empty review.
+- **Must fix:** broken functionality, security issues, or data corruption.
+- **Should fix:** material performance, convention, or edge-case risks.
+- **Consider:** unresolved design questions that could affect correctness.
+
+If no findings meet the requirements, write `None.` Do not fill space with stylistic advice or rewrite the code for the author.
 
 ### Validation
-State which focused tests or commands you actually ran and any material behavior you could not verify. Never imply validation ran when it did not.
 
-## Rules
-
-- Treat reviews as read-only unless the user explicitly asks for fixes. Report findings; do not silently edit files or implement fixes.
-- Do not rewrite the author's code for them. Point out the issue and suggest a direction.
-- Do not comment on things that are clearly intentional and well-reasoned just because you would have done it differently.
-- Do not report pre-existing problems unless the change exposes or worsens them.
-- Do not treat a preference, optional hardening, or missing test as a defect without a concrete risk.
-- If the diff is large, focus on the most impactful files first (models, controllers, services, migrations) before views and config.
-- Always read related tests to understand intended behavior before flagging something as wrong.
-- Run focused validation when it can confirm or disprove a finding. Do not run a broad test suite unless the user asks or the change's scope and risk warrant it.
-- Reference specific files and lines from the reviewed version so the author can find each issue.
-- Keep the final review concise and ordered by impact.
+State focused checks actually run and material behavior not verified. Run focused validation when it can confirm or disprove a finding. Avoid broad suites unless requested or justified by scope and risk. Never imply an unrun check passed.

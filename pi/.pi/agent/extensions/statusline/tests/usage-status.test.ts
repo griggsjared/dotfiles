@@ -26,6 +26,20 @@ test("distinguishes quota providers from balance providers", () => {
 	assert.equal(isQuotaProvider("anthropic"), false);
 });
 
+test("recognizes claude-bridge quota status and round trips Claude windows", () => {
+	const status = {
+		provider: "claude-bridge" as const,
+		state: "ready" as const,
+		capturedAtMs: 1_000,
+		windows: [
+			{ kind: "rolling" as const, label: "5h", usedPercent: 12.5, resetAtMs: 2_000 },
+			{ kind: "weekly" as const, label: "7d", usedPercent: 40, resetAtMs: 3_000 },
+		],
+	};
+	assert.equal(isQuotaProvider("claude-bridge"), true);
+	assert.deepEqual(decodeUsageStatus(encodeUsageStatus(status)), status);
+});
+
 test("validates balances directly", () => {
 	assert.equal(isUsageBalance({ amount: 1, currency: "USD" }), true);
 	assert.equal(isUsageBalance({ amount: 0, currency: "CNY" }), true);

@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CLAUDE_CACHE_TTL_MS, CLAUDE_PROVIDER, fetchClaudeUsage } from "./providers/claude.ts";
 import { CODEX_CACHE_TTL_MS, CODEX_PROVIDER, fetchCodexUsage } from "./providers/codex.ts";
 import { DEEPSEEK_CACHE_TTL_MS, DEEPSEEK_PROVIDER, fetchDeepseekUsage } from "./providers/deepseek.ts";
 import { registerStatusline } from "./footer.ts";
@@ -20,6 +21,7 @@ type UsageAdapter = {
 };
 
 const USAGE_ADAPTERS: Record<UsageProvider, UsageAdapter> = {
+	[CLAUDE_PROVIDER]: { cacheTtlMs: CLAUDE_CACHE_TTL_MS, load: fetchClaudeUsage },
 	[CODEX_PROVIDER]: { cacheTtlMs: CODEX_CACHE_TTL_MS, load: fetchCodexUsage },
 	[OPENCODE_PROVIDER]: { cacheTtlMs: OPENCODE_CACHE_TTL_MS, load: (_ctx, signal) => fetchOpencodeUsage(signal) },
 	[DEEPSEEK_PROVIDER]: { cacheTtlMs: DEEPSEEK_CACHE_TTL_MS, load: fetchDeepseekUsage },

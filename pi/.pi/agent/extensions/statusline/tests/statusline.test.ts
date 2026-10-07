@@ -282,6 +282,39 @@ test("right-aligns quota windows and the pending marker beside the provider with
 	}
 });
 
+test("renders Claude unknown quota then 5h and 7d usage resets beside claude-bridge", (t) => {
+	const now = 1_000_000_000_000;
+	t.mock.method(Date, "now", () => now);
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let footer: any;
+	let rendered: any;
+	const statuses = new Map([["provider-usage", JSON.stringify({
+		provider: "claude-bridge", state: "unknown", capturedAtMs: now, windows: [],
+	})]]);
+	registerStatusline({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as any);
+	const context = {
+		model: { name: "Claude Sonnet", provider: "claude-bridge" }, thinkingLevel: "off",
+		getContextUsage: () => undefined,
+		sessionManager: { getLeafId: () => null, getBranch: () => [] },
+		ui: { setFooter(callback: any) { footer = callback; } },
+	};
+	try {
+		handlers.get("session_start")?.({}, context);
+		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => statuses });
+		assert.match(rendered.render(120)[0], /quota:\? claude-bridge$/);
+		statuses.set("provider-usage", JSON.stringify({
+			provider: "claude-bridge", state: "ready", capturedAtMs: now,
+			windows: [
+				{ kind: "weekly", label: "7d", usedPercent: 40, resetAtMs: now + 3 * 86_400_000 + 4 * 3_600_000 },
+				{ kind: "rolling", label: "5h", usedPercent: 12.5, resetAtMs: now + 3_900_000 },
+			],
+		}));
+		assert.match(rendered.render(120)[0], /13%\(1h5m\) 40%\(3d4h\) claude-bridge$/);
+	} finally {
+		rendered?.dispose();
+	}
+});
+
 test("colors each quota window at usage thresholds across footer widths", () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	let footer: any;

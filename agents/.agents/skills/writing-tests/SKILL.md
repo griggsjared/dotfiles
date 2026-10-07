@@ -1,86 +1,73 @@
 ---
 name: writing-tests
-description: Write, update, or assess tests for added or changed functionality owned by our code. Use whenever adding or changing application behavior, fixing a bug, writing or updating tests, or deciding what needs test coverage. Follow the language and project's testing idioms. Never test things the framework already tests, duplicate coverage, or expand beyond the requested change.
+description: Use when adding or changing application behavior, fixing bugs, or writing, updating, or assessing tests. Cover behavior owned by our code using existing test conventions; preserve read-only scope during reviews.
 ---
 
 # Writing Tests
 
-Test the added or changed behavior that the module owns. Never test things the framework, language runtime, or dependency already tests.
-
-Use the framework to exercise our code. Do not write tests that prove the framework works.
+Test the added or changed behavior our code owns, not framework, runtime, or dependency behavior. Use the framework to exercise our code. During a read-only assessment, recommend coverage without editing.
 
 ## Scope
 
-- Follow repository instructions and the user's approved scope.
-- Cover the behavior introduced or changed by this task, not everything the touched file can do.
-- Prefer updating an existing relevant test over adding another test for the same behavior.
-- Do not add tests merely because a model, field, enum, method, or class was added.
-- Do not add unrelated regression coverage, dependencies, test helpers, configuration, or production refactors without approval.
-- Preserve existing tests and user changes. Do not remove existing tests without approval.
-- If the task only changes comments, formatting, or other non-behavioral details, do not invent behavior to test.
+- Before writing tests, confirm the project and relevant domain already test comparable behavior. If not, report the gap without adding tests or test infrastructure unless explicitly requested. An untested file within an already-tested domain is not a new testing practice.
+- Cover this task's behavior, not everything the touched file can do. Do not invent behavior to test for comments, formatting, or other non-behavioral changes.
+- Prefer updating relevant tests over duplicating coverage. Preserve existing tests and user changes; do not remove tests without approval.
+- Do not add unrelated regression coverage, dependencies, helpers, configuration, or production refactors without approval.
 
-## 1. Identify the Owned Behavior
+## 1. Identify the Behavior
 
-Read the changed implementation, its relevant callers, the covering tests, and one sibling before editing. Identify the actual language, test runner, framework, and project conventions.
+Read the changed implementation, relevant callers, covering tests, and a sibling. Identify the language, runner, framework, and project conventions.
 
 For each proposed test, answer:
 
-1. What added or changed rule does this module own?
-2. Which public entry point exercises that rule?
+1. What added or changed rule does our code own?
+2. Which public entry point exercises it?
 3. What observable result, side effect, or failure matters to its caller?
-4. What specific mistake in our code would make this test fail?
+4. What specific mistake in our code would make the test fail?
 
-If the answer is only that the framework might stop working, omit the test. If existing tests already catch the same mistake, update them only where the changed contract requires it.
+If the answer is only that the framework might stop working, omit the test. If existing tests catch the same mistake, update them only when the changed contract requires it. Ask about unclear intended behavior rather than inventing requirements from the current implementation.
 
-Do not turn these questions into comments or a long report. Use them to choose the smallest useful test set. Ask when the intended behavior is unclear; do not invent requirements from the current implementation.
+Use these questions to select tests, not as comments or a long report.
 
-## 2. Test Only the Added Functionality
+## 2. Choose the Boundary and Cases
 
-Choose the public entry point that owns the added or changed functionality. Test it there; do not duplicate its tests throughout the call chain.
+Test through the public entry point that owns the behavior; do not duplicate coverage throughout the call chain, use reflection, or expose private methods for testing.
 
-- Test the decisions, results, side effects, and failure handling introduced or changed by our code.
-- Use framework helpers to exercise that functionality, not to prove that the helpers work.
-- Do not test standard persistence, casting, routing, validation engines, serialization, or other behavior already tested by the framework or dependency.
-- Do not test declarations, constants, property lists, factory defaults, or trivial getters and setters merely because they exist.
-- Custom behavior built on a framework is eligible for testing. Assert our custom rule, not the framework mechanism that runs it.
-- Inspect stored data, responses, messages, or other outputs only to prove the changed functionality produced the required outcome.
+- Cover decisions, results, side effects, and failure handling introduced or affected by this change, including meaningful boundaries.
+- Do not test standard framework persistence, casting, routing, validation, or serialization. Custom rules built on those mechanisms are eligible; test the rule, not the mechanism.
+- Do not add tests merely because a model, field, enum, method, or class exists. Skip declarations, constants, property lists, factory defaults, and trivial getters/setters without owned behavior.
+- Test the current supported contract, not the history of the change. Do not assert that a removed column, field, method, class, or configuration entry is absent merely because it was deleted. Update affected tests for the remaining behavior; do not replace obsolete coverage with absence checks.
+- Ask whether the test would make sense if the removed implementation had never existed. If not, omit it unless an explicit compatibility or migration requirement makes the transition part of the contract. Negative assertions still belong when they express current requirements, such as an unchanged balance on failure or no private data in an unauthorized response.
+- Assert resulting data, responses, or messages when they prove the required outcome. For operations that add, update, or remove data, check the result and affected data—not a declaration's presence.
+- Check what must remain unchanged on failure, not every available field.
+- Add parameterized cases only for distinct rules or meaningful boundaries. Do not mechanically enumerate enum values, dependency failures, or input variations.
 
-## 3. Write Idiomatic, Focused Tests
+## 3. Follow Existing Test Patterns
 
-- Use the project's runner, assertions, naming, fixtures, factories, fakes, and file layout. Do not introduce a second testing style.
-- Follow the language's normal patterns for asynchronous work, errors, exceptions, resource cleanup, and parameterized cases. Do not copy another language's idioms.
-- Exercise public behavior. Do not use reflection, expose private methods, or change production visibility for tests.
-- Name the behavior or outcome, not the private method or implementation steps.
-- Follow arrange → act → assert: prepare the inputs, call the public operation, then check its outcome.
-- Use the smallest setup that reaches the changed behavior. Do not create an unrelated object graph.
-- Keep important inputs explicit. Avoid randomness in values that determine the expected result.
-- Assert the result and relevant side effects. If the operation adds, removes, or updates something, check the expected change and the affected data—not whether a declaration exists.
-- Check what must remain unchanged on failure. Do not assert every field because it is available.
-- Cover happy paths and distinct edge or failure paths introduced or affected by the change. Do not enumerate every possible dependency failure or input variation mechanically.
-- Add parameterized cases only when each case protects a distinct application rule or meaningful boundary. Do not loop over every enum value just because an enum exists.
-- Avoid snapshots of large objects or responses when a few focused assertions express the contract.
-- Put newly added supporting helpers after the test cases when that matches the project's conventions. Do not reorder unrelated existing code.
-- Do not add comments that restate the setup or assertions, including arrange/act/assert labels.
+Use the project's runner, assertions, naming, fixtures, factories, fakes, and file layout. Follow the language's conventions for asynchronous work, errors, resource cleanup, and parameterized cases; do not introduce a second testing style.
 
-### Collaborators and Side Effects
+- Name the behavior or outcome, not a private method or implementation step.
+- Arrange inputs, exercise the operation, then assert its outcome. Avoid comments that narrate these steps.
+- Use the smallest setup that reaches the behavior. Keep important inputs explicit and deterministic; avoid unrelated object graphs.
+- Prefer focused assertions over snapshots of large objects or responses.
+- Put new supporting helpers after tests when that matches existing conventions. Do not reorder unrelated code.
 
-Prefer real collaborators when they are practical and relevant to the behavior. Use the project's fakes or mocks for external systems, nondeterminism, expensive work, or behavior outside the module's responsibility.
+After adding or updating each test, recheck the four behavior questions, unique coverage, setup, and assertions before adding another. Remove or simplify your new tests if they test dependency behavior, duplicate coverage, or require unrelated setup; trim unnecessary assertions and setup from your edits. Leave unrelated existing tests alone. A passing test alone does not justify keeping it.
 
-Never mock the subject under test. Do not mock every dependency by default.
+### Collaborators
 
-Assert collaborator calls only when the interaction itself is the owned contract, such as sending one notification or charging once. Do not assert private call order, helper invocation counts, or delegation merely because those calls appear in the implementation.
+Prefer real collaborators when practical and relevant. Use established fakes or mocks for external systems, nondeterminism, expensive work, or behavior outside the module's responsibility. Never mock the subject under test or mock every dependency by default.
 
-Never contact real payment providers, send real messages, or depend on live external services during tests. Use the established test boundary without changing production code to accommodate it.
+Assert collaborator calls only when the interaction is itself the contract, such as charging once or sending one notification. Do not assert private call order, helper invocation counts, or incidental delegation.
 
-## 4. Check Only What Changed
+Never contact real payment providers, send real messages, or depend on live external services. Use the established test boundary without changing production visibility or behavior to accommodate tests.
 
-- Run the new or updated tests with the narrowest supported filter. Follow project requirements such as parallel execution.
-- Do not run an entire file when only a few changed tests need checking and the runner supports filtering.
-- Expand the run only for a concrete shared-behavior risk or explicit user direction. Ask before running a broad suite.
-- Do not create verification scripts, use interactive debugging as a substitute for tests, or add tests for test discovery and framework registration.
-- Do not rerun unrelated tests solely because test-only additions were removed or prose changed.
-- Report the commands actually run and their real results. Distinguish earlier passing results from a new run. Never claim unrun tests pass.
+## 4. Run and Report
 
-Before finishing, check each added test again: it must catch a specific mistake in the changed behavior we own. Remove duplicate assertions and unnecessary setup from your additions. Leave unrelated existing tests alone.
+Run new or updated tests with the narrowest supported filter and required project options, such as parallel execution. Do not run a whole file when the changed tests can be filtered. Expand only for a concrete shared-behavior risk or user direction; ask before running a broad suite.
 
-Report the behavior covered, the focused checks run, and any unresolved failure. Do not use test count or coverage percentage as a reason to add tests.
+Do not create verification scripts, substitute interactive debugging for tests, or test framework registration/discovery. Do not rerun unrelated tests merely because prose changed or test-only additions were removed.
+
+Test count and coverage percentage are not reasons to add tests.
+
+Report behavior covered, commands actually run, real results, and unresolved failures. Distinguish earlier passing results from a new run; never claim an unrun check passed.

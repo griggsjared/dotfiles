@@ -1,7 +1,6 @@
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 import type { Job, JobRegistry } from "./registry.ts";
-import { normalizeTitle, shortLabel } from "./format.ts";
 import type { JobEvent } from "./types.ts";
 
 const MAX_TAIL_EVENTS = 100;
@@ -80,10 +79,6 @@ export function formatEventSummary(event: Pick<JobEvent, "kind" | "summary">): s
   if (!match?.[1] || !match[2] || !match[3]) return summary;
   const detail = compactToolResult(match[3], match[2] === "error");
   return `${match[1]} ${match[2]}: ${detail}`;
-}
-
-function jobLabel(job: Job): string {
-  return shortLabel(normalizeTitle(job.title), normalizeTitle(job.task), 120);
 }
 
 export class SubagentTail implements Component {
@@ -246,9 +241,10 @@ export class SubagentTail implements Component {
     const lines: string[] = [
       themeLine(this.theme.fg("accent", this.theme.bold(`Subagent #${this.jobId} ${job?.agent ?? "subagent"}`)), this.theme.fg(statusColor(status), statusLabel)),
       job
-        ? this.theme.fg("dim", `Task: ${normalizeLine(jobLabel(job))}`)
+        ? this.theme.fg("dim", `Task: ${normalizeLine(job.task)}`)
         : this.theme.fg("error", "Job is no longer available."),
     ];
+    if (job?.title) lines.splice(2, 0, this.theme.fg("dim", `Title: ${normalizeLine(job.title)}`));
 
     if (job?.progress) lines.push(this.theme.fg("dim", `Progress: ${normalizeLine(job.progress)}`));
     if (this.droppedBefore !== undefined) {

@@ -1,5 +1,5 @@
 import type { TUI } from "@earendil-works/pi-tui";
-import { Box, Markdown, Spacer, Text, truncateToWidth } from "@earendil-works/pi-tui";
+import { Box, Markdown, Spacer, Text, TruncatedText as TuiTruncatedText, truncateToWidth } from "@earendil-works/pi-tui";
 import {
   getMarkdownTheme,
   type ExtensionAPI,
@@ -7,7 +7,7 @@ import {
   type Theme,
   type ThemeColor,
 } from "@earendil-works/pi-coding-agent";
-import { formatDuration, formatUsageStats, shortLabel, toolCallLabel } from "./format.ts";
+import { formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry } from "./registry.ts";
 import { SubagentTail } from "./tail.ts";
 import {
@@ -19,6 +19,13 @@ import {
 } from "./types.ts";
 
 export type Fg = (color: ThemeColor, text: string) => string;
+
+export class TruncatedText extends TuiTruncatedText {
+  override render(width: number): string[] {
+    // Pi's full truncation resets erase backgrounds supplied by enclosing cards.
+    return super.render(width).map((line) => line.replace(/\x1b\[0?m/g, "\x1b[22;23;24;25;27;28;29;39m"));
+  }
+}
 
 const MAX_WIDGET_LINES = 10; // pi caps string-array widgets at 10 lines; keep the same cap for the factory form
 
@@ -44,7 +51,7 @@ function renderWidgetRows(registry: JobRegistry, fg: Fg, width = 80): { jobId?: 
     const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
     const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
     const color = job.status === "completed" ? "success" : job.status === "cancelled" ? "warning" : "error";
-    const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, 40)}`;
+    const label = job.title ? `: ${job.title}` : `: ${shortLabel(undefined, job.task, Infinity)}`;
     rows.push({ jobId: job.id, line: truncateToWidth(
       fg(color, `${icon} `) +
         fg("accent", `#${job.id} ${job.agent}`) +
@@ -105,8 +112,13 @@ export function refreshUi(ctx: UiContext, registry: JobRegistry): void {
         let disposed = false;
         const component = {
           render(width: number) {
-            rows = disposed ? [] : renderWidgetRows(registry, (color, text) => theme.fg(color, text), width);
-            return rows.map((row) => row.line);
+            if (disposed) {
+              rows = [];
+              return [];
+            }
+            const margin = width >= 3 ? 1 : 0;
+            rows = renderWidgetRows(registry, (color, text) => theme.fg(color, text), Math.max(1, width - margin * 2));
+            return rows.map((row) => margin > 0 ? ` ${row.line} ` : truncateToWidth(row.line, width, ""));
           },
           handleMouse(event: { type: string; button: string; y: number }): { handled: true } | undefined {
             if (disposed || event.type !== "click" || event.button !== "left") return undefined;
@@ -153,34 +165,45 @@ function renderResult(
   const jobLabel = details.jobId === undefined ? details.agent : `#${details.jobId} ${details.agent}`;
   const prefix = theme.fg(color, details.icon + " ") + theme.fg("accent", jobLabel);
   const usageStr = formatUsageStats(details.usage, details.model, details.thinkingLevel);
-  const title = details.title ? theme.fg("dim", `: ${details.title}`) : "";
-  const taskFallback = details.title ? "" : theme.fg("dim", `: ${shortLabel(undefined, details.task, 60)}`);
+  const title = normalizeTitle(details.title);
+  const titleText = title ? theme.fg("dim", `: ${title}`) : "";
+  const taskFallback = title ? "" : theme.fg("dim", `: ${shortLabel(undefined, details.task, Infinity)}`);
   const cancellation = details.status === "cancelled" && details.cancellationReason
     ? theme.fg("warning", ` — cancelled (${details.cancellationReason})`)
     : "";
-  const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${title}${taskFallback}${cancellation}`;
+  const headLine = `${prefix}${theme.fg("muted", ` (${details.duration})`)}${titleText}${taskFallback}${cancellation}`;
   const statsLine = usageStr ? theme.fg("dim", usageStr) : undefined;
 
   if (expanded) {
     const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
-    box.addChild(new Text(headLine, 0, 0));
-    if (statsLine) box.addChild(new Text(`  ${statsLine}`, 0, 0));
+    box.addChild(new TruncatedText(headLine, 0, 0));
+    if (statsLine) box.addChild(new Text(statsLine, 1, 0));
     if (content) {
+      const errorPrefix = `subagent launch ${details.agent} · ${shortLabel(title, normalizeTitle(details.task), Infinity)}: `;
+      const displayContent = details.status === "failed" && content.startsWith(errorPrefix)
+        ? `subagent launch: ${content.slice(errorPrefix.length)}`
+        : content;
       box.addChild(new Spacer(1));
-      box.addChild(new Markdown(content, 0, 0, getMarkdownTheme()));
+      box.addChild(new Markdown(displayContent, 0, 0, getMarkdownTheme()));
     }
     if (details.toolCalls && details.toolCalls.length > 0) {
       box.addChild(new Spacer(1));
       box.addChild(new Text(theme.fg("muted", "Tool calls"), 0, 0));
       for (const call of details.toolCalls) {
-        box.addChild(new Text(theme.fg("dim", `  ${toolCallLabel(call.name, call.args)}`), 0, 0));
+        box.addChild({
+          render(width: number) {
+            const labelWidth = Math.max(1, width - 4);
+            return new TruncatedText(theme.fg("dim", toolCallLabel(call.name, call.args, labelWidth)), 2, 0).render(width);
+          },
+          invalidate() {},
+        });
       }
     }
     return box;
   }
 
   const box = new Box(outputPad, 1, (t) => theme.bg("customMessageBg", t));
-  box.addChild(new Text(headLine, 0, 0));
+  box.addChild(new TruncatedText(headLine, 0, 0));
   if (statsLine) box.addChild(new Text(statsLine, 1, 0));
   if (content) box.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), 1, 0));
   return box;
@@ -207,9 +230,9 @@ export function registerRenderers(pi: ExtensionAPI): void {
 
     const summary = theme.fg("warning", "? ") +
       theme.fg("accent", `#${details.jobId} ${details.agent}`) +
-      theme.fg("dim", `: ${shortLabel(undefined, details.question, 80)}`);
+      theme.fg("dim", `: ${shortLabel(undefined, details.question, Infinity)}`);
     const box = new Box(outputPad, 1, (text) => theme.bg("customMessageBg", text));
-    box.addChild(new Text(summary, 0, 0));
+    box.addChild(new TruncatedText(summary, 0, 0));
     if (expanded) {
       if (details.context) {
         box.addChild(new Spacer(1));

@@ -70,8 +70,8 @@ function toolEndSummary(event: Record<string, unknown>): string {
   const name = toolName(event);
   const isError = event.isError === true || event.success === false || event.error !== undefined;
   const status = isError ? "error" : "success";
-  if (name === "write" || name === "edit") return flattenSummary(`${name} ${status}`);
   const detail = isError ? event.error ?? event.result : event.result;
+  if ((name === "write" || name === "edit") && !isError) return flattenSummary(`${name} success`);
   return flattenSummary(detail === undefined
     ? `${name} ${status}`
     : `${name} ${status}: ${valueSummary(detail)}`);
@@ -439,20 +439,27 @@ export async function runSubagent(
         thinkingLevel: options.thinkingLevel,
       });
       const failedTransport = processError || transportError !== undefined;
+      const appendStderr = (message: string) => {
+        stderr += `${stderr && !stderr.endsWith("\n") ? "\n" : ""}${message}`;
+      };
       if (!text && stdout.length > 0 && !failedTransport) {
-        const snippet = stdout.length > 2000
+        const lines = stdout.split("\n").filter((line) => line.trim().length > 0);
+        const rawSnippet = stdout.length > 2000
           ? `...(truncated)\n${stdout.slice(-2000)}`
-          : stdout;
-        stderr += `\n[subagents] No text extracted from ${stdout.split("\n").length} JSONL lines. Last lines:\n${snippet}`;
+          : lines.join("\n");
+        const snippet = rawSnippet.split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line) => `  ${line}`)
+          .join("\n");
+        appendStderr(`[subagents] No text extracted from ${lines.length} JSONL lines. Last lines:\n${snippet}`);
       }
-      if (transportError) stderr += `${stderr ? "\n" : ""}[subagents] ${transportError}`;
+      if (transportError) appendStderr(`[subagents] ${transportError}`);
       if (cancelled) {
-        stderr = stderr ? `${stderr}\n` : "";
-        stderr += `Cancelled (${cancellationReason ?? "manual"}).`;
+        appendStderr(`Cancelled (${cancellationReason ?? "manual"}).`);
       } else if (!completionWatchdogFired && !failedTransport && signal) {
-        stderr += `\n[subagents] Killed by ${signal}`;
+        appendStderr(`[subagents] Killed by ${signal}`);
       } else if (!completionWatchdogFired && !failedTransport && code != null && code >= 128) {
-        stderr += `\n[subagents] Killed by signal ${code - 128}`;
+        appendStderr(`[subagents] Killed by signal ${code - 128}`);
       }
       resolve({
         agent: agent.name,

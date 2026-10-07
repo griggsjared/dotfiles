@@ -23,8 +23,12 @@ export interface SubagentResult {
   cancelled?: boolean; cancellationReason?: CancellationReason;
 }
 export interface SubagentUpdate { text: string; progress?: string; usage: SubagentUsage; toolCalls: ToolCallInfo[]; model?: string; thinkingLevel?: string; }
+export interface SubagentToolTarget {
+  agent: string; task: string; title?: string; jobId?: number;
+}
 export interface SubagentToolDetails {
-  agent?: string; task?: string; status: "launched" | "running" | "completed" | "failed" | "cancelled";
+  agent?: string; task?: string; title?: string; targets?: SubagentToolTarget[];
+  status: "launched" | "running" | "completed" | "failed" | "cancelled";
   count?: number; skipped?: number; jobIds?: number[]; jobScope?: string; profile?: string;
   cancellationReason?: CancellationReason;
 }

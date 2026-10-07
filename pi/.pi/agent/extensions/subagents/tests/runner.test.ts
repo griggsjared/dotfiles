@@ -290,7 +290,38 @@ test("runSubagent: unhandleable signal reports the signal name", async () => {
   child.emit("close", null, "SIGKILL");
   const r = await result;
   assert.equal(r.exitCode, 1);
-  assert.match(r.error, /Killed by SIGKILL/);
+  assert.equal(r.error, "[subagents] Killed by SIGKILL");
+});
+
+test("runSubagent: appends signal diagnostics without blank lines after stderr", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+  });
+  child.stderr.emit("data", Buffer.from("child error\n"));
+  child.signalCode = "SIGKILL";
+  child.emit("close", null, "SIGKILL");
+
+  const r = await result;
+  assert.equal(r.error, "child error\n[subagents] Killed by SIGKILL");
+});
+
+test("runSubagent: formats no-text diagnostics from nonempty JSONL records", async () => {
+  const child = new FakeChild();
+  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+  });
+  child.stdout.emit("data", Buffer.from('{"type":"progress"}\n{"type":"progress","step":2}\n'));
+  child.finish(0);
+
+  const r = await result;
+  assert.equal(r.text, "");
+  assert.equal(
+    r.error,
+    "[subagents] No text extracted from 2 JSONL lines. Last lines:\n"
+      + "  {\"type\":\"progress\"}\n"
+      + "  {\"type\":\"progress\",\"step\":2}",
+  );
 });
 
 test("runSubagent: spawns the child with the full pi CLI contract", async () => {
@@ -516,6 +547,9 @@ test("runSubagent: emits ordered semantic events without deltas or tool bodies",
   emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "partial" } });
   emit({ type: "tool_execution_start", toolName: "write", args: { file_path: "notes.txt", content: "SECRET BODY\nsecond" } });
   emit({ type: "tool_execution_end", toolName: "write", isError: false, result: "SECRET BODY\nsecond" });
+  emit({ type: "tool_execution_end", toolName: "edit", isError: false, result: "SECRET BODY\nsecond" });
+  emit({ type: "tool_execution_end", toolName: "write", isError: true, result: "permission denied\nretry later" });
+  emit({ type: "tool_execution_end", toolName: "edit", isError: true, result: { code: "ENOENT", message: "missing file" } });
   emit({ type: "tool_execution_start", toolName: "bash", args: { command: "npm test" } });
   emit({ type: "tool_execution_end", toolName: "bash", isError: false, result: "ok\nwith whitespace" });
   emit({
@@ -530,6 +564,9 @@ test("runSubagent: emits ordered semantic events without deltas or tool bodies",
     { kind: "state", summary: "started" },
     { kind: "tool-start", summary: "write notes.txt (2 lines)" },
     { kind: "tool-end", summary: "write success" },
+    { kind: "tool-end", summary: "edit success" },
+    { kind: "tool-end", summary: "write error: permission denied retry later" },
+    { kind: "tool-end", summary: 'edit error: {"code":"ENOENT","message":"missing file"}' },
     { kind: "tool-start", summary: "$ npm test" },
     { kind: "tool-end", summary: "bash success: ok with whitespace" },
     { kind: "assistant", summary: "final answer" },

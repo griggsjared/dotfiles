@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { Text } from "@earendil-works/pi-tui";
+import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -10,6 +10,7 @@ import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from ".
 import { capOutput, formatDuration, formatResultOutput, normalizeTitle, shortLabel } from "./format.ts";
 import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
+import { TruncatedText } from "./render.ts";
 import {
   ENTRY_TYPE,
   QUESTION_ENTRY_TYPE,
@@ -18,6 +19,7 @@ import {
   type SubagentQuestionMessageDetails,
   type SubagentResult,
   type SubagentToolDetails,
+  type SubagentToolTarget,
 } from "./types.ts";
 
 const MAX_PARALLEL = 8;
@@ -73,6 +75,26 @@ interface SingleRequest {
 type Mode =
   | { single: SingleRequest; tasks?: never }
   | { single?: never; tasks: TaskItemType[] };
+
+function requestedTargets(params: SubagentParamsType): SubagentToolTarget[] {
+  if (params.agent && params.task) {
+    return [{ agent: params.agent, task: params.task, ...(params.title ? { title: params.title } : {}) }];
+  }
+  return (params.tasks ?? []).map((task) => ({
+    agent: task.agent,
+    task: task.task,
+    ...(task.title ? { title: task.title } : {}),
+  }));
+}
+
+function requestedLabel(targets: SubagentToolTarget[]): string {
+  if (targets.length === 0) return "requested subagent task";
+  if (targets.length === 1) {
+    const target = targets[0]!;
+    return `${target.agent} · ${shortLabel(normalizeTitle(target.title), normalizeTitle(target.task), Infinity)}`;
+  }
+  return targets.map((target) => `${target.agent} · ${shortLabel(normalizeTitle(target.title), normalizeTitle(target.task), Infinity)}`).join(", ");
+}
 
 export function resolveMode(params: SubagentParamsType): Mode {
   const single = params.agent && params.task
@@ -312,7 +334,8 @@ export class Batch {
       thinkingLevel: metadata?.thinkingLevel,
       profile: metadata?.profile,
     };
-    this.deps.mailbox.deliver({ content: `Error: ${String(err)}`, details });
+    const target = `${agent} · ${shortLabel(normalizeTitle(title), normalizeTitle(task), Infinity)}`;
+    this.deps.mailbox.deliver({ content: `subagent launch ${target}: Error: ${String(err)}`, details });
     this.deps.mailbox.flush(this.deps.isIdle);
   }
 
@@ -354,7 +377,7 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
 
   return {
     name: "subagent",
-    label: "Subagent",
+    label: "Subagent Launch",
     description: "Delegate work to specialized subagents. Jobs always run asynchronously and deliver their results as follow-up messages.",
     parameters: SubagentParams,
     exposure: "model-only",
@@ -364,10 +387,15 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     executionMode: "sequential",
 
     async execute(_toolCallId, params, _signal, onUpdate, ctx) {
-      if (!await deps.confirmProfile(ctx, (text) => onUpdate?.({ content: [{ type: "text", text }], details: { status: "running" } }))) {
+      const targets = requestedTargets(params);
+      const targetSummary = requestedLabel(targets);
+      if (!await deps.confirmProfile(ctx, (text) => onUpdate?.({
+        content: [{ type: "text", text: `subagent launch ${targetSummary}: ${text}` }],
+        details: { status: "running", targets },
+      }))) {
         return {
-          content: [{ type: "text", text: "Subagent launch cancelled: no profile selected" }],
-          details: { status: "cancelled" },
+          content: [{ type: "text", text: `subagent launch ${targetSummary}: cancelled (no profile selected)` }],
+          details: { status: "cancelled", targets },
         };
       }
       const defaultModel = formatModel(ctx.model);
@@ -397,14 +425,14 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         result: SubagentResult,
       ): void => {
         if (!result.cancelled && result.exitCode === 0) return;
-        const label = shortLabel(normalizeTitle(title), normalizeTitle(task), 60);
+        const label = shortLabel(normalizeTitle(title), normalizeTitle(task), Infinity);
         const reason = result.cancelled && result.cancellationReason
           ? `cancelled (${result.cancellationReason})`
-          : `failed: ${shortLabel(undefined, normalizeTitle(result.error), 80)}`;
+          : `failed: ${shortLabel(undefined, normalizeTitle(result.error), Infinity)}`;
         try {
           if (!ctx.hasUI) return;
           ctx.ui.notify(
-            `#${jobId} ${agent}: ${label} — ${reason}`,
+            truncateToWidth(`subagent #${jobId} ${agent} — ${reason} · ${label}`, process.stdout.columns ?? 80, "…"),
             result.cancelled ? "warning" : "error",
           );
         } catch { /* session torn down mid-run */ }
@@ -515,7 +543,16 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
         // Results are delivered later via sendMessage with the custom renderer.
         return {
           content: [{ type: "text", text: `Launched **${agent.name}** subagent #${jobId}: "${single.title ?? single.task}"` }],
-          details: { agent: agent.name, status: "launched", jobIds: [jobId], jobScope: registry.scope, profile },
+          details: {
+            agent: agent.name,
+            task: single.task,
+            title: single.title,
+            status: "launched",
+            jobIds: [jobId],
+            targets: [{ agent: agent.name, task: single.task, ...(single.title ? { title: single.title } : {}), jobId }],
+            jobScope: registry.scope,
+            profile,
+          },
         };
       }
 
@@ -592,6 +629,12 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           skipped: unknownCount,
           status: "launched",
           jobIds,
+          targets: tasks.map((task, index) => ({
+            agent: task.agent,
+            task: task.task,
+            ...(task.title ? { title: task.title } : {}),
+            jobId: jobIds[index],
+          })),
           jobScope: registry.scope,
           profile,
         },
@@ -599,44 +642,67 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
     },
 
     renderCall(args, theme, _context) {
+      const box = new Container();
       if (args.tasks && args.tasks.length > 0) {
-        let text =
-          theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
-          theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`);
+        box.addChild(new TruncatedText(
+          theme.fg("toolTitle", theme.bold("subagent launch ")) +
+            theme.fg("accent", `parallel (${args.tasks.length} tasks)`) +
+            theme.fg("muted", ` [concurrency ${args.concurrency ?? DEFAULT_CONCURRENCY}]`),
+          0,
+          0,
+        ));
         for (const task of args.tasks.slice(0, 8)) {
           const title = normalizeTitle(task.title);
-          const preview = title ? title : shortLabel(undefined, task.task, 60);
-          text += `\n  ${theme.fg("accent", task.agent)}${theme.fg("dim", ` · ${preview}`)}`;
+          const preview = title ? title : shortLabel(undefined, task.task, Infinity);
+          box.addChild(new TruncatedText(
+            theme.fg("accent", task.agent) + theme.fg("dim", ` · ${preview}`),
+            2,
+            0,
+          ));
         }
-        if (args.tasks.length > 8) text += `\n  ${theme.fg("muted", `… +${args.tasks.length - 8} more`)}`;
-        return new Text(text, 0, 0);
+        if (args.tasks.length > 8) box.addChild(new TruncatedText(theme.fg("muted", `… +${args.tasks.length - 8} more`), 2, 0));
+        return box;
       }
       const agentName = args.agent || "...";
-      const preview = normalizeTitle(args.title) || shortLabel(undefined, args.task, 60);
-      return new Text(
-        theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg("accent", agentName) +
-          `\n  ${theme.fg("dim", preview)}`,
+      const preview = normalizeTitle(args.title) || shortLabel(undefined, args.task, Infinity);
+      box.addChild(new TruncatedText(
+        theme.fg("toolTitle", theme.bold("subagent launch ")) + theme.fg("accent", agentName),
         0,
         0,
-      );
+      ));
+      box.addChild(new TruncatedText(theme.fg("dim", preview), 2, 0));
+      return box;
     },
 
-    renderResult(result, _options, theme, _context) {
+    renderResult(result, _options, theme, context) {
       const rawSummary = result.content[0]?.type === "text" ? result.content[0].text : "(no output)";
-      const summary = capOutput(rawSummary ?? "(no output)", 500);
-      const status = result.details?.status;
-      if (status === "launched" || result.details?.jobIds?.length) return new Text("", 0, 0);
-      if (status === "running") return new Text(theme.fg("accent", "⊙ ") + theme.fg("muted", summary), 0, 0);
-      const failed = status === "failed";
+      const details = result.details;
+      const args = context.args ?? {};
+      const status = details?.status;
+      if (status === "launched" || details?.jobIds?.length) return new Text("", 0, 0);
+      const target = details?.targets?.length
+        ? requestedLabel(details.targets)
+        : details?.agent
+          ? `${details.agent} · ${shortLabel(normalizeTitle(details.title), normalizeTitle(details.task), Infinity)}`
+          : requestedLabel(requestedTargets(args));
+      const prefix = `subagent launch ${target}: `;
+      const normalizedSummary = normalizeTitle(rawSummary) ?? "(no output)";
+      const summary = normalizedSummary.startsWith(prefix) ? normalizedSummary.slice(prefix.length) : normalizedSummary;
+      const failed = status === "failed" || context.isError || !status;
       const cancelled = status === "cancelled";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("subagent ")) +
-          theme.fg(cancelled ? "warning" : failed ? "error" : "success", `${cancelled ? "⊘" : failed ? "✗" : "✓"} ${summary}`),
-        0,
-        0,
-      );
+      const running = status === "running";
+      const icon = running ? "⊙" : cancelled ? "⊘" : failed ? "✗" : "✓";
+      const color = running ? "accent" : cancelled ? "warning" : failed ? "error" : "success";
+      const box = new Container();
+      if (!context.args || requestedLabel(requestedTargets(args)) !== target) {
+        box.addChild(new TruncatedText(
+          theme.fg("toolTitle", theme.bold("subagent launch ")) + theme.fg("accent", target),
+          0,
+          0,
+        ));
+      }
+      box.addChild(new TruncatedText(theme.fg(color, `${icon} ${summary}`), 2, 0));
+      return box;
     },
   };
 }

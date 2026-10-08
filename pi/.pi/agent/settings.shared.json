@@ -1,6 +1,7 @@
 {
   "theme": "rpg",
   "tuiMode": "fullscreen",
+  "editorPaddingX": 1,
   "markdown": {
     "codeBlockIndent": ""
   },

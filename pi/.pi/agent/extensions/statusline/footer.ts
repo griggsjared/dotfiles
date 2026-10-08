@@ -121,6 +121,8 @@ export function registerStatusline(pi: ExtensionAPI) {
 				},
 				invalidate() {},
 				render(width: number): string[] {
+					const margin = width >= 3 ? 1 : 0;
+					width -= margin * 2;
 					//Extension statuses
 					const statuses = footerData.getExtensionStatuses();
 					const rawMode = statuses.get("modes") ?? "";
@@ -202,11 +204,8 @@ export function registerStatusline(pi: ExtensionAPI) {
 						.filter(([key]) => key !== "modes" && key !== "subagent-profile" && key !== USAGE_STATUS_KEY)
 						.sort(([a], [b]) => a.localeCompare(b))
 						.map(([, text]) => text);
-					if (rest.length > 0) {
-						return [result, ...rest.map((s) => truncateToWidth(s, width, theme.fg("dim", "...")))];
-					}
-
-					return [result];
+					return [result, ...rest.map((s) => truncateToWidth(s, width, theme.fg("dim", "...")))]
+						.map((line) => margin > 0 ? ` ${line} ` : line);
 				},
 			};
 		});

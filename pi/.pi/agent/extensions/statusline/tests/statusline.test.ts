@@ -128,14 +128,14 @@ test("refreshes footer leaf cache for persisted usage and keeps totals branch-lo
 		});
 		handlers.get("session_start")?.({}, context);
 		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => new Map() });
-		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek $/);
 		assert.equal(calculateFooterCost(sessionManager.getBranch()), 1);
 		rendered.render(120);
 		assert.equal(branchReads, 1);
 		const warm = sessionManager.appendUsage("cache_warm", "deepseek", "model", { ...usage(2), input: 100, cacheRead: 0 });
 		assert.equal(sessionManager.getLeafId(), warm.id);
 		assert.equal(warm.parentId, assistantId);
-		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek $/);
 		assert.equal(calculateFooterCost(sessionManager.getBranch()), 3);
 		assert.equal(branchReads, 2);
 		sessionManager.appendUsage("other", "deepseek", "model", usage(3));
@@ -145,7 +145,7 @@ test("refreshes footer leaf cache for persisted usage and keeps totals branch-lo
 		sessionManager.appendCompaction("summary", null, 100, undefined, false, usage(5));
 		assert.equal(calculateFooterCost(sessionManager.getBranch()), 15);
 		const summaryId = sessionManager.branchWithSummary(assistantId, "branch", undefined, false, usage(6));
-		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek$/);
+		assert.match(rendered.render(120)[0], /c:75% {2,}deepseek $/);
 		assert.equal(calculateFooterCost(sessionManager.getBranch()), 7);
 		assert.equal(calculateFooterCost(sessionManager.getEntries()), 21);
 		sessionManager.appendCompaction("legacy", null, 100);
@@ -155,7 +155,7 @@ test("refreshes footer leaf cache for persisted usage and keeps totals branch-lo
 		sessionManager.branch(summaryId);
 		assert.equal(calculateFooterCost(sessionManager.getBranch()), 7);
 		sessionManager.resetLeaf();
-		assert.equal(rendered.render(120)[0], "model" + " ".repeat(107) + "deepseek");
+		assert.equal(rendered.render(120)[0], " model" + " ".repeat(105) + "deepseek ");
 	} finally {
 		rendered?.dispose();
 		rmSync(directory, { recursive: true, force: true });
@@ -193,11 +193,11 @@ test("right-aligns balance beside DeepSeek", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const line = rendered.render(120)[0];
-		assert.match(line, /^DeepSeek V4\.1 Flash {2,}b:\$42\.50 deepseek$/);
+		assert.match(line, /^ DeepSeek V4\.1 Flash {2,}b:\$42\.50 deepseek $/);
 		assert.equal(line.length, 120);
-		assert.equal(rendered.render(38)[0], "DeepSeek V4.1 Flash  b:$42.50 deepseek");
-		assert.doesNotMatch(rendered.render(37)[0], /b:/);
-		assert.equal(rendered.render(30)[0], "DeepSeek V4.1 Flash   deepseek");
+		assert.equal(rendered.render(40)[0], " DeepSeek V4.1 Flash  b:$42.50 deepseek ");
+		assert.doesNotMatch(rendered.render(39)[0], /b:/);
+		assert.equal(rendered.render(32)[0], " DeepSeek V4.1 Flash   deepseek ");
 	} finally {
 		rendered?.dispose();
 	}
@@ -221,8 +221,8 @@ test("right-aligns nonquota providers without a balance", () => {
 		for (const provider of ["deepseek", "anthropic"]) {
 			context.model.provider = provider;
 			const line = rendered.render(120)[0];
-			assert.equal(line, "DeepSeek V4.1 Flash" + " ".repeat(120 - context.model.name.length - provider.length) + provider);
-			assert.ok(line.endsWith(provider));
+			assert.equal(line, " DeepSeek V4.1 Flash" + " ".repeat(118 - context.model.name.length - provider.length) + provider + " ");
+			assert.ok(line.endsWith(provider + " "));
 			assert.equal(line.length, 120);
 			assert.doesNotMatch(line, /quota:\?/);
 		}
@@ -252,8 +252,8 @@ test("right-aligns quota windows and the pending marker beside the provider with
 		const left = "GPT-5.6 Luna high s:review 1.0k/200k c:75%";
 		const pending = "quota:? openai-codex";
 		const line = rendered.render(120)[0];
-		assert.equal(line, left + " ".repeat(120 - left.length - pending.length) + pending);
-		assert.equal(rendered.render(left.length + 2 + pending.length)[0], `${left}  ${pending}`);
+		assert.equal(line, ` ${left}` + " ".repeat(118 - left.length - pending.length) + `${pending} `);
+		assert.equal(rendered.render(left.length + 4 + pending.length)[0], ` ${left}  ${pending} `);
 		assert.doesNotMatch(line, /s:\$/);
 		assert.deepEqual(rendered.render(120).slice(1), []);
 
@@ -267,12 +267,12 @@ test("right-aligns quota windows and the pending marker beside the provider with
 			balance: { amount: 42.5, currency: "USD" },
 		}));
 		const right = "10%(now) 20%(now) 30%(now) b:$42.50 openai-codex";
-		assert.equal(rendered.render(120)[0], left + " ".repeat(120 - left.length - right.length) + right);
+		assert.equal(rendered.render(120)[0], ` ${left}` + " ".repeat(118 - left.length - right.length) + `${right} `);
 		assert.deepEqual(rendered.render(120).slice(1), []);
 		const compact = "10% 20% 30% openai-codex";
-		assert.equal(rendered.render(left.length + 2 + compact.length)[0], `${left}  ${compact}`);
+		assert.equal(rendered.render(left.length + 4 + compact.length)[0], ` ${left}  ${compact} `);
 		const truncated = "10% openai-codex";
-		assert.equal(rendered.render(left.length + 2 + truncated.length)[0].replace(/\x1b\[[0-9;]*m/g, ""), `${left}  ${truncated}`);
+		assert.equal(rendered.render(left.length + 4 + truncated.length)[0].replace(/\x1b\[[0-9;]*m/g, ""), ` ${left}  ${truncated} `);
 		for (const width of [0, 1, 2, 4, 20, 40, 80, 120]) {
 			assert.ok(visibleWidth(rendered.render(width)[0]) <= width);
 			assert.doesNotMatch(rendered.render(width)[0], /s:\$/);
@@ -301,7 +301,7 @@ test("renders Claude unknown quota then 5h and 7d usage resets beside claude-bri
 	try {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => statuses });
-		assert.match(rendered.render(120)[0], /quota:\? claude-bridge$/);
+		assert.match(rendered.render(120)[0], /quota:\? claude-bridge $/);
 		statuses.set("provider-usage", JSON.stringify({
 			provider: "claude-bridge", state: "ready", capturedAtMs: now,
 			windows: [
@@ -309,7 +309,7 @@ test("renders Claude unknown quota then 5h and 7d usage resets beside claude-bri
 				{ kind: "rolling", label: "5h", usedPercent: 12.5, resetAtMs: now + 3_900_000 },
 			],
 		}));
-		assert.match(rendered.render(120)[0], /13%\(1h5m\) 40%\(3d4h\) claude-bridge$/);
+		assert.match(rendered.render(120)[0], /13%\(1h5m\) 40%\(3d4h\) claude-bridge $/);
 	} finally {
 		rendered?.dispose();
 	}
@@ -340,7 +340,7 @@ test("colors each quota window at usage thresholds across footer widths", () => 
 				windows: [{ kind: "rolling", label: "5h", usedPercent, resetAtMs: 1 }],
 			}));
 			assert.ok(rendered.render(120)[0].includes(ansi(color, `${Math.round(usedPercent)}%(now)`)));
-			assert.ok(rendered.render(24)[0].includes(ansi(color, `${Math.round(usedPercent)}%`)));
+			assert.ok(rendered.render(26)[0].includes(ansi(color, `${Math.round(usedPercent)}%`)));
 		}
 		statuses.set("provider-usage", JSON.stringify({
 			provider: "openai-codex", state: "ready", capturedAtMs: 0,
@@ -351,12 +351,12 @@ test("colors each quota window at usage thresholds across footer widths", () => 
 			],
 		}));
 		assert.ok(rendered.render(120)[0].includes(`${ansi("error", "95%(now)")} ${ansi("warning", "90%(now)")} ${ansi("dim", "20%(now)")}`));
-		assert.ok(rendered.render(31)[0].includes(`${ansi("error", "95%")} ${ansi("warning", "90%")} ${ansi("dim", "20%")}`));
-		assert.ok(rendered.render(23)[0].includes(ansi("error", "95%")));
+		assert.ok(rendered.render(33)[0].includes(`${ansi("error", "95%")} ${ansi("warning", "90%")} ${ansi("dim", "20%")}`));
+		assert.ok(rendered.render(25)[0].includes(ansi("error", "95%")));
 		for (let width = 0; width <= 120; width++) {
 			const line = rendered.render(width)[0];
 			assert.ok(visibleWidth(line) <= width);
-			if (line.includes("openai-codex")) assert.ok(line.endsWith(ansi("muted", "openai-codex")));
+			if (line.includes("openai-codex")) assert.ok(line.endsWith(ansi("muted", "openai-codex") + " "));
 		}
 	} finally {
 		rendered?.dispose();
@@ -387,9 +387,9 @@ test("colors dollar balances below one dollar and fifty cents", () => {
 				provider: "deepseek", state: "ready", capturedAtMs: 0, windows: [], balance: { amount, currency: "USD" },
 			}));
 			const line = rendered.render(120)[0];
-			assert.ok(line.endsWith(`${ansi(color, `b:$${amount.toFixed(2)}`)} ${ansi("muted", "deepseek")}`));
+			assert.ok(line.endsWith(`${ansi(color, `b:$${amount.toFixed(2)}`)} ${ansi("muted", "deepseek")} `));
 			assert.equal(visibleWidth(line), 120);
-			const minWidth = 16 + `b:$${amount.toFixed(2)}`.length;
+			const minWidth = 18 + `b:$${amount.toFixed(2)}`.length;
 			assert.ok(rendered.render(minWidth)[0].includes(ansi(color, `b:$${amount.toFixed(2)}`)));
 			for (let width = 0; width < minWidth; width++) {
 				const narrow = rendered.render(width)[0];
@@ -424,15 +424,15 @@ test("never clips balance mid-number on narrow footers", () => {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
 		const wide = rendered.render(120)[0];
-		assert.match(wide, /^DeepSeek V4\.1 Flash {2,}b:\$123456\.78 deepseek$/);
+		assert.match(wide, /^ DeepSeek V4\.1 Flash {2,}b:\$123456\.78 deepseek $/);
 		assert.equal(wide.length, 120);
 		const narrow = rendered.render(36)[0].replace(/\x1b\[[0-9;]*m/g, "");
 		assert.doesNotMatch(narrow, /b:/);
-		assert.match(narrow, /deepseek$/);
+		assert.match(narrow, /deepseek $/);
 		for (let width = 0; width <= 120; width++) {
 			const line = rendered.render(width)[0];
 			assert.ok(visibleWidth(line) <= width);
-			if (line.includes("b:")) assert.match(line, /b:\$123456\.78 deepseek$/);
+			if (line.includes("b:")) assert.match(line, /b:\$123456\.78 deepseek $/);
 		}
 	} finally {
 		rendered?.dispose();
@@ -455,26 +455,26 @@ test("renders the subagent profile inline and reflects updates without duplicati
 		handlers.get("session_start")?.({}, context);
 		rendered = footer({ invalidate() {} }, { fg: (_color: string, value: string) => value }, { getExtensionStatuses: () => statuses });
 		const absent = rendered.render(120);
-		assert.match(absent[0], /^\[p\] model high 1\.0k\/200k/);
+		assert.match(absent[0], /^ \[p\] model high 1\.0k\/200k/);
 		assert.doesNotMatch(absent[0], /s:/);
-		assert.deepEqual(absent.slice(1), ["other status", "jobs:1 running"]);
+		assert.deepEqual(absent.slice(1), [" other status ", " jobs:1 running "]);
 		statuses.set("subagent-profile", "review");
 		const active = rendered.render(120);
-		assert.match(active[0], /^\[p\] model high s:review 1\.0k\/200k/);
-		assert.deepEqual(active.slice(1), ["other status", "jobs:1 running"]);
+		assert.match(active[0], /^ \[p\] model high s:review 1\.0k\/200k/);
+		assert.deepEqual(active.slice(1), [" other status ", " jobs:1 running "]);
 		statuses.set("subagent-profile", "implement");
 		const updated = rendered.render(120);
-		assert.match(updated[0], /^\[p\] model high s:implement 1\.0k\/200k/);
+		assert.match(updated[0], /^ \[p\] model high s:implement 1\.0k\/200k/);
 		assert.doesNotMatch(updated[0], /review/);
 		for (const effort of ["off", undefined]) {
 			context.thinkingLevel = effort;
-			assert.match(rendered.render(120)[0], /^\[p\] model s:implement 1\.0k\/200k/);
+			assert.match(rendered.render(120)[0], /^ \[p\] model s:implement 1\.0k\/200k/);
 		}
 		statuses.delete("subagent-profile");
 		const unset = rendered.render(120);
-		assert.match(unset[0], /^\[p\] model 1\.0k\/200k/);
+		assert.match(unset[0], /^ \[p\] model 1\.0k\/200k/);
 		assert.doesNotMatch(unset[0], /s:/);
-		assert.deepEqual(unset.slice(1), ["other status", "jobs:1 running"]);
+		assert.deepEqual(unset.slice(1), [" other status ", " jobs:1 running "]);
 	} finally {
 		rendered?.dispose();
 	}
@@ -508,16 +508,20 @@ test("renders ANSI-themed footer within a narrow width and disposes its timer", 
 		assert.match(rendered.render(120)[0], /\x1b\[34m1\.0k\/1m\x1b\[0m/);
 		assert.match(rendered.render(120)[0], /\x1b\[33mc:75%\x1b\[0m/);
 		const wide = rendered.render(120)[0].replace(/\x1b\[[0-9;]*m/g, "");
-		assert.match(wide, /^a-very-long-model-name s:a-very-long-selected-profile-name 1\.0k\/1m c:75% {2,}42% openai-codex$/);
+		assert.match(wide, /^ a-very-long-model-name s:a-very-long-selected-profile-name 1\.0k\/1m c:75% {2,}42% openai-codex $/);
 		assert.equal(wide.length, 120);
 		contextTokens = 200000;
 		assert.match(rendered.render(120)[0], /\x1b\[31m200k\/1m\x1b\[0m/);
 		const lines = rendered.render(20);
 		assert.equal(lines.length, 2);
-		assert.equal(lines[1], "jobs:1 running");
-		for (const width of [0, 1, 2, 4, 20, 40, 80, 120]) {
+		assert.equal(lines[1], " jobs:1 running ");
+		for (const width of [0, 1, 2, 3, 4, 20, 40, 80, 120]) {
 			for (const line of rendered.render(width)) {
 				assert.ok(visibleWidth(line) <= width);
+				if (width >= 3) {
+					assert.ok(line.startsWith(" "));
+					assert.ok(line.endsWith(" "));
+				}
 			}
 		}
 	} finally {

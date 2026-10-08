@@ -37,7 +37,9 @@ Present a concise proposal with:
 - **Findings and changes:** ranked problems, file/line references, and justified corrections.
 - **Leaving alone:** material candidates deliberately excluded and why.
 
-Wait for approval before implementation unless the user already approved a bounded change and its affected files, or explicitly asked you to proceed without a separate proposal. Neither exception waives applicable scope or file-list approval requirements: for more than three files, list them and wait unless that file list is already approved. Naming a module or saying “tidy this up” does not define a bounded refactor. When proceeding under prior approval, assess first and include the rationale in the final summary; an agreed extraction does not need approval twice.
+Focused cleanup of tests already affected by the task or within a requested test-cleanup scope needs no separate refactor proposal. Audits remain read-only unless edits are requested.
+
+For other refactors, wait for approval before implementation unless the user already approved a bounded change and its affected files, or explicitly asked you to proceed without a separate proposal. These permissions do not waive applicable scope or file-list approval requirements: for more than three files, list them and wait unless that file list is already approved. Naming a module or saying “tidy this up” does not define a bounded refactor. When proceeding under prior approval, assess first and include the rationale in the final summary; an agreed extraction does not need approval twice.
 
 ### Proactive Use During Other Work
 
@@ -52,7 +54,7 @@ Within the approved scope:
 - Make one logical change at a time, keeping behavior unchanged.
 - Follow existing abstractions and file layout. Use the project's required scaffolding tools for new files.
 - Add no dependencies, new architectural patterns, or new folder structures without explicit approval.
-- Preserve existing tests and user changes. Do not remove tests without approval; tests usually need adapting rather than deletion.
+- Preserve meaningful coverage and user changes, not every existing test. Before consolidating or removing tests, or recommending either, identify retained coverage for each supported requirement and failure case, or explain why the tests protect no supported behavior or contract. If protection is unclear, keep the tests and raise the question. Leave unrelated tests alone.
 - Run focused tests after each meaningful change. On failure, stop further refactoring and fix the change or undo only your own edit; do not discard user work.
 - Run configured code-quality checks required by the project. Do not use them to reformat unrelated code.
 

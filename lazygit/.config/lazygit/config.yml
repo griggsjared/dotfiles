@@ -1,4 +1,5 @@
 gui:
-  authorColors:
-    "Jared Griggs": "magenta"
-    "*": "yellow"
+  theme:
+    authorColors:
+      "Jared Griggs": "magenta"
+      "*": "yellow"

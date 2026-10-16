@@ -1,7 +1,7 @@
-import { Container, Text, type Component } from "@earendil-works/pi-tui";
+import { Container, SelectList, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { SubagentSettings } from "./agents.ts";
+import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 import { openSubagentTail, TruncatedText } from "./render.ts";
@@ -704,6 +704,7 @@ export function createReplyTool(deps: { registry: JobRegistry }): ToolDefinition
 
 interface ProfileCommandDeps {
   settings: SubagentSettings;
+  discover: () => Promise<AgentConfig[]>;
   getActiveProfile: () => string | undefined;
   setActiveProfile: (name: string) => void;
   /** True while the session still needs a profile choice before subagents run. */
@@ -716,11 +717,90 @@ async function chooseProfile(
   ctx: ExtensionContext,
 ): Promise<string | undefined> {
   const names = Object.keys(profiles.settings.profiles);
-  const current = profiles.getActiveProfile() ?? "none";
-  const options = [...names];
-  const selected = await ctx.ui.select(`Subagent profile (active: ${current})`, options);
-  if (!selected) return undefined;
-  const name = names[options.indexOf(selected)] ?? "";
+  const current = profiles.getActiveProfile();
+  const agents = await profiles.discover();
+  const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
+  const name = await ctx.ui.custom<string | undefined>((tui, theme, _kb, done) => {
+    const container = new Container();
+    container.addChild(new Text(theme.fg("accent", theme.bold(`Subagent profile (active: ${current ?? "none"})`)), 0, 0));
+    const list = new SelectList(names.map((name) => ({
+      value: name,
+      label: name === current ? `${name} (active)` : name,
+    })), Math.min(names.length, 5), {
+      selectedPrefix: (text) => theme.fg("accent", text),
+      selectedText: (text) => theme.fg("accent", text),
+      description: (text) => theme.fg("muted", text),
+      scrollInfo: (text) => theme.fg("dim", text),
+      noMatch: (text) => theme.fg("warning", text),
+    });
+    let previewName: string | undefined;
+    const details: Component = {
+      render(width: number) {
+        if (!previewName) return [];
+        const rows = [
+          ["Agent", "Model", "Thinking"],
+          ...agents.map((agent) => {
+            const resolved = resolveAgentSettings(agent, profiles.settings, previewName);
+            return [
+              agent.name,
+              resolved.model ?? parentModel ?? "child default",
+              resolved.thinkingLevel ?? ctx.thinkingLevel ?? "child default",
+            ];
+          }),
+        ];
+        const gap = width >= 25 ? "  " : " ";
+        const available = Math.max(0, width - 2 * visibleWidth(gap));
+        const thinkingWidth = Math.min(
+          Math.max(...rows.map((row) => visibleWidth(row[2]!))),
+          available >= 21 ? Math.max(8, Math.floor(available / 3)) : Math.floor(available / 3),
+        );
+        const agentWidth = Math.min(
+          Math.max(...rows.map((row) => visibleWidth(row[0]!))),
+          available >= 21 ? Math.max(8, Math.floor((available - thinkingWidth) / 3)) : Math.floor(available / 3),
+        );
+        const columnWidths = [
+          agentWidth,
+          Math.min(Math.max(...rows.map((row) => visibleWidth(row[1]!))), Math.max(0, available - agentWidth - thinkingWidth)),
+          thinkingWidth,
+        ];
+        return [
+          "",
+          theme.fg("accent", theme.bold(`Resolved settings: ${previewName}`)),
+          ...rows.map((row, index) => {
+            const line = row.map((cell, column) => {
+              const cellWidth = columnWidths[column]!;
+              const text = truncateToWidth(cell, cellWidth, "…");
+              return text + " ".repeat(Math.max(0, cellWidth - visibleWidth(text)));
+            }).join(gap).trimEnd();
+            return index === 0
+              ? theme.fg("muted", theme.bold(line))
+              : theme.fg("dim", line);
+          }),
+          ...(agents.length === 0 ? [theme.fg("dim", "No agents discovered")] : []),
+          "",
+        ].map((line) => truncateToWidth(line, width, "…"));
+      },
+      invalidate() {},
+    };
+    list.onSelectionChange = (item) => { previewName = item.value; };
+    list.onSelect = (item) => done(item.value);
+    list.onCancel = () => done(undefined);
+    list.setSelectedIndex(Math.max(0, names.indexOf(current ?? "")));
+    const selected = list.getSelectedItem();
+    if (selected) list.onSelectionChange(selected);
+    container.addChild(list);
+    container.addChild(details);
+    container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc cancel"), 0, 0));
+    return {
+      render: (width: number) => container.render(width),
+      invalidate: () => container.invalidate(),
+      handleInput(data: string) {
+        list.handleInput(data);
+        tui.requestRender();
+      },
+    };
+  });
+  if (!name) return undefined;
   if (!profiles.settings.profiles[name]) {
     if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
     return undefined;

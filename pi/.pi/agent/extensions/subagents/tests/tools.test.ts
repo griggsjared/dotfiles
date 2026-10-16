@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Box, visibleWidth } from "@earendil-works/pi-tui";
+import { Box, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { Check } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, SubagentSettings } from "../agents.ts";
@@ -1031,18 +1031,33 @@ test("/subagent-status shares the status formatter", async () => {
   assert.match(notices.at(-1) ?? "", /Usage: \/subagent-status/);
 });
 
-test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and persist profiles", async () => {
+test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and persist profiles", async () => {
   const settings = {
     profiles: {
-      primary: { defaults: { model: "primary/model" }, agents: {} },
-      backup: { defaults: { model: "backup/model" }, agents: {} },
+      primary: { defaults: { model: "primary/model", thinkingLevel: "low" }, agents: {} },
+      backup: {
+        defaults: {},
+        agents: {
+          scout: { thinkingLevel: "high" },
+          worker: { model: "worker/model" },
+          "調査-agent-with-a-very-long-name": { model: "openai-codex/provider-model-with-a-long-識別子", thinkingLevel: "max" },
+          ghost: { model: "missing/model", thinkingLevel: "xhigh" },
+        },
+      },
     },
     extensions: [],
   };
+  let agents: AgentConfig[] = [
+    { ...AGENT, model: "frontmatter/scout", thinkingLevel: "medium" },
+    { ...AGENT, name: "worker", model: "frontmatter/worker", thinkingLevel: "off" },
+    { ...AGENT, name: "調査-agent-with-a-very-long-name" },
+    { ...AGENT, name: "helper" },
+  ];
+  let discoveries = 0;
   let activeProfile = "primary";
   const entries: Array<[string, unknown]> = [];
   const notices: Array<{ text: string; level: string }> = [];
-  const pickerOptions: string[][] = [];
+  let pickerOpens = 0;
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
   const shortcuts = new Map<string, { handler: (ctx: unknown) => Promise<void> | void }>();
   const pi = {
@@ -1054,6 +1069,7 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
     registry: createJobRegistry(),
     profiles: {
       settings,
+      discover: async () => { discoveries += 1; return agents; },
       getActiveProfile: () => activeProfile,
       setActiveProfile: (name) => { activeProfile = name; },
     },
@@ -1063,12 +1079,50 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
   const ctx = {
     mode: "tui",
     hasUI: true,
+    model: { provider: "parent", id: "model" },
+    thinkingLevel: "minimal",
     ui: {
       notify: (text: string, level: string) => notices.push({ text, level }),
-      select: async (_title: string, options: string[]) => {
-        pickerOptions.push(options);
-        return "primary";
-      },
+      custom: customProfilePicker((component) => {
+        pickerOpens += 1;
+        const initial = renderText(component);
+        assert.match(initial, /→ backup \(active\)/);
+        assert.match(initial, /Resolved settings: backup/);
+        const table = initial.split("\n").filter((line) => /^(Agent|scout|worker|調査-|helper|ghost)/.test(line));
+        assert.deepEqual(table.map((line) => line.trim().split(/\s+/)), [
+          ["Agent", "Model", "Thinking"],
+          ["scout", "frontmatter/scout", "high"],
+          ["worker", "worker/model", "off"],
+          ["調査-agent-with-a-very-long-name", "openai-codex/provider-model-with-a-long-識別子", "max"],
+          ["helper", "parent/model", "minimal"],
+        ]);
+        for (const width of [24, 80, 160]) {
+          const lines = component.render(width);
+          assert.ok(lines.every((line) => visibleWidth(line) <= width));
+          const heading = lines.findIndex((line) => /^Agent +Model +Thinking\s*$/.test(line));
+          assert.ok(heading >= 0);
+          const rows = lines.slice(heading, heading + table.length);
+          const modelColumn = rows[0]!.indexOf("Model");
+          const thinkingColumn = rows[0]!.indexOf("Thinking");
+          for (const row of rows) {
+            const cells = row.trimEnd().match(/^(\S+)( +)(\S+)( +)(\S+)$/);
+            assert.ok(cells);
+            assert.equal(visibleWidth(cells[1]! + cells[2]!), modelColumn);
+            assert.equal(visibleWidth(cells.slice(1, 5).join("")), thinkingColumn);
+          }
+        }
+        assert.ok(component.render(16).every((line) => visibleWidth(line) <= 16));
+        component.handleInput!("\u001b[A");
+        const preview = renderText(component);
+        assert.match(preview, /Resolved settings: primary/);
+        assert.match(preview, /scout +frontmatter\/scout +medium/);
+        assert.match(preview, /worker +frontmatter\/worker +off/);
+        assert.match(preview, /調査-agent-with-a-very-long-name +primary\/model +low/);
+        assert.match(preview, /helper +primary\/model +low/);
+        assert.equal(activeProfile, "backup");
+        assert.equal(entries.length, 1);
+        component.handleInput!("\r");
+      }),
     },
   };
 
@@ -1082,27 +1136,37 @@ test("/subagent-profile and its ctrl+shift+l shortcut select, validate, and pers
   assert.equal(notices.at(-1)?.level, "error");
 
   await command.handler("", ctx);
-  assert.deepEqual(pickerOptions, [["primary", "backup"]]);
+  assert.equal(pickerOpens, 1);
   assert.equal(activeProfile, "primary");
   assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "primary" }]);
 
   await command.handler("", { ...ctx, mode: "print" });
   assert.match(notices.at(-1)?.text ?? "", /Active subagent profile: primary/);
 
+  agents = agents.map((agent) => agent.name === "worker" ? { ...agent, model: "edited/model" } : agent);
   const shortcut = shortcuts.get("ctrl+shift+l");
   assert.ok(shortcut);
   await shortcut.handler({
     ...ctx,
+    model: undefined,
+    thinkingLevel: undefined,
     ui: {
       notify: ctx.ui.notify,
-      select: async (_title: string, options: string[]) => {
-        pickerOptions.push(options);
-        return "backup";
-      },
+      custom: customProfilePicker((component) => {
+        assert.match(renderText(component), /→ primary \(active\)/);
+        assert.match(renderText(component), /worker +edited\/model +off/);
+        component.handleInput!("\u001b[B");
+        assert.match(renderText(component), /Resolved settings: backup/);
+        const lines = component.render(80);
+        assert.ok(lines.every((line) => visibleWidth(line) <= 80));
+        assert.match(lines.join("\n"), /^helper +child default +child default\s*$/m);
+        component.handleInput!("\r");
+      }),
     },
   });
   assert.equal(activeProfile, "backup");
   assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "backup" }]);
+  assert.equal(discoveries, 2);
 });
 
 test("restoreActiveProfile uses the latest valid session selection", () => {
@@ -1212,7 +1276,11 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         },
         ui: {
           notify: (text: string) => notices.push(text),
-          select: async (title: string) => { titles.push(title); return "primary"; },
+          custom: customProfilePicker((component) => {
+            titles.push(renderText(component).split("\n")[0]!.trimEnd());
+            if (/→ backup/.test(renderText(component))) component.handleInput!("\u001b[A");
+            component.handleInput!("\r");
+          }),
           setWidget: () => {},
           setStatus: statuses.fn,
         },
@@ -1280,7 +1348,13 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "primary"]);
           await shortcuts.get("ctrl+shift+l")!.handler({
             ...ctx,
-            ui: { ...ctx.ui, select: async () => "backup" },
+            ui: {
+              ...ctx.ui,
+              custom: customProfilePicker((component) => {
+                component.handleInput!("\u001b[B");
+                component.handleInput!("\r");
+              }),
+            },
           });
           assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
 
@@ -1327,13 +1401,14 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
   let activeProfile = "primary";
   let confirmed = false;
   const entries: Array<[string, unknown]> = [];
-  const pickerOptions: string[][] = [];
+  let pickerOpens = 0;
   const pauses: string[] = [];
   const pi = {
     appendEntry: (type: string, data: unknown) => entries.push([type, data]),
   } as unknown as ExtensionAPI;
   const profiles = {
     settings,
+    discover: async () => [AGENT],
     getActiveProfile: () => activeProfile,
     setActiveProfile: (name: string) => { activeProfile = name; confirmed = true; },
     needsConfirmation: () => !confirmed,
@@ -1343,21 +1418,23 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
     hasUI: true,
     ui: {
       notify: () => {},
-      select: async (_title: string, options: string[]) => {
-        pickerOptions.push(options);
-        return "backup";
-      },
+      custom: customProfilePicker((component) => {
+        pickerOpens += 1;
+        assert.match(renderText(component), /→ primary \(active\)/);
+        component.handleInput!("\u001b[B");
+        component.handleInput!("\r");
+      }),
     },
   } as unknown as ExtensionContext;
 
   assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
-  assert.deepEqual(pickerOptions, [["primary", "backup"]]);
+  assert.equal(pickerOpens, 1);
   assert.deepEqual(pauses, ["Paused: waiting for subagent profile selection"]);
   assert.equal(activeProfile, "backup");
   assert.deepEqual(entries, [[PROFILE_ENTRY_TYPE, { name: "backup" }]]);
 
   assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
-  assert.equal(pickerOptions.length, 1);
+  assert.equal(pickerOpens, 1);
   assert.equal(pauses.length, 1);
 });
 
@@ -1376,6 +1453,7 @@ test("confirmSubagentProfile returns false when the picker is dismissed", async 
   } as unknown as ExtensionAPI;
   const profiles = {
     settings,
+    discover: async () => [AGENT],
     getActiveProfile: () => activeProfile,
     setActiveProfile: (name: string) => { activeProfile = name; },
     needsConfirmation: () => true,
@@ -1383,7 +1461,14 @@ test("confirmSubagentProfile returns false when the picker is dismissed", async 
   const ctx = {
     mode: "tui",
     hasUI: true,
-    ui: { notify: () => {}, select: async () => undefined },
+    ui: {
+      notify: () => assert.fail("cancelling must not notify"),
+      custom: customProfilePicker((component) => {
+        component.handleInput!("\u001b[B");
+        assert.match(renderText(component), /Resolved settings: backup/);
+        component.handleInput!("\u001b");
+      }),
+    },
   } as unknown as ExtensionContext;
 
   assert.equal(await confirmSubagentProfile(pi, profiles, ctx), false);
@@ -1392,14 +1477,14 @@ test("confirmSubagentProfile returns false when the picker is dismissed", async 
 });
 
 test("confirmSubagentProfile skips the picker for one profile or a non-TUI context", async () => {
-  let selects = 0;
   const ctx = {
     mode: "tui",
     hasUI: true,
-    ui: { notify: () => {}, select: async () => { selects += 1; return "primary"; } },
+    ui: { notify: () => {}, custom: () => assert.fail("unexpected profile picker") },
   } as unknown as ExtensionContext;
   const single = {
     settings: { profiles: { primary: { defaults: {}, agents: {} } }, extensions: [] },
+    discover: async () => assert.fail("unexpected agent discovery"),
     getActiveProfile: () => "primary",
     setActiveProfile: () => {},
     needsConfirmation: () => true,
@@ -1411,12 +1496,12 @@ test("confirmSubagentProfile skips the picker for one profile or a non-TUI conte
       profiles: { primary: { defaults: {}, agents: {} }, backup: { defaults: {}, agents: {} } },
       extensions: [],
     },
+    discover: async () => assert.fail("unexpected agent discovery"),
     getActiveProfile: () => "primary",
     setActiveProfile: () => {},
     needsConfirmation: () => true,
   };
   assert.equal(await confirmSubagentProfile({} as ExtensionAPI, multiple, { ...ctx, mode: "print" }), true);
-  assert.equal(selects, 0);
 });
 
 test("/subagent-tail opens a live overlay and follows new events", async () => {
@@ -2444,6 +2529,18 @@ function fakeTheme() {
     bg: (_color: string, text: string) => text,
     bold: (text: string) => text,
   };
+}
+
+function customProfilePicker(interact: (component: Component) => void) {
+  return (factory: (
+    tui: { requestRender: () => void },
+    theme: ReturnType<typeof fakeTheme>,
+    keybindings: unknown,
+    done: (result: string | undefined) => void,
+  ) => Component) => new Promise<string | undefined>((resolve) => {
+    const component = factory({ requestRender: () => {} }, fakeTheme(), {}, resolve);
+    interact(component);
+  });
 }
 
 function renderable(value: unknown): boolean {

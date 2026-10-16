@@ -50,6 +50,7 @@ export default async function (pi: ExtensionAPI) {
 
   const profileDeps = {
     settings,
+    discover: () => discoverAgents(__dirname),
     getActiveProfile: () => activeProfile,
     setActiveProfile: (name: string) => {
       activeProfile = name;

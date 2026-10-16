@@ -20,25 +20,23 @@ async function readLocalFiles(cwd: string): Promise<Array<{ path: string; conten
 }
 
 export default function agentsLocal(pi: ExtensionAPI) {
+	let sessionFiles: Array<{ path: string; content: string }> = [];
+
 	pi.on("session_start", async (_event, ctx) => {
-		const files = await readLocalFiles(ctx.cwd);
-		pi.events.emit("context:files", { source: "agents-local", paths: files.map(({ path }) => path) });
+		sessionFiles = [];
+		sessionFiles = await readLocalFiles(ctx.cwd);
+		pi.events.emit("context:files", { source: "agents-local", paths: sessionFiles.map(({ path }) => path) });
 	});
 
-	pi.on("before_agent_start", async (event, ctx) => {
-		const files = await readLocalFiles(ctx.cwd);
-		pi.events.emit("context:files", { source: "agents-local", paths: files.map(({ path }) => path) });
-		event.systemPromptOptions.contextFiles.push(...files);
+	pi.on("before_agent_start", (event) => {
+		event.systemPromptOptions.contextFiles.push(...sessionFiles);
 	});
 
 	// Extension-triggered turns can bypass before_agent_start.
-	pi.on("context_with_system", async (event, ctx) => {
-		const files = await readLocalFiles(ctx.cwd);
-		pi.events.emit("context:files", { source: "agents-local", paths: files.map(({ path }) => path) });
-
+	pi.on("context_with_system", (event) => {
 		const system = getCurrentSystemMessage(event.messages);
 		const projectContext = system?.sections?.project_context ?? "";
-		const instructions = files
+		const instructions = sessionFiles
 			.filter(({ path }) => !projectContext.includes(`<project_instructions path="${path}">`))
 			.map(({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`)
 			.join("\n\n");

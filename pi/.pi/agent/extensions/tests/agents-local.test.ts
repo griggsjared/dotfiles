@@ -44,62 +44,80 @@ test("reports complete parent-first local paths at startup, clearing removals an
 	assert.equal(reports.length, 4);
 });
 
-test("loads local instructions alongside shared context, in parent order, on each run", async (t) => {
+test("loads and keeps a session snapshot of local instructions alongside shared context", async (t) => {
 	type ContextFile = { path: string; content: string };
 	const events: ExtensionAPI["events"] = createEventBus();
 	const reports: unknown[] = [];
 	events.on("context:files", (data) => { reports.push(data); });
-	let handler: ((event: { systemPromptOptions: { contextFiles: ContextFile[] } }, ctx: { cwd: string }) => Promise<void>) | undefined;
-	agentsLocal({ events, on(event, callback) { if (event === "before_agent_start") handler = callback as typeof handler; } } as ExtensionAPI);
+	let start: ((event: unknown, ctx: { cwd: string }) => Promise<void>) | undefined;
+	let handler: ((event: { systemPromptOptions: { contextFiles: ContextFile[] } }, ctx: { cwd: string }) => void) | undefined;
+	agentsLocal({ events, on(event, callback) {
+		if (event === "session_start") start = callback as typeof start;
+		if (event === "before_agent_start") handler = callback as typeof handler;
+	} } as ExtensionAPI);
+	assert.ok(start);
 	assert.ok(handler);
 
 	const root = await mkdtemp(join(tmpdir(), "pi-agents-local-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const child = join(root, "child");
 	await mkdir(child);
-	const event = () => ({ systemPromptOptions: { contextFiles: [{ path: "AGENTS.md", content: "shared" }] } });
-
-	let current = event();
-	await handler(current, { cwd: child });
-	assert.deepEqual(current.systemPromptOptions.contextFiles.filter(({ path }) => path.startsWith(root)), []);
-	assert.deepEqual(current.systemPromptOptions.contextFiles[0], { path: "AGENTS.md", content: "shared" });
-
 	const parentFile = join(root, "AGENTS.local.md");
 	const childFile = join(child, "AGENTS.local.md");
+	const event = () => ({ systemPromptOptions: { contextFiles: [{ path: "AGENTS.md", content: "shared" }] } });
+
+	await start({ type: "session_start", reason: "startup" }, { cwd: child });
+	let current = event();
+	handler(current, { cwd: child });
+	assert.deepEqual(current.systemPromptOptions.contextFiles, [{ path: "AGENTS.md", content: "shared" }]);
+
 	await writeFile(parentFile, "parent");
 	await writeFile(childFile, "child");
+	await start({ type: "session_start", reason: "reload" }, { cwd: child });
 	current = event();
-	await handler(current, { cwd: child });
-	assert.deepEqual(current.systemPromptOptions.contextFiles.filter(({ path }) => path.startsWith(root)), [
+	handler(current, { cwd: child });
+	assert.deepEqual(current.systemPromptOptions.contextFiles.slice(1), [
 		{ path: parentFile, content: "parent" },
 		{ path: childFile, content: "child" },
 	]);
 
 	await writeFile(childFile, "updated");
 	current = event();
-	await handler(current, { cwd: child });
-	assert.equal(current.systemPromptOptions.contextFiles.at(-1)?.content, "updated");
+	handler(current, { cwd: child });
+	assert.equal(current.systemPromptOptions.contextFiles.at(-1)?.content, "child");
 
 	await rm(childFile);
 	await mkdir(childFile);
-	await assert.rejects(handler(event(), { cwd: child }), { code: "EISDIR" });
+	current = event();
+	handler(current, { cwd: child });
+	assert.equal(current.systemPromptOptions.contextFiles.at(-1)?.content, "child");
+	await assert.rejects(start({ type: "session_start", reason: "reload" }, { cwd: child }), { code: "EISDIR" });
+	current = event();
+	handler(current, { cwd: child });
+	assert.deepEqual(current.systemPromptOptions.contextFiles, [{ path: "AGENTS.md", content: "shared" }]);
 	assert.deepEqual(reports, [
 		{ source: "agents-local", paths: [] },
-		{ source: "agents-local", paths: [parentFile, childFile] },
 		{ source: "agents-local", paths: [parentFile, childFile] },
 	]);
 });
 
-test("request-local repair avoids duplicates, clears removed files, and reports read failures", async (t) => {
+test("keeps extension-triggered turns on the session snapshot until reload", async (t) => {
 	const events: ExtensionAPI["events"] = createEventBus();
 	const reports: unknown[] = [];
 	events.on("context:files", (data) => { reports.push(data); });
-	let handler: ((event: ContextWithSystemEvent, ctx: { cwd: string }) => Promise<{ messages: ContextWithSystemEvent["messages"] } | undefined>) | undefined;
-	agentsLocal({ events, on(event, callback) { if (event === "context_with_system") handler = callback as typeof handler; } } as ExtensionAPI);
+	let start: ((event: unknown, ctx: { cwd: string }) => Promise<void>) | undefined;
+	let handler: ((event: ContextWithSystemEvent, ctx: { cwd: string }) => { messages: ContextWithSystemEvent["messages"] } | undefined) | undefined;
+	agentsLocal({ events, on(event, callback) {
+		if (event === "session_start") start = callback as typeof start;
+		if (event === "context_with_system") handler = callback as typeof handler;
+	} } as ExtensionAPI);
+	assert.ok(start);
 	assert.ok(handler);
 	const root = await mkdtemp(join(tmpdir(), "pi-agents-local-request-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const localFile = join(root, "AGENTS.local.md");
+	await writeFile(localFile, "request-local-marker-v1");
+	await start({ type: "session_start", reason: "startup" }, { cwd: root });
 	const event: ContextWithSystemEvent = {
 		type: "context_with_system",
 		messages: [{
@@ -107,50 +125,38 @@ test("request-local repair avoids duplicates, clears removed files, and reports 
 			toolsAdded: [{ name: "noop", description: "Test tool", parameters: Type.Object({}) }], timestamp: 0,
 		}, { role: "user", content: "test", timestamp: 0 }],
 	};
-	assert.equal(await handler(event, { cwd: root }), undefined);
-	await writeFile(localFile, "request-local-marker");
-	const repaired = await handler(event, { cwd: root });
+	const repaired = handler(event, { cwd: root });
 	assert.ok(repaired);
 	assert.match(getCurrentSystemPrompt(repaired.messages), /shared-instruction-marker/);
-	assert.equal(getCurrentSystemPrompt(repaired.messages).split("request-local-marker").length - 1, 1);
+	assert.equal(getCurrentSystemPrompt(repaired.messages).split("request-local-marker-v1").length - 1, 1);
 	assert.deepEqual(getCurrentTools(repaired.messages).map(({ name }) => name), ["noop"]);
-	assert.equal(await handler({ ...event, messages: repaired.messages }, { cwd: root }), undefined);
-	assert.deepEqual(reports, [
-		{ source: "agents-local", paths: [] },
-		{ source: "agents-local", paths: [localFile] },
-		{ source: "agents-local", paths: [localFile] },
-	]);
-	const unseeded = await handler({ ...event, messages: event.messages.slice(1) }, { cwd: root });
-	assert.ok(unseeded);
-	assert.equal(unseeded.messages[0]?.role, "system");
-	assert.equal(unseeded.messages[1], event.messages[1]);
+	assert.equal(handler({ ...event, messages: repaired.messages }, { cwd: root }), undefined);
 
-	const native: ContextWithSystemEvent = {
-		...event,
-		messages: [...repaired.messages, {
-			role: "system", content: "",
-			sections: { project_context: `<project_instructions path="${localFile}">\nrequest-local-marker\n</project_instructions>` }, timestamp: 1,
-		}],
-	};
-	const deduplicated = await handler(native, { cwd: root });
-	assert.ok(deduplicated);
-	assert.equal(getCurrentSystemPrompt(deduplicated.messages).split("request-local-marker").length - 1, 1);
-	assert.deepEqual(reports.at(-1), { source: "agents-local", paths: [localFile] });
+	await writeFile(localFile, "request-local-marker-v2");
+	assert.equal(handler({ ...event, messages: repaired.messages }, { cwd: root }), undefined);
+	await start({ type: "session_start", reason: "reload" }, { cwd: root });
+	const updated = handler({ ...event, messages: repaired.messages }, { cwd: root });
+	assert.ok(updated);
+	assert.doesNotMatch(getCurrentSystemPrompt(updated.messages), /request-local-marker-v1/);
+	assert.match(getCurrentSystemPrompt(updated.messages), /request-local-marker-v2/);
+	assert.deepEqual(getCurrentTools(updated.messages).map(({ name }) => name), ["noop"]);
 
 	await rm(localFile);
-	const removed = await handler({ ...event, messages: repaired.messages }, { cwd: root });
+	assert.equal(handler({ ...event, messages: updated.messages }, { cwd: root }), undefined);
+	await start({ type: "session_start", reason: "reload" }, { cwd: root });
+	const removed = handler({ ...event, messages: updated.messages }, { cwd: root });
 	assert.ok(removed);
 	assert.doesNotMatch(getCurrentSystemPrompt(removed.messages), /request-local-marker/);
 	assert.match(getCurrentSystemPrompt(removed.messages), /shared-instruction-marker/);
 	assert.deepEqual(getCurrentTools(removed.messages).map(({ name }) => name), ["noop"]);
-	assert.deepEqual(reports.at(-1), { source: "agents-local", paths: [] });
-	await mkdir(localFile);
-	const reportCount = reports.length;
-	await assert.rejects(handler(event, { cwd: root }), { code: "EISDIR" });
-	assert.equal(reports.length, reportCount);
+	assert.deepEqual(reports, [
+		{ source: "agents-local", paths: [localFile] },
+		{ source: "agents-local", paths: [localFile] },
+		{ source: "agents-local", paths: [] },
+	]);
 });
 
-test("keeps local instructions in custom-message turns and their tool continuations", async (t) => {
+test("keeps the session snapshot in custom-message turns and their tool continuations", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pi-agents-local-runtime-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const agentDir = join(root, "agent");
@@ -216,16 +222,14 @@ test("keeps local instructions in custom-message turns and their tool continuati
 
 	await writeFile(localFile, "local-request-marker-v2");
 	await session.sendCustomMessage({ customType: "follow-up", content: "updated", display: false }, { triggerTurn: true });
-	assert.match(requests[3]!.prompt, /local-parent-marker/);
-	assert.match(requests[3]!.prompt, /local-request-marker-v2/);
-	assert.doesNotMatch(requests[3]!.prompt, /local-request-marker-v1/);
+	assert.equal(requests[3]!.prompt, requests[2]!.prompt);
 
 	await rm(parentFile);
 	await rm(localFile);
 	await session.sendCustomMessage({ customType: "follow-up", content: "removed", display: false }, { triggerTurn: true });
 	assert.equal(requests.length, 5);
-	assert.doesNotMatch(requests[4]!.prompt, /local-parent-marker|local-request-marker/);
-	assert.deepEqual(reports.at(-1), { source: "agents-local", paths: [] });
+	assert.equal(requests[4]!.prompt, requests[3]!.prompt);
+	assert.deepEqual(reports, [{ source: "agents-local", paths: [parentFile, localFile] }]);
 	for (const { prompt, tools } of requests) {
 		assert.match(prompt, /shared-instruction-marker/);
 		assert.match(prompt, /other-instruction-marker/);

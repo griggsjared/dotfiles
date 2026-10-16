@@ -90,15 +90,14 @@ test("header shows final context files regardless of extension order and resets 
 	for (const handler of handlers.get("agent_start")!) await handler({}, ctx);
 	assert.equal(renderRequests, beforeAgentRenderRequests + 1);
 	lines = rendered.render(500).join("\n").replace(/\x1b\[[0-9;]*m/g, "");
-	assert.ok(lines.includes(`${sharedFile} · ${extraPath}`));
-	assert.ok(!lines.includes(localFile));
+	assert.ok(lines.includes(`${sharedFile} · ${localFile} · ${extraPath}`));
 	assert.ok(!lines.includes("extra-上下.md"));
 
 	extraPath = undefined;
 	event = { systemPromptOptions: { contextFiles: [] } };
 	for (const handler of handlers.get("before_agent_start")!) await handler(event, ctx);
 	for (const handler of handlers.get("agent_start")!) await handler({}, ctx);
-	assert.ok(rendered.render(500).join("\n").includes("Context: none"));
+	assert.ok(rendered.render(500).join("\n").includes(localFile));
 
 	const child = join(root, "child");
 	await mkdir(child);

@@ -3,6 +3,7 @@
   "private": true,
   "description": "Global npm packages for dotfiles setup",
   "devDependencies": {
-    "@antfu/ni": "latest"
+    "@antfu/ni": "latest",
+    "@earendil-works/pi-coding-agent": "latest"
   }
 }

@@ -1,4 +1,4 @@
-local mason = require("config.mason")
+local npm = require("config.npm")
 
 -- The bundled config is loaded directly to wrap its root_dir.
 local base = dofile(vim.api.nvim_get_runtime_file("lsp/vtsls.lua", false)[1])
@@ -31,12 +31,7 @@ return {
 				globalPlugins = {
 					{
 						name = "@vue/typescript-plugin",
-						location = mason.package_path(
-							"vue-language-server",
-							"node_modules",
-							"@vue",
-							"language-server"
-						),
+						location = npm.package_path("vue-language-server"),
 						languages = { "vue" },
 						configNamespace = "typescript",
 					},

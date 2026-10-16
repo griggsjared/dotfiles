@@ -1,7 +1,13 @@
-local mason = require("config.mason")
+local npm = require("config.npm")
+
+-- vtsls's bundled TypeScript, not vue-language-server's peer dependency: npm
+-- resolves that peer to typescript@latest, and TypeScript 7+ has no JS API.
+-- v3 reads it only from --tsdk; init_options.typescript.tsdk is ignored.
+local tsdk = npm.package_path("vtsls", "node_modules", "typescript", "lib")
 
 ---@type vim.lsp.Config
 return {
+	cmd = { "vue-language-server", "--stdio", tsdk and ("--tsdk=" .. tsdk) or nil },
 	---@param client vim.lsp.Client
 	on_init = function(client)
 		local retries = 0
@@ -39,9 +45,4 @@ return {
 
 		client.handlers["tsserver/request"] = typescriptHandler
 	end,
-	init_options = {
-		typescript = {
-			tsdk = mason.package_path("vue-language-server", "node_modules", "typescript", "lib"),
-		},
-	},
 }

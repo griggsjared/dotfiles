@@ -29,6 +29,16 @@ brew "jq"
 brew "just"
 brew "tree-sitter-cli"
 
+# Language Servers, Linters & Formatters
+brew "lua-language-server"
+brew "zls"
+brew "marksman"
+brew "basedpyright"
+brew "ruff"
+brew "stylua"
+brew "golangci-lint"
+brew "clang-format"
+
 # System Tools
 brew "eza"
 brew "bat"

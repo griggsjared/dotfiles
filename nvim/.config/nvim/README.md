@@ -5,7 +5,7 @@ Managed by [lazy.nvim](https://github.com/folke/lazy.nvim).
 ## Layout
 
 - `init.lua` — lazy.nvim bootstrap only
-- `lua/config/` — `options`, `keymaps`, `autocmds`, `ft` (filetype registry), `mason` (path helper)
+- `lua/config/` — `options`, `keymaps`, `autocmds`, `ft` (filetype registry), `npm` (global package path helper)
 - `lua/plugins/` — one lazy.nvim spec per file
 - `lua/lualine/` — custom lualine components
 - `lsp/` — `vim.lsp.config` server configs (0.11+)
@@ -27,4 +27,5 @@ Managed by [lazy.nvim](https://github.com/folke/lazy.nvim).
 
 - **New plugin:** new file in `lua/plugins/` following the conventions above
 - **New filetype:** registry entry in `lua/config/ft.lua` + an `ftplugin/<ft>.lua` one-liner
-- **New LSP server:** `lsp/<name>.lua`, add to mason `ensure_installed`, enable in the ft registry
+- **New LSP server:** `lsp/<name>.lua`, install its binary via the dotfiles root
+  (`Brewfile`, `go-tools.txt`, `package.json`, `composer.json`), enable in the ft registry

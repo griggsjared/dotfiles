@@ -4,6 +4,15 @@
   "description": "Global npm packages for dotfiles setup",
   "devDependencies": {
     "@antfu/ni": "latest",
-    "@earendil-works/pi-coding-agent": "latest"
+    "@astrojs/language-server": "latest",
+    "@earendil-works/pi-coding-agent": "latest",
+    "@tailwindcss/language-server": "latest",
+    "@vtsls/language-server": "latest",
+    "@vue/language-server": "latest",
+    "blade-formatter": "latest",
+    "eslint_d": "latest",
+    "intelephense": "latest",
+    "svelte-language-server": "latest",
+    "vscode-langservers-extracted": "latest"
   }
 }

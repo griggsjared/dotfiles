@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { ANTHROPIC_PROVIDER, normalizeAnthropicHeaders } from "./providers/anthropic.ts";
 import { CLAUDE_CACHE_TTL_MS, CLAUDE_PROVIDER, fetchClaudeUsage } from "./providers/claude.ts";
 import { CODEX_CACHE_TTL_MS, CODEX_PROVIDER, fetchCodexUsage } from "./providers/codex.ts";
 import { DEEPSEEK_CACHE_TTL_MS, DEEPSEEK_PROVIDER, fetchDeepseekUsage } from "./providers/deepseek.ts";
@@ -20,7 +21,8 @@ type UsageAdapter = {
 	load(ctx: ExtensionContext, signal: AbortSignal): Promise<UsageStatus>;
 };
 
-const USAGE_ADAPTERS: Record<UsageProvider, UsageAdapter> = {
+// Anthropic has no adapter: its usage arrives on response headers instead.
+const USAGE_ADAPTERS: Partial<Record<UsageProvider, UsageAdapter>> = {
 	[CLAUDE_PROVIDER]: { cacheTtlMs: CLAUDE_CACHE_TTL_MS, load: fetchClaudeUsage },
 	[CODEX_PROVIDER]: { cacheTtlMs: CODEX_CACHE_TTL_MS, load: fetchCodexUsage },
 	[OPENCODE_PROVIDER]: { cacheTtlMs: OPENCODE_CACHE_TTL_MS, load: (_ctx, signal) => fetchOpencodeUsage(signal) },
@@ -81,6 +83,7 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		}
 
 		const adapter = USAGE_ADAPTERS[provider];
+		if (!adapter) return Promise.resolve();
 		if (latestUsage?.provider === provider && Date.now() - lastFetchedAt < adapter.cacheTtlMs) {
 			publish(ctx, latestUsage);
 			return Promise.resolve();
@@ -159,6 +162,18 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		if (supported(provider)) {
 			publish(ctx, latestUsage?.provider === provider ? latestUsage : undefined);
 			void refresh(ctx);
+		}
+	});
+
+	pi.on("after_provider_response", (event, ctx) => {
+		if (!sessionActive || !ctx.hasUI || ctx.model?.provider !== ANTHROPIC_PROVIDER) return;
+		const usage = normalizeAnthropicHeaders(event.headers);
+		if (usage) {
+			latestUsage = usage;
+			publish(ctx, usage);
+		} else if (event.status < 400 && latestUsage?.provider !== ANTHROPIC_PROVIDER) {
+			// A successful reply without plan headers means an API key, which has no quota to show.
+			publish(ctx, { provider: ANTHROPIC_PROVIDER, state: "ready", windows: [], capturedAtMs: Date.now() });
 		}
 	});
 

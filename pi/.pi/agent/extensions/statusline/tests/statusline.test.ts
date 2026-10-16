@@ -218,7 +218,7 @@ test("right-aligns nonquota providers without a balance", () => {
 	try {
 		handlers.get("session_start")?.({}, context);
 		rendered = footer?.({ invalidate() {} }, { fg: (_color: string, value: string) => value, bold: (value: string) => value }, { getExtensionStatuses: () => statuses });
-		for (const provider of ["deepseek", "anthropic"]) {
+		for (const provider of ["deepseek", "google"]) {
 			context.model.provider = provider;
 			const line = rendered.render(120)[0];
 			assert.equal(line, " DeepSeek V4.1 Flash" + " ".repeat(118 - context.model.name.length - provider.length) + provider + " ");

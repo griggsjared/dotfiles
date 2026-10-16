@@ -1,6 +1,7 @@
 export const USAGE_STATUS_KEY = "provider-usage";
 
 const USAGE_PROVIDERS = {
+	"anthropic": { quota: true },
 	"claude-bridge": { quota: true },
 	"openai-codex": { quota: true },
 	"opencode-go": { quota: true },

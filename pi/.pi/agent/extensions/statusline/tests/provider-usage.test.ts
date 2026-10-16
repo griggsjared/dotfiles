@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { normalizeAnthropicHeaders } from "../providers/anthropic.ts";
 import { normalizeCodexUsage } from "../providers/codex.ts";
 import { normalizeDeepseekUsage } from "../providers/deepseek.ts";
 import { readResponseTextLimited } from "../http.ts";
@@ -219,6 +220,59 @@ test("preserves a cached DeepSeek balance when a refresh fails", async () => {
 	} finally {
 		handlers.get("session_shutdown")?.({}, context);
 		Date.now = originalNow;
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("normalizes Anthropic unified rate-limit headers", () => {
+	assert.deepEqual(normalizeAnthropicHeaders({
+		"anthropic-ratelimit-unified-5h-utilization": "0.12",
+		"anthropic-ratelimit-unified-5h-reset": "1700000000",
+		"anthropic-ratelimit-unified-7d-utilization": "0.4",
+	}, capturedAt), {
+		provider: "anthropic", state: "ready", capturedAtMs: capturedAt,
+		windows: [
+			{ kind: "rolling", label: "5h", usedPercent: 12, resetAtMs: 1_700_000_000_000 },
+			{ kind: "weekly", label: "7d", usedPercent: 40 },
+		],
+	});
+	assert.equal(normalizeAnthropicHeaders({ "anthropic-ratelimit-unified-5h-utilization": "" }, capturedAt), undefined);
+	assert.equal(normalizeAnthropicHeaders({ "content-type": "text/event-stream" }, capturedAt), undefined);
+});
+
+test("publishes Anthropic usage from response headers without fetching", async () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	providerUsage({ on(event: string, handler: (event: any, context: any) => void) {
+		handlers.set(event, handler);
+	} } as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	let fetched = false;
+	globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true,
+		model: { provider: "anthropic" },
+		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	const last = () => JSON.parse(statuses.at(-1)!) as { state: string; windows: Array<{ usedPercent: number }> };
+	try {
+		handlers.get("session_start")?.({}, context);
+		handlers.get("turn_end")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(fetched, false);
+		assert.equal(last().state, "unknown");
+
+		// API-key replies carry no plan headers, so the footer shows no quota placeholder.
+		handlers.get("after_provider_response")?.({ status: 200, headers: {} }, context);
+		assert.equal(last().state, "ready");
+		assert.deepEqual(last().windows, []);
+
+		handlers.get("after_provider_response")?.({ status: 200, headers: { "anthropic-ratelimit-unified-5h-utilization": "0.25" } }, context);
+		assert.equal(last().windows[0]?.usedPercent, 25);
+		handlers.get("after_provider_response")?.({ status: 500, headers: {} }, context);
+		assert.equal(last().windows[0]?.usedPercent, 25);
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
 		globalThis.fetch = originalFetch;
 	}
 });
@@ -444,7 +498,7 @@ test("ignores a stale OpenCode response after switching providers", async () => 
 	};
 	try {
 		handlers.get("session_start")?.({ type: "session_start" }, context);
-		context.model = { provider: "anthropic" };
+		context.model = { provider: "google" };
 		handlers.get("model_select")?.({ model: context.model }, context);
 		resolveFetch?.(new Response(`rollingUsage:{usagePercent:10,resetInSec:30}`));
 		await new Promise<void>((resolve) => setImmediate(resolve));

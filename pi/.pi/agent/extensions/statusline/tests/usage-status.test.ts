@@ -23,7 +23,7 @@ test("distinguishes quota providers from balance providers", () => {
 	assert.equal(isQuotaProvider("deepseek"), false);
 	assert.equal(isQuotaProvider("openai-codex"), true);
 	assert.equal(isQuotaProvider("opencode-go"), true);
-	assert.equal(isQuotaProvider("anthropic"), false);
+	assert.equal(isQuotaProvider("anthropic"), true);
 });
 
 test("recognizes claude-bridge quota status and round trips Claude windows", () => {

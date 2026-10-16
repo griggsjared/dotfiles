@@ -36,7 +36,13 @@ Explicit instructions take precedence over patterns inferred from existing code.
 
 Applies to messages, PR text, commits, and docs. Not to code or exact technical terms.
 
-- Cut every word that is not working. Delete the preamble and the recap of what you just said.
+- Prioritize understanding over brevity. Keep explanations short, but do not skip context needed to understand them.
+- Assume I am unfamiliar with the implementation, not unfamiliar with programming. Explain without talking down to me.
+- Start with the plain-English answer. Add technical details only when they help explain it.
+- Define unfamiliar terms when first used. Do not explain one unfamiliar term with another.
+- Explain what changes for me in practice, not just what changes in the code.
+- Use one small, concrete example when an explanation would otherwise be abstract.
+- Remove repetition and filler, not useful explanation. Skip preambles and redundant recaps.
 - Active voice. Short word over long. Plain English over jargon, unless the jargon is the precise term.
 - No metaphor, simile, or figure of speech common in print.
 - No praise, no apology, no hedging. Say what you did and what is left.

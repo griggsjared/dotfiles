@@ -2,6 +2,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, parse } from "node:path";
 
+export const SESSION_PROFILE_NAME = "session";
+
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
 export interface AgentSettings {
@@ -30,7 +32,7 @@ export interface AgentConfig {
 }
 
 const EMPTY_PROFILE: SubagentProfile = { defaults: {}, agents: {} };
-const EMPTY_SETTINGS: SubagentSettings = { profiles: {}, extensions: [] };
+const EMPTY_SETTINGS: SubagentSettings = { profiles: { [SESSION_PROFILE_NAME]: EMPTY_PROFILE }, extensions: [] };
 const PACKAGE_SPEC = /^npm:(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
 
 function validModel(value: unknown): value is string {
@@ -105,6 +107,9 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
 
   if (config.profiles && typeof config.profiles === "object" && !Array.isArray(config.profiles)) {
     for (const [name, profile] of Object.entries(config.profiles)) {
+      if (name === SESSION_PROFILE_NAME) {
+        throw new Error(`Invalid subagent configuration: profile name "${SESSION_PROFILE_NAME}" is reserved for the built-in session profile.`);
+      }
       if (!isValidProfileName(name)) continue;
       const parsed = parseProfile(profile);
       if (parsed) profiles[name] = parsed;
@@ -116,8 +121,7 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
     const legacy = parseProfile(config);
     if (legacy) profiles.default = legacy;
   }
-  if (Object.keys(profiles).length === 0) return { ...EMPTY_SETTINGS, extensions };
-  return { profiles, extensions };
+  return { profiles: { [SESSION_PROFILE_NAME]: EMPTY_PROFILE, ...profiles }, extensions };
 }
 
 export async function loadSubagentSettings(
@@ -128,19 +132,22 @@ export async function loadSubagentSettings(
   try {
     text = await readFile(path, "utf8");
   } catch {
+    let settings: unknown;
     try {
-      const settings = JSON.parse(await readFile(fallbackPath, "utf8")) as unknown;
-      if (!settings || typeof settings !== "object" || Array.isArray(settings)) return EMPTY_SETTINGS;
-      return parseSubagentSettings((settings as Record<string, unknown>).subagents);
+      settings = JSON.parse(await readFile(fallbackPath, "utf8"));
     } catch {
       return EMPTY_SETTINGS;
     }
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return EMPTY_SETTINGS;
+    return parseSubagentSettings((settings as Record<string, unknown>).subagents);
   }
+  let config: unknown;
   try {
-    return parseSubagentSettings(JSON.parse(text));
+    config = JSON.parse(text);
   } catch {
     return EMPTY_SETTINGS;
   }
+  return parseSubagentSettings(config);
 }
 
 export function getSubagentProfile(settings: SubagentSettings, profileName?: string): SubagentProfile {
@@ -150,6 +157,11 @@ export function getSubagentProfile(settings: SubagentSettings, profileName?: str
 }
 
 export function resolveAgentSettings(agent: AgentConfig, settings: SubagentSettings, profileName?: string): AgentConfig {
+  if (profileName === SESSION_PROFILE_NAME || (
+    profileName === undefined && Object.keys(settings.profiles).length === 1 && Object.hasOwn(settings.profiles, SESSION_PROFILE_NAME)
+  )) {
+    return { ...agent, model: undefined, thinkingLevel: agent.thinkingLevel };
+  }
   const profile = getSubagentProfile(settings, profileName);
   const local = profile.agents[agent.name] ?? {};
   return {

@@ -1,7 +1,7 @@
 import { Container, SelectList, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
+import { resolveAgentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 import { openSubagentTail, TruncatedText } from "./render.ts";
@@ -716,17 +716,18 @@ async function chooseProfile(
   profiles: ProfileCommandDeps,
   ctx: ExtensionContext,
 ): Promise<string | undefined> {
-  const names = Object.keys(profiles.settings.profiles);
+  const names = Object.keys(profiles.settings.profiles).sort((left, right) =>
+    Number(right === SESSION_PROFILE_NAME) - Number(left === SESSION_PROFILE_NAME));
   const current = profiles.getActiveProfile();
   const agents = await profiles.discover();
   const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
   const name = await ctx.ui.custom<string | undefined>((tui, theme, _kb, done) => {
     const container = new Container();
     container.addChild(new Text(theme.fg("accent", theme.bold(`Subagent profile (active: ${current ?? "none"})`)), 0, 0));
-    const list = new SelectList(names.map((name) => ({
-      value: name,
-      label: name === current ? `${name} (active)` : name,
-    })), Math.min(names.length, 5), {
+    const list = new SelectList(names.map((name) => {
+      const label = name === SESSION_PROFILE_NAME ? `${name} (built-in)` : name;
+      return { value: name, label: name === current ? `${label} (active)` : label };
+    }), Math.min(names.length, 5), {
       selectedPrefix: (text) => theme.fg("accent", text),
       selectedText: (text) => theme.fg("accent", text),
       description: (text) => theme.fg("muted", text),
@@ -860,7 +861,7 @@ export function registerStatusCommands(
     const current = profiles.getActiveProfile() ?? "none";
     const name = requested.trim();
     if (!name) {
-      if (ctx.mode !== "tui" || names.length <= 1) {
+      if (ctx.mode !== "tui") {
         if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ") || "none"}`, "info");
         return;
       }

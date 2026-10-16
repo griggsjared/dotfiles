@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { Box, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { Check } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import type { AgentConfig, SubagentSettings } from "../agents.ts";
+import { parseSubagentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "../agents.ts";
 import subagentsExtension, { reArmsProfileGate, restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
@@ -1032,7 +1032,7 @@ test("/subagent-status shares the status formatter", async () => {
 });
 
 test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and persist profiles", async () => {
-  const settings = {
+  const settings = parseSubagentSettings({
     profiles: {
       primary: { defaults: { model: "primary/model", thinkingLevel: "low" }, agents: {} },
       backup: {
@@ -1046,7 +1046,7 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
       },
     },
     extensions: [],
-  };
+  });
   let agents: AgentConfig[] = [
     { ...AGENT, model: "frontmatter/scout", thinkingLevel: "medium" },
     { ...AGENT, name: "worker", model: "frontmatter/worker", thinkingLevel: "off" },
@@ -1119,6 +1119,15 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
         assert.match(preview, /worker +frontmatter\/worker +off/);
         assert.match(preview, /調査-agent-with-a-very-long-name +primary\/model +low/);
         assert.match(preview, /helper +primary\/model +low/);
+        component.handleInput!("\u001b[A");
+        const session = renderText(component);
+        assert.match(session, /→ session \(built-in\)/);
+        assert.match(session, /Resolved settings: session/);
+        assert.match(session, /scout +parent\/model +medium/);
+        assert.match(session, /worker +parent\/model +off/);
+        assert.match(session, /調査-agent-with-a-very-long-name +parent\/model +minimal/);
+        assert.match(session, /helper +parent\/model +minimal/);
+        component.handleInput!("\u001b[B");
         assert.equal(activeProfile, "backup");
         assert.equal(entries.length, 1);
         component.handleInput!("\r");
@@ -1155,6 +1164,11 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
       custom: customProfilePicker((component) => {
         assert.match(renderText(component), /→ primary \(active\)/);
         assert.match(renderText(component), /worker +edited\/model +off/);
+        component.handleInput!("\u001b[A");
+        assert.match(renderText(component), /scout +child default +medium/);
+        assert.match(renderText(component), /worker +child default +off/);
+        assert.match(renderText(component), /helper +child default +child default/);
+        component.handleInput!("\u001b[B");
         component.handleInput!("\u001b[B");
         assert.match(renderText(component), /Resolved settings: backup/);
         const lines = component.render(80);
@@ -1170,16 +1184,13 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
 });
 
 test("restoreActiveProfile uses the latest valid session selection", () => {
-  const settings = {
-    profiles: {
-      primary: { defaults: {}, agents: {} },
-      backup: { defaults: {}, agents: {} },
-    },
-    extensions: [],
-  };
+  const settings = parseSubagentSettings({ profiles: { primary: {}, backup: {} } });
   assert.equal(restoreActiveProfile([], settings), undefined);
-  assert.equal(restoreActiveProfile([], { profiles: {}, extensions: [] }), undefined);
-  assert.equal(restoreActiveProfile([], { profiles: { primary: settings.profiles.primary }, extensions: [] }), "primary");
+  assert.equal(restoreActiveProfile([], parseSubagentSettings({})), SESSION_PROFILE_NAME);
+  assert.equal(restoreActiveProfile([], parseSubagentSettings({ profiles: { primary: {} } })), undefined);
+  assert.equal(restoreActiveProfile([
+    { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: SESSION_PROFILE_NAME } },
+  ], settings), SESSION_PROFILE_NAME);
   assert.equal(restoreActiveProfile([
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "removed" } },
     { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: "constructor" } },
@@ -1218,17 +1229,18 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
     profile?: string; model?: string; thinking?: string; error?: RegExp; rearm?: boolean;
     restored?: string; live?: boolean;
   }> = [
-    { name: "zero profiles", mode: "print", profiles: {}, model: "p/m", thinking: "high" },
-    { name: "sole profile", mode: "print", profiles: { primary: profiles.primary }, profile: "primary", model: "primary/model", thinking: "high" },
+    { name: "sole session", mode: "print", profiles: {}, profile: SESSION_PROFILE_NAME, model: "p/m", thinking: "high" },
+    { name: "headless does not infer a custom profile alongside session", mode: "print", profiles: { primary: profiles.primary }, model: "p/m", thinking: "high" },
     { name: "headless ignores a restored choice among multiple profiles", mode: "print", profiles, model: "p/m", thinking: "high" },
     { name: "headless flag selects a profile", mode: "print", profiles, flag: "backup", profile: "backup", model: "backup/model", thinking: "medium" },
+    { name: "headless flag selects session", mode: "print", profiles, flag: SESSION_PROFILE_NAME, profile: SESSION_PROFILE_NAME, model: "p/m", thinking: "high" },
     { name: "unknown flag rejects the launch", mode: "print", profiles, flag: "missing", error: /Unknown subagent profile "missing"/ },
     { name: "inherited object properties are not profiles", mode: "print", profiles, flag: "constructor", error: /Unknown subagent profile "constructor"/ },
     { name: "disabled flag rejects the launch", mode: "print", profiles: { ...profiles, backup: { ...profiles.backup, enabled: false } }, flag: "backup", error: /Unknown subagent profile "backup"/ },
-    { name: "interactive zero profiles", mode: "tui", profiles: {}, model: "p/m", thinking: "high" },
-    { name: "interactive sole profile is inferred", mode: "tui", profiles: { primary: profiles.primary }, profile: "primary", model: "primary/model", thinking: "high", rearm: true },
+    { name: "interactive sole session is inferred", mode: "tui", profiles: {}, profile: SESSION_PROFILE_NAME, model: "p/m", thinking: "high", rearm: true },
+    { name: "interactive custom profile requires a choice alongside session", mode: "tui", profiles: { primary: profiles.primary }, profile: SESSION_PROFILE_NAME, model: "p/m", thinking: "high", rearm: true },
     { name: "interactive restored profile still requires confirmation", mode: "tui", profiles, restored: "backup", profile: "primary", model: "primary/model", thinking: "high" },
-    { name: "interactive launch requires a choice", mode: "tui", profiles, profile: "primary", model: "primary/model", thinking: "high", live: true },
+    { name: "interactive launch requires a choice", mode: "tui", profiles, profile: SESSION_PROFILE_NAME, model: "p/m", thinking: "high", live: true },
     { name: "interactive flag confirms a choice until the model changes", mode: "tui", profiles, flag: "backup", profile: "backup", model: "backup/model", thinking: "medium", rearm: true },
   ];
   for (const entry of cases) {
@@ -1290,7 +1302,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         assert.deepEqual(flags, [["subagent-profile", "string"]]);
         assert.deepEqual(statuses.calls, []);
         await handlers.get("session_start")!({}, ctx);
-        const names = Object.keys(entry.profiles);
+        const names = Object.keys(parseSubagentSettings({ profiles: entry.profiles }).profiles);
         const initialProfile = entry.flag ?? entry.restored ?? (names.length === 1 ? names[0] : undefined);
         assert.deepEqual(statuses.calls, entry.mode === "tui" ? [[PROFILE_ENTRY_TYPE, initialProfile]] : []);
         const tool = tools.get("subagent")!;
@@ -1301,9 +1313,9 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           assert.match((status.content[0] as { text: string }).text, /Running:\*\* none/);
           return;
         }
-        if (Object.keys(entry.profiles).length === 0) {
+        if (entry.mode === "print" && names.length === 1) {
           await commands.get("subagent-profile")!.handler("", { ...ctx, hasUI: true });
-          assert.deepEqual(notices, ["Active subagent profile: none. Available: none"]);
+          assert.deepEqual(notices, ["Active subagent profile: session. Available: session"]);
         }
         const result = await tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx);
         assert.equal(result.details.profile, entry.profile);
@@ -1318,24 +1330,55 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         children[0]!.finish(0);
         await sleep(20);
         if (entry.rearm) {
+          const beforeTitles = [...titles];
           const beforeModelSelect = [...statuses.calls];
           await handlers.get("model_select")!({ source: "restore" }, ctx);
           assert.deepEqual(statuses.calls, beforeModelSelect);
           await handlers.get("model_select")!({ source: "set" }, ctx);
-          const hasMultipleProfiles = Object.keys(entry.profiles).length > 1;
+          const hasMultipleProfiles = names.length > 1;
           assert.deepEqual(statuses.calls, hasMultipleProfiles
             ? [...beforeModelSelect, [PROFILE_ENTRY_TYPE, undefined]]
             : beforeModelSelect);
-          const next = await tool.execute("next", { agent: "scout", task: "t" }, undefined, undefined, ctx);
-          assert.equal(next.details.profile, "primary");
-          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "primary"]);
-          assert.deepEqual(titles, hasMultipleProfiles ? ["Subagent profile (active: none)"] : []);
+          const next = await tool.execute("next", { agent: "scout", task: "t" }, undefined, undefined, {
+            ...ctx, model: { provider: "p", id: "next" }, thinkingLevel: "xhigh",
+          } as ExtensionToolContext);
+          assert.equal(next.details.profile, SESSION_PROFILE_NAME);
+          assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, SESSION_PROFILE_NAME]);
+          assert.deepEqual(titles, hasMultipleProfiles ? [...beforeTitles, "Subagent profile (active: none)"] : beforeTitles);
           assert.equal(entries.calls.some((call) => call[0] === PROFILE_ENTRY_TYPE), hasMultipleProfiles);
           await sleep(10);
           assert.equal(calls.length, 2);
+          const nextArgs = calls[1]!.args;
+          assert.equal(nextArgs[nextArgs.indexOf("--model") + 1], "p/next");
+          assert.equal(nextArgs[nextArgs.indexOf("--thinking") + 1], "high");
           children[1]!.stdout.emit("data", Buffer.from(endEvent("done")));
           children[1]!.finish(0);
           await sleep(20);
+        }
+        if (entry.mode === "tui" && names.length === 1) {
+          let pickerOpens = 0;
+          const manualCtx = {
+            ...ctx,
+            model: { provider: "parent", id: "changed" },
+            ui: {
+              ...ctx.ui,
+              custom: customProfilePicker((component) => {
+                pickerOpens += 1;
+                const preview = renderText(component);
+                assert.match(preview, /→ session \(built-in\) \(active\)/);
+                assert.match(preview, /Resolved settings: session/);
+                assert.match(preview, /scout +parent\/changed +high/);
+                component.handleInput!("\r");
+              }),
+            },
+          };
+          await commands.get("subagent-profile")!.handler("", manualCtx);
+          await shortcuts.get("ctrl+shift+l")!.handler(manualCtx);
+          assert.equal(pickerOpens, 2);
+          assert.deepEqual(entries.calls.filter((call) => call[0] === PROFILE_ENTRY_TYPE), [
+            [PROFILE_ENTRY_TYPE, { name: SESSION_PROFILE_NAME }],
+            [PROFILE_ENTRY_TYPE, { name: SESSION_PROFILE_NAME }],
+          ]);
         }
         if (entry.live) {
           const command = commands.get("subagent-profile")!;
@@ -1391,14 +1434,8 @@ test("reArmsProfileGate re-arms on model changes but not on resume", () => {
 });
 
 test("confirmSubagentProfile gates the first launch and persists the choice", async () => {
-  const settings = {
-    profiles: {
-      primary: { defaults: {}, agents: {} },
-      backup: { defaults: {}, agents: {} },
-    },
-    extensions: [],
-  };
-  let activeProfile = "primary";
+  const settings = parseSubagentSettings({ profiles: { primary: {}, "1": {} } });
+  let activeProfile: string | undefined;
   let confirmed = false;
   const entries: Array<[string, unknown]> = [];
   let pickerOpens = 0;
@@ -1420,8 +1457,13 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
       notify: () => {},
       custom: customProfilePicker((component) => {
         pickerOpens += 1;
-        assert.match(renderText(component), /→ primary \(active\)/);
+        assert.match(renderText(component), /→ session \(built-in\)/);
         component.handleInput!("\u001b[B");
+        assert.match(renderText(component), /Resolved settings: 1/);
+        component.handleInput!("\u001b[B");
+        assert.match(renderText(component), /Resolved settings: primary/);
+        component.handleInput!("\u001b[A");
+        component.handleInput!("\u001b[A");
         component.handleInput!("\r");
       }),
     },
@@ -1430,8 +1472,8 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
   assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
   assert.equal(pickerOpens, 1);
   assert.deepEqual(pauses, ["Paused: waiting for subagent profile selection"]);
-  assert.equal(activeProfile, "backup");
-  assert.deepEqual(entries, [[PROFILE_ENTRY_TYPE, { name: "backup" }]]);
+  assert.equal(activeProfile, SESSION_PROFILE_NAME);
+  assert.deepEqual(entries, [[PROFILE_ENTRY_TYPE, { name: SESSION_PROFILE_NAME }]]);
 
   assert.equal(await confirmSubagentProfile(pi, profiles, ctx, (message) => pauses.push(message)), true);
   assert.equal(pickerOpens, 1);
@@ -1439,13 +1481,7 @@ test("confirmSubagentProfile gates the first launch and persists the choice", as
 });
 
 test("confirmSubagentProfile returns false when the picker is dismissed", async () => {
-  const settings = {
-    profiles: {
-      primary: { defaults: {}, agents: {} },
-      backup: { defaults: {}, agents: {} },
-    },
-    extensions: [],
-  };
+  const settings = parseSubagentSettings({ profiles: { primary: {}, backup: {} } });
   let activeProfile = "primary";
   const entries: Array<[string, unknown]> = [];
   const pi = {
@@ -1476,26 +1512,23 @@ test("confirmSubagentProfile returns false when the picker is dismissed", async 
   assert.deepEqual(entries, []);
 });
 
-test("confirmSubagentProfile skips the picker for one profile or a non-TUI context", async () => {
+test("confirmSubagentProfile skips the picker for sole session or a non-TUI context", async () => {
   const ctx = {
     mode: "tui",
     hasUI: true,
     ui: { notify: () => {}, custom: () => assert.fail("unexpected profile picker") },
   } as unknown as ExtensionContext;
   const single = {
-    settings: { profiles: { primary: { defaults: {}, agents: {} } }, extensions: [] },
+    settings: parseSubagentSettings({}),
     discover: async () => assert.fail("unexpected agent discovery"),
-    getActiveProfile: () => "primary",
+    getActiveProfile: () => SESSION_PROFILE_NAME,
     setActiveProfile: () => {},
     needsConfirmation: () => true,
   };
   assert.equal(await confirmSubagentProfile({} as ExtensionAPI, single, ctx), true);
 
   const multiple = {
-    settings: {
-      profiles: { primary: { defaults: {}, agents: {} }, backup: { defaults: {}, agents: {} } },
-      extensions: [],
-    },
+    settings: parseSubagentSettings({ profiles: { primary: {} } }),
     discover: async () => assert.fail("unexpected agent discovery"),
     getActiveProfile: () => "primary",
     setActiveProfile: () => {},

@@ -21,12 +21,12 @@ local registry = {
 	html = { parsers = { "html" }, lsp = { "html", "tailwindcss", "cssls" } },
 	javascript = {
 		parsers = { "javascript" },
-		lsp = { "vtsls", "tailwindcss", "eslint" },
+		lsp = { "tsc", "vtsls", "tailwindcss", "eslint" },
 		commentstring = "//%s",
 	},
 	javascriptreact = {
 		parsers = { "jsx" },
-		lsp = { "vtsls", "tailwindcss", "eslint" },
+		lsp = { "tsc", "vtsls", "tailwindcss", "eslint" },
 		commentstring = "{/*%s*/}",
 	},
 	json = { parsers = { "json" }, lsp = { "jsonls" } },
@@ -53,12 +53,12 @@ local registry = {
 	templ = { parsers = { "templ" }, lsp = { "templ", "html", "tailwindcss" } },
 	typescript = {
 		parsers = { "typescript" },
-		lsp = { "vtsls", "tailwindcss", "eslint" },
+		lsp = { "tsc", "vtsls", "tailwindcss", "eslint" },
 		commentstring = "//%s",
 	},
 	typescriptreact = {
 		parsers = { "tsx" },
-		lsp = { "vtsls", "tailwindcss", "eslint" },
+		lsp = { "tsc", "vtsls", "tailwindcss", "eslint" },
 		commentstring = "{/*%s*/}",
 	},
 	vue = { parsers = { "vue" }, lsp = { "vtsls", "vue_ls", "tailwindcss", "eslint" } },

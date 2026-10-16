@@ -1,7 +1,6 @@
 {
     "require": {
         "friendsofphp/php-cs-fixer": "^3.0",
-        "laravel/lsp": "~0.0",
         "laravel/pint": "^1.0",
         "laravel/valet": "~4.9",
         "phpstan/phpstan": "^2.0",

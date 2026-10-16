@@ -99,9 +99,7 @@ function parseProfile(value: unknown): SubagentProfile | undefined {
 
 export function parseSubagentSettings(value: unknown): SubagentSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_SETTINGS;
-  const subagents = (value as Record<string, unknown>).subagents;
-  if (!subagents || typeof subagents !== "object" || Array.isArray(subagents)) return EMPTY_SETTINGS;
-  const config = subagents as Record<string, unknown>;
+  const config = value as Record<string, unknown>;
   const extensions = parsePackageSpecs(config.extensions);
   const profiles: Record<string, SubagentProfile> = {};
 
@@ -122,9 +120,24 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
   return { profiles, extensions };
 }
 
-export async function loadSubagentSettings(path = join(homedir(), ".pi", "agent", "settings.json")): Promise<SubagentSettings> {
+export async function loadSubagentSettings(
+  path = join(homedir(), ".pi", "agent", "subagents.json"),
+  fallbackPath = join(homedir(), ".pi", "agent", "settings.json"),
+): Promise<SubagentSettings> {
+  let text: string;
   try {
-    return parseSubagentSettings(JSON.parse(await readFile(path, "utf8")));
+    text = await readFile(path, "utf8");
+  } catch {
+    try {
+      const settings = JSON.parse(await readFile(fallbackPath, "utf8")) as unknown;
+      if (!settings || typeof settings !== "object" || Array.isArray(settings)) return EMPTY_SETTINGS;
+      return parseSubagentSettings((settings as Record<string, unknown>).subagents);
+    } catch {
+      return EMPTY_SETTINGS;
+    }
+  }
+  try {
+    return parseSubagentSettings(JSON.parse(text));
   } catch {
     return EMPTY_SETTINGS;
   }

@@ -105,12 +105,10 @@ test("discoverAgents tolerates a missing agents dir", async () => {
 
 test("parseSubagentSettings accepts only valid model and thinking settings", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      defaults: { model: "gpt-5", thinkingLevel: "max", tools: ["edit"] },
-      agents: {
-        scout: { model: "sonnet:high", thinkingLevel: "high" },
-        invalid: { model: "openai/gpt\u0000", thinkingLevel: "maximum" },
-      },
+    defaults: { model: "gpt-5", thinkingLevel: "max", tools: ["edit"] },
+    agents: {
+      scout: { model: "sonnet:high", thinkingLevel: "high" },
+      invalid: { model: "openai/gpt\u0000", thinkingLevel: "maximum" },
     },
   });
   assert.equal(getSubagentProfile(settings), settings.profiles.default);
@@ -121,7 +119,7 @@ test("parseSubagentSettings accepts only valid model and thinking settings", () 
 
 test("loadSubagentSettings ignores malformed files", async () => {
   const dir = await mkdtemp(join(tmpdir(), "subagents-test-"));
-  const file = join(dir, "settings.json");
+  const file = join(dir, "subagents.json");
   try {
     await writeFile(file, "{");
     assert.deepEqual(await loadSubagentSettings(file), {
@@ -133,26 +131,39 @@ test("loadSubagentSettings ignores malformed files", async () => {
   }
 });
 
+test("loadSubagentSettings prefers subagents.json and falls back to the subagents key in settings.json", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "subagents-test-"));
+  const file = join(dir, "subagents.json");
+  const fallback = join(dir, "settings.json");
+  try {
+    await writeFile(fallback, JSON.stringify({ subagents: { profiles: { legacy: {} } } }));
+    assert.deepEqual(Object.keys((await loadSubagentSettings(file, fallback)).profiles), ["legacy"]);
+
+    await writeFile(file, JSON.stringify({ profiles: { current: {} } }));
+    assert.deepEqual(Object.keys((await loadSubagentSettings(file, fallback)).profiles), ["current"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("parseSubagentSettings keeps only well-formed npm package specs", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      extensions: [
-        "npm:pi-claude-bridge",
-        "npm:@scope/pkg",
-        "npm:pi-claude-bridge",
-        "pi-claude-bridge",
-        "npm:../escape",
-        "npm:has space",
-        42,
-      ],
-      defaults: { model: "gpt-5" },
-    },
+    extensions: [
+      "npm:pi-claude-bridge",
+      "npm:@scope/pkg",
+      "npm:pi-claude-bridge",
+      "pi-claude-bridge",
+      "npm:../escape",
+      "npm:has space",
+      42,
+    ],
+    defaults: { model: "gpt-5" },
   });
   assert.deepEqual(settings.extensions, ["npm:pi-claude-bridge", "npm:@scope/pkg"]);
 });
 
 test("parseSubagentSettings keeps extensions when no profiles are defined", () => {
-  const settings = parseSubagentSettings({ subagents: { extensions: ["npm:pi-claude-bridge"] } });
+  const settings = parseSubagentSettings({ extensions: ["npm:pi-claude-bridge"] });
   assert.deepEqual(settings.extensions, ["npm:pi-claude-bridge"]);
   assert.deepEqual(settings.profiles, {});
   assert.deepEqual(getSubagentProfile(settings), { defaults: {}, agents: {} });
@@ -181,10 +192,8 @@ test("resolveExtensionPaths reads entry points from each package manifest", asyn
 
 test("resolveAgentSettings gives local overrides precedence over frontmatter and defaults", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      defaults: { model: "default/model", thinkingLevel: "low" },
-      agents: { scout: { model: "local/model", thinkingLevel: "high" } },
-    },
+    defaults: { model: "default/model", thinkingLevel: "low" },
+    agents: { scout: { model: "local/model", thinkingLevel: "high" } },
   });
   const agent = resolveAgentSettings({
     name: "scout", description: "", model: "frontmatter/model", thinkingLevel: "medium",
@@ -201,14 +210,12 @@ test("resolveAgentSettings gives local overrides precedence over frontmatter and
 
 test("parseSubagentSettings validates profiles and ignores defaultProfile", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "fast",
-      profiles: {
-        fast: { defaults: { model: "fast/model" } },
-        slow: { defaults: { model: "slow/model" } },
-        "not valid": { defaults: { model: "ignored/model" } },
-        broken: null,
-      },
+    defaultProfile: "fast",
+    profiles: {
+      fast: { defaults: { model: "fast/model" } },
+      slow: { defaults: { model: "slow/model" } },
+      "not valid": { defaults: { model: "ignored/model" } },
+      broken: null,
     },
   });
   assert.equal("defaultProfile" in settings, false);
@@ -221,12 +228,10 @@ test("parseSubagentSettings validates profiles and ignores defaultProfile", () =
 test("parseSubagentSettings enables profiles unless enabled is explicitly false", () => {
   for (const enabled of [undefined, true, "false", 0, null]) {
     const settings = parseSubagentSettings({
-      subagents: {
-        defaultProfile: "disabled",
-        profiles: {
-          disabled: { enabled: false, defaults: { model: "disabled/model" } },
-          active: { enabled, defaults: { model: "active/model" } },
-        },
+      defaultProfile: "disabled",
+      profiles: {
+        disabled: { enabled: false, defaults: { model: "disabled/model" } },
+        active: { enabled, defaults: { model: "active/model" } },
       },
     });
     assert.deepEqual(Object.keys(settings.profiles), ["active"]);
@@ -237,13 +242,11 @@ test("parseSubagentSettings enables profiles unless enabled is explicitly false"
 
 test("parseSubagentSettings does not privilege a profile named default or a former defaultProfile", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "disabled",
-      profiles: {
-        disabled: { enabled: false },
-        backup: { defaults: { model: "backup/model" } },
-        default: { defaults: { model: "default/model" } },
-      },
+    defaultProfile: "disabled",
+    profiles: {
+      disabled: { enabled: false },
+      backup: { defaults: { model: "backup/model" } },
+      default: { defaults: { model: "default/model" } },
     },
   });
   assert.deepEqual(Object.keys(settings.profiles), ["backup", "default"]);
@@ -255,16 +258,14 @@ test("parseSubagentSettings does not privilege a profile named default or a form
 
 test("loadSubagentSettings leaves disabled profile configuration in the file", async () => {
   const dir = await mkdtemp(join(tmpdir(), "subagents-test-"));
-  const file = join(dir, "settings.json");
+  const file = join(dir, "subagents.json");
   const config = {
-    subagents: {
-      profiles: {
-        active: {},
-        disabled: {
-          enabled: false,
-          defaults: { model: "saved/model", thinkingLevel: "low" },
-          agents: { scout: { thinkingLevel: "high" } },
-        },
+    profiles: {
+      active: {},
+      disabled: {
+        enabled: false,
+        defaults: { model: "saved/model", thinkingLevel: "low" },
+        agents: { scout: { thinkingLevel: "high" } },
       },
     },
   };
@@ -274,7 +275,7 @@ test("loadSubagentSettings leaves disabled profile configuration in the file", a
     assert.deepEqual(Object.keys((await loadSubagentSettings(file)).profiles), ["active"]);
     assert.equal(await readFile(file, "utf8"), text);
 
-    config.subagents.profiles.disabled.enabled = true;
+    config.profiles.disabled.enabled = true;
     const restored = parseSubagentSettings(config);
     assert.deepEqual(restored.profiles.disabled, {
       defaults: { model: "saved/model", thinkingLevel: "low" },
@@ -288,18 +289,16 @@ test("loadSubagentSettings leaves disabled profile configuration in the file", a
 test("parseSubagentSettings uses the unconfigured fallback when every profile is disabled", () => {
   const extensions = ["npm:pi-claude-bridge"];
   const settings = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "disabled",
-      extensions,
-      profiles: {
-        disabled: { enabled: false, defaults: { model: "disabled/model", thinkingLevel: "low" } },
-        default: { enabled: false, agents: { scout: { model: "saved/model" } } },
-      },
+    defaultProfile: "disabled",
+    extensions,
+    profiles: {
+      disabled: { enabled: false, defaults: { model: "disabled/model", thinkingLevel: "low" } },
+      default: { enabled: false, agents: { scout: { model: "saved/model" } } },
     },
   });
   assert.deepEqual(settings.profiles, {});
   assert.deepEqual(settings.extensions, extensions);
-  assert.deepEqual(settings, parseSubagentSettings({ subagents: { extensions } }));
+  assert.deepEqual(settings, parseSubagentSettings({ extensions }));
   const agent = { name: "scout", description: "", thinkingLevel: "high", systemPrompt: "" };
   const resolved = resolveAgentSettings(agent, settings);
   assert.equal(resolved.model, undefined);
@@ -308,12 +307,10 @@ test("parseSubagentSettings uses the unconfigured fallback when every profile is
 
 test("resolveAgentSettings can resolve an explicitly selected profile", () => {
   const settings = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "fast",
-      profiles: {
-        fast: { defaults: { model: "fast/model" } },
-        slow: { defaults: { model: "slow/model" } },
-      },
+    defaultProfile: "fast",
+    profiles: {
+      fast: { defaults: { model: "fast/model" } },
+      slow: { defaults: { model: "slow/model" } },
     },
   });
   const agent = { name: "worker", description: "", systemPrompt: "" };
@@ -325,29 +322,25 @@ test("resolveAgentSettings can resolve an explicitly selected profile", () => {
 
 test("getSubagentProfile uses an explicit enabled profile, otherwise only a sole enabled profile", () => {
   const empty = { defaults: {}, agents: {} };
-  const none = parseSubagentSettings({ subagents: { profiles: {}, defaultProfile: "default" } });
+  const none = parseSubagentSettings({ profiles: {}, defaultProfile: "default" });
   assert.deepEqual(none.profiles, {});
   assert.deepEqual(getSubagentProfile(none), empty);
   assert.deepEqual(getSubagentProfile(none, "default"), empty);
   assert.deepEqual(getSubagentProfile(none, "constructor"), empty);
 
   const one = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "missing",
-      profiles: { only: { defaults: { model: "only/model" } } },
-    },
+    defaultProfile: "missing",
+    profiles: { only: { defaults: { model: "only/model" } } },
   });
   assert.equal(getSubagentProfile(one), one.profiles.only);
   assert.equal(getSubagentProfile(one, "only"), one.profiles.only);
   assert.deepEqual(getSubagentProfile(one, "missing"), empty);
 
   const many = parseSubagentSettings({
-    subagents: {
-      defaultProfile: "default",
-      profiles: {
-        default: { defaults: { model: "default/model" } },
-        other: { defaults: { model: "other/model" } },
-      },
+    defaultProfile: "default",
+    profiles: {
+      default: { defaults: { model: "default/model" } },
+      other: { defaults: { model: "other/model" } },
     },
   });
   assert.deepEqual(Object.keys(many.profiles), ["default", "other"]);

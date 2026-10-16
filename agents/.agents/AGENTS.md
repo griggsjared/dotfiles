@@ -48,10 +48,6 @@ Applies to messages, PR text, commits, and docs. Not to code or exact technical 
 - No praise, no apology, no hedging. Say what you did and what is left.
 - Break any rule here rather than write something unclear.
 
-## Exploration
-
-For searches spanning many files or naming conventions, delegate to a read-only subagent and keep only the conclusion. Search directly when you already know the file or symbol.
-
 ## Before you finish
 
 Inspect the diff for scope and confirm the applicable testing and reporting rules above were followed.

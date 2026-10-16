@@ -3,8 +3,4 @@
 
 [toolchain]
 channel = "stable"
-
-[components]
-rust-analyzer = true
-clippy = true
-rustfmt = true
+components = ["rust-analyzer", "clippy", "rustfmt"]

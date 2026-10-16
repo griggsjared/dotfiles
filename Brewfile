@@ -1,9 +1,6 @@
 # Homebrew Bundle file for dotfiles setup
 # Run with: brew bundle
 
-# Taps
-tap "sst/tap"
-
 # Casks (GUI Applications)
 cask "alt-tab"
 cask "ghostty"
@@ -60,7 +57,7 @@ brew "composer"
 brew "typescript"
 brew "pnpm"
 brew "yarn"
-brew "oven-sh/bun/bun"
+brew "bun"
 
 # Database Tools
 brew "mysql-client"
@@ -68,4 +65,4 @@ brew "sqlx-cli"
 
 # AI Cli Tools
 brew "rtk"
-brew "sst/tap/opencode"
+brew "opencode"

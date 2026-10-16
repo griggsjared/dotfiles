@@ -64,7 +64,13 @@ test("interprets Claude reset dates across daylight saving and year boundaries",
 	}
 });
 
-test("reads Claude usage through the CLI with closed stdin and bounded execution", async (t) => {
+test("fetches Claude CLI usage despite inherited traffic restrictions with bounded execution", async (t) => {
+	const previous = process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
+	process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+	t.after(() => {
+		if (previous === undefined) delete process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
+		else process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = previous;
+	});
 	const calls = mockCli(t, (call) => call.complete(null, output));
 	const controller = new AbortController();
 	const usage = await fetchClaudeUsage(context, controller.signal);
@@ -75,8 +81,16 @@ test("reads Claude usage through the CLI with closed stdin and bounded execution
 		"--strict-mcp-config", "--tools", "", "--setting-sources", "", "/usage",
 	]);
 	assert.deepEqual(calls[0]?.options, {
+		env: {
+			...process.env,
+			CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "",
+			DISABLE_TELEMETRY: "1",
+			DISABLE_ERROR_REPORTING: "1",
+			DISABLE_AUTOUPDATER: "1",
+		},
 		encoding: "utf8", signal: controller.signal, timeout: 10_000, maxBuffer: 64 * 1024, killSignal: "SIGKILL",
 	});
+	assert.equal(process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, "1");
 	assert.equal(calls[0]?.stdinClosed, true);
 });
 
@@ -116,9 +130,14 @@ test("cancels an in-flight Claude CLI request through its abort signal", async (
 	assert.equal(calls[0]?.stdinClosed, true);
 });
 
-test("Claude wiring caches quotas for five minutes and preserves them on refresh failure", async (t) => {
+test("Claude wiring caches quotas for five minutes and retries failed refreshes until fresh quotas replace them", async (t) => {
 	let reads = 0;
-	mockCli(t, (call) => ++reads === 1 ? call.complete(null, output) : call.complete(new Error("secret CLI failure"), ""));
+	mockCli(t, (call) => {
+		reads++;
+		if (reads === 1) call.complete(null, output);
+		else if (reads <= 3) call.complete(new Error("secret CLI failure"), "");
+		else call.complete(null, output.replace("10% used", "20% used"));
+	});
 	const originalNow = Date.now;
 	let now = capturedAt;
 	const { handlers, context, statuses } = entryContext();
@@ -139,6 +158,14 @@ test("Claude wiring caches quotas for five minutes and preserves them on refresh
 		await settle();
 		assert.equal(reads, 2);
 		assert.deepEqual(JSON.parse(statuses.at(-1)!), ready);
+		handlers.get("turn_end")?.({}, context);
+		await settle();
+		assert.equal(reads, 3);
+		assert.deepEqual(JSON.parse(statuses.at(-1)!), ready);
+		handlers.get("turn_end")?.({}, context);
+		await settle();
+		assert.equal(reads, 4);
+		assert.equal(JSON.parse(statuses.at(-1)!).windows[0].usedPercent, 20);
 		assert.equal(statuses.some((value) => value?.includes("secret")), false);
 	} finally {
 		handlers.get("session_shutdown")?.({}, context);

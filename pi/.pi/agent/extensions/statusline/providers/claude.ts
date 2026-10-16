@@ -63,6 +63,13 @@ export async function fetchClaudeUsage(_ctx: ExtensionContext, signal: AbortSign
 			"--settings", JSON.stringify({ remoteControlAtStartup: false, disableAllHooks: true }),
 			"--strict-mcp-config", "--tools", "", "--setting-sources", "", "/usage",
 		], {
+			env: {
+				...process.env,
+				CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "",
+				DISABLE_TELEMETRY: "1",
+				DISABLE_ERROR_REPORTING: "1",
+				DISABLE_AUTOUPDATER: "1",
+			},
 			encoding: "utf8", signal, timeout: REQUEST_TIMEOUT_MS, maxBuffer: 64 * 1024, killSignal: "SIGKILL",
 		}, (error, stdout) => {
 			if (signal.aborted) reject(signal.reason);

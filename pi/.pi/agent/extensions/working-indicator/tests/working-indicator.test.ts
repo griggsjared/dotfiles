@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import workingIndicator from "../index.ts";
 
 type TestContext = ReturnType<typeof createContext>["ctx"];
@@ -81,6 +81,51 @@ test("starts and settles the observable working indicator lifecycle", () => {
 	assert.equal(calls.messages.at(-1), undefined);
 	assert.equal(calls.indicators.at(-1), undefined);
 	assert.equal(calls.visibility.at(-1), false);
+});
+
+test("prompt marker stays outside submitted text and preserves wrapped input and mouse placement", () => {
+	const handlers = register();
+	const { calls, ctx } = createContext();
+	emit(handlers, "session_start", ctx);
+	const factory = calls.editors.at(-1) as (...args: ConstructorParameters<typeof CustomEditor>) => CustomEditor;
+	const editor = factory(
+		{ terminal: { rows: 24 }, requestRender() {} } as ConstructorParameters<typeof CustomEditor>[0],
+		{ borderColor: (text: string) => text, selectList: {} } as ConstructorParameters<typeof CustomEditor>[1],
+		{ matches: () => false } as unknown as ConstructorParameters<typeof CustomEditor>[2],
+	);
+	editor.setPaddingX(1);
+	assert.ok(editor.render(12)[1]?.startsWith("❯ "));
+	editor.setText("abcdefghij");
+	const lines = editor.render(12).map((line) => line.replace(/\x1b\[[\d;]*m/g, ""));
+	assert.ok(lines[1]?.startsWith("❯ abcdefgh"));
+	assert.ok(lines[2]?.startsWith("  ij"));
+	assert.equal(lines.filter((line) => line.includes("❯")).length, 1);
+	editor.handleMouse({
+		type: "click", button: "left", x: 4, y: 1, screenX: 4, screenY: 1,
+		width: 12, height: lines.length, shift: false, alt: false, ctrl: false,
+	});
+	assert.deepEqual(editor.getCursor(), { line: 0, col: 2 });
+	let submitted: string | undefined;
+	editor.onSubmit = (text) => { submitted = text; };
+	editor.handleInput("\r");
+	assert.equal(submitted, "abcdefghij");
+});
+
+test("prompt marker does not overwrite input when the editor is too narrow for its gutter", () => {
+	const handlers = register();
+	const { calls, ctx } = createContext();
+	emit(handlers, "session_start", ctx);
+	const factory = calls.editors.at(-1) as (...args: ConstructorParameters<typeof CustomEditor>) => CustomEditor;
+	const editor = factory(
+		{ terminal: { rows: 24 }, requestRender() {} } as ConstructorParameters<typeof CustomEditor>[0],
+		{ borderColor: (text: string) => text, selectList: {} } as ConstructorParameters<typeof CustomEditor>[1],
+		{ matches: () => false } as unknown as ConstructorParameters<typeof CustomEditor>[2],
+	);
+	editor.setText("a");
+	const lines = editor.render(4).map((line) => line.replace(/\x1b\[[\d;]*m/g, ""));
+	assert.ok(lines[1]?.includes("a"));
+	assert.ok(lines.every((line) => line.length <= 4 && !line.includes("❯")));
+	assert.equal(editor.getText(), "a");
 });
 
 for (const [patternIndex, pattern] of ["shimmer", "bounce", "karaoke", "ripple", "sparkle", "rainbow", "palettePulse"].entries()) {

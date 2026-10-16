@@ -285,6 +285,20 @@ function styleWorkingText(
 	).join("");
 }
 
+class PromptEditor extends CustomEditor {
+	setPaddingX(padding: number): void {
+		super.setPaddingX(Math.max(2, padding));
+	}
+
+	render(width: number): string[] {
+		const lines = super.render(width);
+		if (width >= 5 && lines[1]) {
+			lines[1] = this.borderColor("❯ ") + lines[1].slice(2);
+		}
+		return lines;
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	let workingRunId = 0;
 	let runtimeGeneration: symbol | undefined;
@@ -527,7 +541,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode === "tui") {
 			ctx.ui.setEditorComponent((tui, theme, keybindings) =>
-				new CustomEditor(tui, theme, keybindings));
+				new PromptEditor(tui, theme, keybindings, { paddingX: 2 }));
 		}
 		if (ctx.hasUI === false) return;
 		// Invalidate callbacks from a runtime being replaced during reload. A

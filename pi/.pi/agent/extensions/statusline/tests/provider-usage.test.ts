@@ -131,6 +131,7 @@ test("answers provider usage requests for non-active providers without touching 
 	});
 	try {
 		handlers.get("session_start")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
 		const footerUpdates = statuses.length;
 		assert.equal(await ask("google"), undefined);
 		assert.equal(await ask("deepseek"), "b:$42.50");
@@ -280,18 +281,66 @@ test("normalizes Anthropic unified rate-limit headers", () => {
 	assert.equal(normalizeAnthropicHeaders({ "content-type": "text/event-stream" }, capturedAt), undefined);
 });
 
-test("publishes Anthropic usage from response headers without fetching", async () => {
+test("fetches Anthropic plan usage from the OAuth usage endpoint", async () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+	globalThis.fetch = async (target, init) => {
+		requests.push({ url: String(target), init });
+		return new Response(JSON.stringify({
+			five_hour: { utilization: 13.0, resets_at: "2026-10-17T20:40:00.085011+00:00" },
+			seven_day: { utilization: 19.0, resets_at: "2026-10-18T04:00:00.085037+00:00" },
+			seven_day_opus: null,
+		}));
+	};
+	let apiKey = "sk-ant-oat01-test";
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true, model: { provider: "anthropic" },
+		modelRegistry: { getProvider: () => undefined, getProviderAuth: async () => ({ auth: { apiKey } }) },
+		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	const start = async () => {
+		handlers.get("session_start")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		return JSON.parse(statuses.at(-1)!) as { state: string; windows: unknown[] };
+	};
+	try {
+		const usage = await start();
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0]!.url, "https://api.anthropic.com/api/oauth/usage");
+		const headers = requests[0]!.init?.headers as Record<string, string>;
+		assert.equal(headers.Authorization, "Bearer sk-ant-oat01-test");
+		assert.equal(headers["anthropic-beta"], "oauth-2025-04-20");
+		assert.deepEqual(usage.windows, [
+			{ kind: "rolling", label: "5h", usedPercent: 13, resetAtMs: Date.parse("2026-10-17T20:40:00.085Z") },
+			{ kind: "weekly", label: "7d", usedPercent: 19, resetAtMs: Date.parse("2026-10-18T04:00:00.085Z") },
+		]);
+
+		// API keys have no plan quota, so nothing is fetched.
+		apiKey = "sk-ant-api03-test";
+		const keyUsage = await start();
+		assert.equal(requests.length, 1);
+		assert.equal(keyUsage.state, "ready");
+		assert.deepEqual(keyUsage.windows, []);
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("publishes Anthropic usage from response headers", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) {
 		handlers.set(event, handler);
 	} } as unknown as ExtensionAPI);
-	const originalFetch = globalThis.fetch;
-	let fetched = false;
-	globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
 	const statuses: Array<string | undefined> = [];
+	let loads = 0;
 	const context = {
 		hasUI: true,
 		model: { provider: "anthropic" },
+		modelRegistry: { getProvider: () => { loads++; return undefined; }, getProviderAuth: async () => undefined },
 		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
 	};
 	const last = () => JSON.parse(statuses.at(-1)!) as { state: string; windows: Array<{ usedPercent: number }> };
@@ -299,7 +348,6 @@ test("publishes Anthropic usage from response headers without fetching", async (
 		handlers.get("session_start")?.({}, context);
 		handlers.get("turn_end")?.({}, context);
 		await new Promise<void>((resolve) => setImmediate(resolve));
-		assert.equal(fetched, false);
 		assert.equal(last().state, "unknown");
 
 		// API-key replies carry no plan headers, so the footer shows no quota placeholder.
@@ -311,9 +359,15 @@ test("publishes Anthropic usage from response headers without fetching", async (
 		assert.equal(last().windows[0]?.usedPercent, 25);
 		handlers.get("after_provider_response")?.({ status: 500, headers: {} }, context);
 		assert.equal(last().windows[0]?.usedPercent, 25);
+
+		// Header data counts as a fresh fetch, so the next turn does not hit the usage endpoint.
+		const loadsBefore = loads;
+		handlers.get("turn_end")?.({}, context);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(loads, loadsBefore);
+		assert.equal(last().windows[0]?.usedPercent, 25);
 	} finally {
 		handlers.get("session_shutdown")?.({}, context);
-		globalThis.fetch = originalFetch;
 	}
 });
 

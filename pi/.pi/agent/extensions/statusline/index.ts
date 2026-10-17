@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { ANTHROPIC_PROVIDER, normalizeAnthropicHeaders } from "./providers/anthropic.ts";
+import { ANTHROPIC_CACHE_TTL_MS, ANTHROPIC_PROVIDER, fetchAnthropicUsage, normalizeAnthropicHeaders } from "./providers/anthropic.ts";
 import { CLAUDE_CACHE_TTL_MS, CLAUDE_PROVIDER, fetchClaudeUsage } from "./providers/claude.ts";
 import { CODEX_CACHE_TTL_MS, CODEX_PROVIDER, fetchCodexUsage } from "./providers/codex.ts";
 import { DEEPSEEK_CACHE_TTL_MS, DEEPSEEK_PROVIDER, fetchDeepseekUsage } from "./providers/deepseek.ts";
@@ -21,8 +21,8 @@ type UsageAdapter = {
 	load(ctx: ExtensionContext, signal: AbortSignal): Promise<UsageStatus>;
 };
 
-// Anthropic has no adapter: its usage arrives on response headers instead.
-const USAGE_ADAPTERS: Partial<Record<UsageProvider, UsageAdapter>> = {
+const USAGE_ADAPTERS: Record<UsageProvider, UsageAdapter> = {
+	[ANTHROPIC_PROVIDER]: { cacheTtlMs: ANTHROPIC_CACHE_TTL_MS, load: fetchAnthropicUsage },
 	[CLAUDE_PROVIDER]: { cacheTtlMs: CLAUDE_CACHE_TTL_MS, load: fetchClaudeUsage },
 	[CODEX_PROVIDER]: { cacheTtlMs: CODEX_CACHE_TTL_MS, load: fetchCodexUsage },
 	[OPENCODE_PROVIDER]: { cacheTtlMs: OPENCODE_CACHE_TTL_MS, load: (_ctx, signal) => fetchOpencodeUsage(signal) },
@@ -119,7 +119,6 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		}
 
 		const adapter = USAGE_ADAPTERS[provider];
-		if (!adapter) return Promise.resolve();
 		if (latestUsage?.provider === provider && Date.now() - lastFetchedAt < adapter.cacheTtlMs) {
 			publish(ctx, latestUsage);
 			return Promise.resolve();
@@ -194,14 +193,10 @@ export default function providerUsage(pi: ExtensionAPI): void {
 			reply(undefined);
 			return;
 		}
-		const latestFor = () => latestUsage?.provider === provider ? latestUsage : undefined;
-		const adapter = USAGE_ADAPTERS[provider];
-		if (!adapter) {
-			reply(formatRequestedUsage(latestFor(), theme));
-		} else if (provider === activeProvider) {
-			void refresh(ctx).then(() => reply(formatRequestedUsage(latestFor(), theme)));
+		if (provider === activeProvider) {
+			void refresh(ctx).then(() => reply(formatRequestedUsage(latestUsage?.provider === provider ? latestUsage : undefined, theme)));
 		} else {
-			void fetchProviderUsage(provider, adapter, ctx).then((usage) => reply(formatRequestedUsage(usage, theme)));
+			void fetchProviderUsage(provider, USAGE_ADAPTERS[provider], ctx).then((usage) => reply(formatRequestedUsage(usage, theme)));
 		}
 	});
 
@@ -253,7 +248,9 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		if (!sessionActive || !ctx.hasUI || ctx.model?.provider !== ANTHROPIC_PROVIDER) return;
 		const usage = normalizeAnthropicHeaders(event.headers);
 		if (usage) {
+			// Header data is as current as the usage endpoint, so it resets the fetch cache.
 			latestUsage = usage;
+			lastFetchedAt = Date.now();
 			publish(ctx, usage);
 		} else if (event.status < 400 && latestUsage?.provider !== ANTHROPIC_PROVIDER) {
 			// A successful reply without plan headers means an API key, which has no quota to show.

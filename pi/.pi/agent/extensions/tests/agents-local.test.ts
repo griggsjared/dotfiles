@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { createAssistantMessageEventStream, getCurrentSystemPrompt, getCurrentTools, Type, type AssistantMessage } from "@earendil-works/pi-ai";
 import type { Model } from "@earendil-works/pi-ai/compat";
-import { createAgentSession, createEventBus, DefaultResourceLoader, SessionManager, SettingsManager, type ContextWithSystemEvent, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, createEventBus, DefaultResourceLoader, SessionManager, SettingsManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import agentsLocal from "../agents-local.ts";
 
 test("reports complete parent-first local paths at startup, clearing removals and propagating read errors", async (t) => {
@@ -98,61 +98,6 @@ test("loads and keeps a session snapshot of local instructions alongside shared 
 	assert.deepEqual(reports, [
 		{ source: "agents-local", paths: [] },
 		{ source: "agents-local", paths: [parentFile, childFile] },
-	]);
-});
-
-test("keeps extension-triggered turns on the session snapshot until reload", async (t) => {
-	const events: ExtensionAPI["events"] = createEventBus();
-	const reports: unknown[] = [];
-	events.on("context:files", (data) => { reports.push(data); });
-	let start: ((event: unknown, ctx: { cwd: string }) => Promise<void>) | undefined;
-	let handler: ((event: ContextWithSystemEvent, ctx: { cwd: string }) => { messages: ContextWithSystemEvent["messages"] } | undefined) | undefined;
-	agentsLocal({ events, on(event, callback) {
-		if (event === "session_start") start = callback as typeof start;
-		if (event === "context_with_system") handler = callback as typeof handler;
-	} } as ExtensionAPI);
-	assert.ok(start);
-	assert.ok(handler);
-	const root = await mkdtemp(join(tmpdir(), "pi-agents-local-request-"));
-	t.after(() => rm(root, { recursive: true, force: true }));
-	const localFile = join(root, "AGENTS.local.md");
-	await writeFile(localFile, "request-local-marker-v1");
-	await start({ type: "session_start", reason: "startup" }, { cwd: root });
-	const event: ContextWithSystemEvent = {
-		type: "context_with_system",
-		messages: [{
-			role: "system", content: "shared-instruction-marker",
-			toolsAdded: [{ name: "noop", description: "Test tool", parameters: Type.Object({}) }], timestamp: 0,
-		}, { role: "user", content: "test", timestamp: 0 }],
-	};
-	const repaired = handler(event, { cwd: root });
-	assert.ok(repaired);
-	assert.match(getCurrentSystemPrompt(repaired.messages), /shared-instruction-marker/);
-	assert.equal(getCurrentSystemPrompt(repaired.messages).split("request-local-marker-v1").length - 1, 1);
-	assert.deepEqual(getCurrentTools(repaired.messages).map(({ name }) => name), ["noop"]);
-	assert.equal(handler({ ...event, messages: repaired.messages }, { cwd: root }), undefined);
-
-	await writeFile(localFile, "request-local-marker-v2");
-	assert.equal(handler({ ...event, messages: repaired.messages }, { cwd: root }), undefined);
-	await start({ type: "session_start", reason: "reload" }, { cwd: root });
-	const updated = handler({ ...event, messages: repaired.messages }, { cwd: root });
-	assert.ok(updated);
-	assert.doesNotMatch(getCurrentSystemPrompt(updated.messages), /request-local-marker-v1/);
-	assert.match(getCurrentSystemPrompt(updated.messages), /request-local-marker-v2/);
-	assert.deepEqual(getCurrentTools(updated.messages).map(({ name }) => name), ["noop"]);
-
-	await rm(localFile);
-	assert.equal(handler({ ...event, messages: updated.messages }, { cwd: root }), undefined);
-	await start({ type: "session_start", reason: "reload" }, { cwd: root });
-	const removed = handler({ ...event, messages: updated.messages }, { cwd: root });
-	assert.ok(removed);
-	assert.doesNotMatch(getCurrentSystemPrompt(removed.messages), /request-local-marker/);
-	assert.match(getCurrentSystemPrompt(removed.messages), /shared-instruction-marker/);
-	assert.deepEqual(getCurrentTools(removed.messages).map(({ name }) => name), ["noop"]);
-	assert.deepEqual(reports, [
-		{ source: "agents-local", paths: [localFile] },
-		{ source: "agents-local", paths: [localFile] },
-		{ source: "agents-local", paths: [] },
 	]);
 });
 

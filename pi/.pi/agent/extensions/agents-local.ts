@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { getCurrentSystemMessage, type SystemMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 async function readLocalFiles(cwd: string): Promise<Array<{ path: string; content: string }>> {
@@ -30,27 +29,5 @@ export default function agentsLocal(pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", (event) => {
 		event.systemPromptOptions.contextFiles.push(...sessionFiles);
-	});
-
-	// Extension-triggered turns can bypass before_agent_start.
-	pi.on("context_with_system", (event) => {
-		const system = getCurrentSystemMessage(event.messages);
-		const projectContext = system?.sections?.project_context ?? "";
-		const instructions = sessionFiles
-			.filter(({ path }) => !projectContext.includes(`<project_instructions path="${path}">`))
-			.map(({ path, content }) => `<project_instructions path="${path}">\n${content}\n</project_instructions>`)
-			.join("\n\n");
-		const section = instructions ? `<agents_local>\n${instructions}\n</agents_local>` : null;
-		if ((system?.sections?.agents_local ?? null) === section) return;
-
-		const message: SystemMessage = {
-			role: "system",
-			content: "",
-			sections: { agents_local: section },
-			timestamp: Date.now(),
-		};
-		return {
-			messages: event.messages[0]?.role === "system" ? [...event.messages, message] : [message, ...event.messages],
-		};
 	});
 }

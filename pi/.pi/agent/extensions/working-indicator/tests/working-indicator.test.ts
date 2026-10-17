@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import workingIndicator from "../index.ts";
 
 type TestContext = ReturnType<typeof createContext>["ctx"];
@@ -124,7 +125,7 @@ test("prompt marker does not overwrite input when the editor is too narrow for i
 	editor.setText("a");
 	const lines = editor.render(4).map((line) => line.replace(/\x1b\[[\d;]*m/g, ""));
 	assert.ok(lines[1]?.includes("a"));
-	assert.ok(lines.every((line) => line.length <= 4 && !line.includes("❯")));
+	assert.ok(lines.every((line) => visibleWidth(line) <= 4 && !line.includes("❯")));
 	assert.equal(editor.getText(), "a");
 });
 

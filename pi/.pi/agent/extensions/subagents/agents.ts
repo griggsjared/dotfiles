@@ -9,6 +9,7 @@ const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhi
 export interface AgentSettings {
   model?: string;
   thinkingLevel?: string;
+  inactivityTimeoutMs?: number;
 }
 
 export interface SubagentProfile {
@@ -28,7 +29,7 @@ export interface AgentConfig {
   thinkingLevel?: string;
   tools?: string[];
   systemPrompt: string;
-  maxRuntimeMs?: number;
+  inactivityTimeoutMs?: number;
 }
 
 const EMPTY_PROFILE: SubagentProfile = { defaults: {}, agents: {} };
@@ -43,12 +44,17 @@ function validThinkingLevel(value: unknown): value is string {
   return typeof value === "string" && THINKING_LEVELS.has(value);
 }
 
+function validInactivityTimeout(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 2147483647;
+}
+
 function parseAgentSettings(value: unknown): AgentSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const settings = value as Record<string, unknown>;
   return {
     ...(validModel(settings.model) ? { model: settings.model } : {}),
     ...(validThinkingLevel(settings.thinkingLevel) ? { thinkingLevel: settings.thinkingLevel } : {}),
+    ...(validInactivityTimeout(settings.inactivityTimeoutMs) ? { inactivityTimeoutMs: settings.inactivityTimeoutMs } : {}),
   };
 }
 
@@ -93,7 +99,7 @@ function parseProfile(value: unknown): SubagentProfile | undefined {
   if (config.agents && typeof config.agents === "object" && !Array.isArray(config.agents)) {
     for (const [name, settings] of Object.entries(config.agents)) {
       const parsed = parseAgentSettings(settings);
-      if (parsed.model || parsed.thinkingLevel) agents[name] = parsed;
+      if (parsed.model || parsed.thinkingLevel || parsed.inactivityTimeoutMs !== undefined) agents[name] = parsed;
     }
   }
   return { defaults: parseAgentSettings(config.defaults), agents };
@@ -168,6 +174,7 @@ export function resolveAgentSettings(agent: AgentConfig, settings: SubagentSetti
     ...agent,
     model: local.model ?? agent.model ?? profile.defaults.model,
     thinkingLevel: local.thinkingLevel ?? agent.thinkingLevel ?? profile.defaults.thinkingLevel,
+    inactivityTimeoutMs: local.inactivityTimeoutMs ?? agent.inactivityTimeoutMs ?? profile.defaults.inactivityTimeoutMs,
   };
 }
 
@@ -194,7 +201,7 @@ export async function loadAgentFile(path: string): Promise<AgentConfig | undefin
     const name = meta.name || parse(path).name;
     if (!name) return undefined;
 
-    const maxRuntime = parseInt(meta.maxRuntimeMs ?? "", 10);
+    const inactivityTimeout = /^\d+$/.test(meta.inactivityTimeoutMs ?? "") ? Number(meta.inactivityTimeoutMs) : undefined;
 
     return {
       name,
@@ -203,7 +210,7 @@ export async function loadAgentFile(path: string): Promise<AgentConfig | undefin
       thinkingLevel: validThinkingLevel(meta.thinkingLevel) ? meta.thinkingLevel : undefined,
       tools: meta.tools?.split(",").map((s) => s.trim()).filter(Boolean),
       systemPrompt: body,
-      maxRuntimeMs: Number.isFinite(maxRuntime) && maxRuntime > 0 ? maxRuntime : undefined,
+      inactivityTimeoutMs: validInactivityTimeout(inactivityTimeout) ? inactivityTimeout : undefined,
     };
   } catch {
     return undefined;

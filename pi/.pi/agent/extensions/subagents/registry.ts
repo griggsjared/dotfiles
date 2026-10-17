@@ -5,6 +5,8 @@ import {
   type CancellationReason,
   type JobEvent,
   type JobEventInput,
+  type JobStep,
+  type JobStepInput,
   type SubagentDelivery,
   type SubagentQuestion,
   type SubagentResult,
@@ -23,15 +25,17 @@ export interface Job {
   status: "running" | "completed" | "failed" | "cancelled"; endTime?: number;
   text?: string; error?: string; progress?: string; usage: SubagentUsage; toolCalls: ToolCallInfo[];
   model?: string; thinkingLevel?: string; profile?: string; cancellationReason?: CancellationReason;
-  pendingQuestions: PendingQuestion[];
+  pendingQuestions: PendingQuestion[]; steps: JobStep[];
 }
 const PRUNE_AFTER_MS = 300_000;
 const JOB_EVENT_CAPACITY = 100;
+const FINISHED_STEP_CAPACITY = 20;
 interface JobEventRing { events: JobEvent[]; nextSeq: number; }
 export interface JobRegistry {
   scope: string; jobs: Map<number, Job>;
   add(agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string; profile?: string }): number;
   appendEvent(id: number, event: JobEventInput): boolean;
+  recordStep(id: number, input: JobStepInput): boolean;
   readEvents(id: number, options?: { since?: number; limit?: number }): { events: JobEvent[]; nextCursor: number; droppedBefore?: number } | undefined;
   updateLive(id: number, live: { text?: string; progress?: string; usage?: SubagentUsage; toolCalls?: ToolCallInfo[]; model?: string; thinkingLevel?: string }): void;
   complete(id: number, result: SubagentResult): void;
@@ -47,12 +51,41 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
   const now = options.now ?? Date.now; let nextId = 1; const scope = randomUUID();
   const jobs = new Map<number, Job>(); const eventRings = new Map<number, JobEventRing>(); const clearedIds = new Set<number>(); const handles = new Map<number, SubagentControl>(); const replying = new Set<string>();
   const add = (agent: string, task: string, title?: string, metadata?: { model?: string; thinkingLevel?: string; profile?: string }): number => {
-    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, profile: metadata?.profile, pendingQuestions: [] }); eventRings.set(id, { events: [], nextSeq: 1 }); return id;
+    const id = nextId++; jobs.set(id, { id, agent, task, title: normalizeTitle(title), startTime: now(), status: "running", usage: { ...EMPTY_USAGE }, toolCalls: [], model: metadata?.model, thinkingLevel: metadata?.thinkingLevel, profile: metadata?.profile, pendingQuestions: [], steps: [] }); eventRings.set(id, { events: [], nextSeq: 1 }); return id;
+  };
+  const finishStep = (job: Job, step: JobStep, endedAt: number): void => {
+    step.endedAt = endedAt;
+    job.steps.splice(job.steps.indexOf(step), 1);
+    job.steps.push(step);
+    const finished = job.steps.filter((item) => item.endedAt !== undefined);
+    const expired = new Set(finished.slice(0, Math.max(0, finished.length - FINISHED_STEP_CAPACITY)));
+    job.steps = job.steps.filter((item) => !expired.has(item));
+  };
+  const recordStep = (id: number, input: JobStepInput): boolean => {
+    const job = jobs.get(id); if (!job || job.status !== "running" || job.cancellationReason) return false;
+    const step = job.steps.find((item) => item.id === input.id);
+    if (input.phase === "start") {
+      if (step) return false;
+      job.steps.push({ id: input.id, kind: input.kind, summary: input.summary, startedAt: now(), ...(input.toolCall ? { toolCall: input.toolCall } : {}) });
+    } else {
+      if (!step || step.endedAt !== undefined) return false;
+      finishStep(job, step, now());
+    }
+    return true;
   };
   const appendEvent = (id: number, event: JobEventInput): boolean => {
     const job = jobs.get(id); if (!job || job.status !== "running") return false;
     const ring = eventRings.get(id); if (!ring) return false;
-    ring.events.push({ ...event, seq: ring.nextSeq++, timestamp: now() });
+    const entry: JobEvent = { kind: event.kind, summary: event.summary, seq: ring.nextSeq++, timestamp: now() };
+    if (event.stepId !== undefined) {
+      entry.stepId = event.stepId;
+      const step = job.steps.find((item) => item.id === event.stepId);
+      if (step) {
+        entry.startedAt = step.startedAt;
+        if (step.endedAt !== undefined) entry.durationMs = Math.max(0, step.endedAt - step.startedAt);
+      }
+    }
+    ring.events.push(entry);
     if (ring.events.length > JOB_EVENT_CAPACITY) ring.events.shift();
     return true;
   };
@@ -125,12 +158,16 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
   const cancel = (id: number, reason: CancellationReason = "manual"): boolean => {
     const job = jobs.get(id); if (!job || job.status !== "running") return false;
     if (job.cancellationReason) return true;
-    job.cancellationReason = reason; job.pendingQuestions = []; handles.get(id)?.cancel(reason); return true;
+    job.cancellationReason = reason; job.pendingQuestions = [];
+    const endedAt = now();
+    for (const step of [...job.steps]) if (step.endedAt === undefined) finishStep(job, step, endedAt);
+    handles.get(id)?.cancel(reason); return true;
   };
   const cancelAll = (reason: CancellationReason = "manual") => { let count = 0; for (const job of running()) if (cancel(job.id, reason)) count++; return count; };
   const complete = (id: number, result: SubagentResult): void => {
     const job = jobs.get(id); if (!job || job.status !== "running") return;
     handles.delete(id); job.pendingQuestions = []; job.status = result.cancelled || job.cancellationReason ? "cancelled" : result.exitCode === 0 ? "completed" : "failed"; job.endTime = now();
+    for (const step of [...job.steps]) if (step.endedAt === undefined) finishStep(job, step, job.endTime);
     if (job.status === "cancelled" && !job.cancellationReason) job.cancellationReason = result.cancellationReason ?? "manual";
     job.text = result.text; job.error = result.error; job.progress = undefined; job.usage = result.usage ?? job.usage; job.toolCalls = result.toolCalls ?? job.toolCalls;
     job.model = result.model ?? job.model; job.thinkingLevel = result.thinkingLevel ?? job.thinkingLevel;
@@ -144,5 +181,5 @@ export function createJobRegistry(options: { now?: () => number } = {}) {
   const running = () => Array.from(jobs.values()).filter(j => j.status === "running");
   const recent = (limit = 5) => Array.from(jobs.values()).filter(j => j.status !== "running").sort((a,b)=>(b.endTime??0)-(a.endTime??0)).slice(0, limit);
   const get = (id: number) => jobs.get(id);
-  return { scope, jobs, add, appendEvent, readEvents, updateLive, complete, registerControl, recordQuestion, send, reply, cancel, cancelAll, markCleared, pendingCompleted, running, recent, get };
+  return { scope, jobs, add, appendEvent, recordStep, readEvents, updateLive, complete, registerControl, recordQuestion, send, reply, cancel, cancelAll, markCleared, pendingCompleted, running, recent, get };
 }

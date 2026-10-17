@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { getPiCommand, runSubagent, runWithConcurrencyLimit } from "../runner.ts";
 import type { AgentConfig } from "../agents.ts";
+import type { JobEventInput, JobStepInput, SubagentInactivity } from "../types.ts";
 import {
   FakeChild,
   fakeSpawn,
@@ -191,16 +192,34 @@ test("runSubagent: reports live updates when state changes", async () => {
   assert.equal(updates.length, 2); // final flush on close
 });
 
-test("runSubagent: zero maxRuntimeMs disables the timeout", async () => {
-  const child = new FakeChild();
-  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
-    spawnFn: fakeSpawn(child),
-    maxRuntimeMs: 0,
-  });
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.equal(child.killed, null);
-  child.finish(0);
-  assert.equal((await result).exitCode, 0);
+test("runSubagent: inactivity uses runner override then agent then five-minute default, with zero disabling", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  for (const [agentTimeout, optionTimeout, expected] of [
+    [undefined, undefined, 300000], [30, undefined, 30], [10, 20, 20], [10, 0, 0], [0, undefined, 0],
+  ] as const) {
+    const child = new FakeChild();
+    const notifications: SubagentInactivity[] = [];
+    const launched = await runSubagent({ ...agent, inactivityTimeoutMs: agentTimeout }, "t", "/tmp", "m", {
+      spawnFn: fakeSpawn(child),
+      inactivityTimeoutMs: optionTimeout,
+      onInactivity: (idle) => notifications.push(idle),
+    });
+    const startedAt = Date.now();
+    if (expected) {
+      t.mock.timers.tick(expected - 1);
+      assert.equal(notifications.length, 0);
+      t.mock.timers.tick(1);
+      assert.deepEqual(notifications, [{ lastActivityAt: startedAt, detectedAt: startedAt + expected, inactivityTimeoutMs: expected }]);
+    }
+    t.mock.timers.tick(600000);
+    assert.equal(notifications.length, expected ? 1 : 0);
+    assert.equal(child.killed, null);
+    assert.equal(child.stdin.ended, false);
+    child.finish(0);
+    assert.equal((await launched.result).cancelled, false);
+    t.mock.timers.tick(600000);
+    assert.equal(notifications.length, expected ? 1 : 0);
+  }
 });
 
 test("runSubagent: final message alone does not trigger the shutdown watchdog", async () => {
@@ -230,18 +249,24 @@ test("runSubagent: cancels the shutdown watchdog when the child closes", async (
   assert.equal(child.killed, null);
 });
 
-test("runSubagent: terminates a child that stays open after agent_settled", async () => {
+test("runSubagent: terminates a child that stays open after agent_settled without an inactivity warning", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
   const child = new FakeChild();
+  const notifications: SubagentInactivity[] = [];
   const { result } = await runSubagent(agent, "t", "/tmp", "m", {
     spawnFn: fakeSpawn(child),
+    inactivityTimeoutMs: 10,
+    onInactivity: (idle) => notifications.push(idle),
     shutdownGraceMs: 20,
     killDelayMs: 10,
   });
   respondToCommand(child);
   child.stdout.emit("data", Buffer.from(endEvent("final answer")));
   child.stdout.emit("data", Buffer.from(`${JSON.stringify({ type: "agent_settled" })}\n`));
+  t.mock.timers.tick(20);
 
   const r = await result;
+  assert.equal(notifications.length, 0);
   assert.equal(child.killed, "SIGTERM");
   assert.equal(r.text, "final answer");
   assert.equal(r.exitCode, 0);
@@ -249,19 +274,127 @@ test("runSubagent: terminates a child that stays open after agent_settled", asyn
   assert.equal(r.error, "");
 });
 
-test("runSubagent: timeout kills the child and reports exit code 124", async () => {
+test("runSubagent: inactivity notifies once despite callback failure and raw child activity re-arms it", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  t.mock.method(console, "error", () => {});
   const child = new FakeChild();
-  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+  const notifications: SubagentInactivity[] = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
     spawnFn: fakeSpawn(child),
-    maxRuntimeMs: 50,
-    killDelayMs: 10,
+    inactivityTimeoutMs: 100,
+    onInactivity: (idle) => { notifications.push(idle); throw new Error("callback failed"); },
   });
-  const r = await result;
-  assert.equal(r.exitCode, 130);
-  assert.equal(r.cancelled, true);
-  assert.equal(r.cancellationReason, "timeout");
-  assert.match(r.error, /Cancelled \(timeout\)/);
-  assert.equal(child.killed, "SIGTERM");
+  respondToCommand(child);
+  t.mock.timers.tick(100);
+  assert.equal(notifications.length, 1);
+  t.mock.timers.tick(500);
+  assert.equal(notifications.length, 1);
+
+  for (const [stream, chunk] of [
+    [child.stdout, "{"], [child.stdout, "malformed\n"], [child.stdout, " \n"],
+    [child.stdout, updateEvent("same")], [child.stdout, updateEvent("same")], [child.stderr, "diagnostic"],
+  ] as const) {
+    stream.emit("data", Buffer.from(chunk));
+    const count: number = notifications.length;
+    t.mock.timers.tick(60);
+    stream.emit("data", Buffer.from(chunk));
+    const activityAt = Date.now();
+    t.mock.timers.tick(99);
+    assert.equal(notifications.length, count);
+    stream.emit("data", Buffer.from(""));
+    t.mock.timers.tick(1);
+    assert.deepEqual(notifications.at(-1), { lastActivityAt: activityAt, detectedAt: activityAt + 100, inactivityTimeoutMs: 100 });
+    assert.equal(notifications.length, count + 1);
+  }
+  assert.equal(child.killed, null);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: inactivity stops when the transport exits before its pipes close", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  const child = new FakeChild();
+  const notifications: SubagentInactivity[] = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child), inactivityTimeoutMs: 100,
+    onInactivity: (idle) => notifications.push(idle),
+  });
+  child.exitCode = 0;
+  t.mock.timers.tick(100);
+  child.stderr.emit("data", Buffer.from("last diagnostic"));
+  t.mock.timers.tick(100);
+  assert.equal(notifications.length, 0);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: inactivity ignores parent steering and monitors unresolved settling continuations", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  const child = new FakeChild();
+  const notifications: SubagentInactivity[] = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child), inactivityTimeoutMs: 100,
+    onInactivity: (idle) => notifications.push(idle),
+  });
+  respondToCommand(child);
+  t.mock.timers.tick(75);
+  const steering = launched.send("keep going", "steer");
+  t.mock.timers.tick(25);
+  assert.equal(notifications.length, 1);
+  respondToCommand(child, 1);
+  await steering;
+
+  const followUp = launched.send("more work", "followUp");
+  child.stdout.emit("data", Buffer.from('{"type":"agent_settled"}\n'));
+  t.mock.timers.tick(100);
+  assert.equal(notifications.length, 2);
+  assert.equal(child.stdin.ended, false);
+  respondToCommand(child, 2);
+  await followUp;
+  child.stdout.emit("data", Buffer.from('{"type":"agent_settled"}\n'));
+  assert.equal(child.stdin.ended, true);
+  t.mock.timers.tick(100);
+  assert.equal(notifications.length, 2);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: inactivity stays suppressed until the final parent reply succeeds", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  const child = new FakeChild();
+  const notifications: SubagentInactivity[] = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child), inactivityTimeoutMs: 100,
+    onInactivity: (idle) => notifications.push(idle),
+  });
+  respondToCommand(child);
+  child.stdout.emit("data", Buffer.from(questionEvent("q1", "First?")));
+  child.stdout.emit("data", Buffer.from(questionEvent("q2", "Second?")));
+  t.mock.timers.tick(200);
+  await launched.reply("q1", "yes");
+  t.mock.timers.tick(200);
+  assert.equal(notifications.length, 0);
+  child.stdin.writeError = new Error("write failed");
+  await assert.rejects(launched.reply("q2", "yes"), /write failed/);
+  child.stderr.emit("data", Buffer.from("still waiting"));
+  const lastActivityAt = Date.now();
+  t.mock.timers.tick(200);
+  assert.equal(notifications.length, 0);
+  child.stdin.writeError = undefined;
+  let completeWrite: ((error?: Error | null) => void) | undefined;
+  t.mock.method(child.stdin, "write", (_data: string | Uint8Array, callback?: (error?: Error | null) => void) => { completeWrite = callback; return true; });
+  const reply = launched.reply("q2", "yes");
+  t.mock.timers.tick(200);
+  assert.equal(notifications.length, 0);
+  completeWrite!();
+  await reply;
+  const repliedAt = Date.now();
+  t.mock.timers.tick(99);
+  assert.equal(notifications.length, 0);
+  t.mock.timers.tick(1);
+  assert.deepEqual(notifications, [{ lastActivityAt, detectedAt: repliedAt + 100, inactivityTimeoutMs: 100 }]);
+  child.finish(0);
+  await launched.result;
 });
 
 test("runSubagent: pre-aborted signal kills the child (real contract: exit 143)", async () => {
@@ -463,20 +596,28 @@ test("runSubagent: preserves inherited environment without activating obsolete w
   }
 });
 
-test("runSubagent: escalates SIGTERM to SIGKILL when the child ignores it", async () => {
+test("runSubagent: explicit cancellation clears inactivity and escalates SIGTERM to SIGKILL", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
   const child = new FakeChild();
-  child.ignoreKill = true; // zombie: records signals, never closes
-  const { result } = await runSubagent(agent, "t", "/tmp", "m", {
+  child.ignoreKill = true;
+  const notifications: SubagentInactivity[] = [];
+  const { result, cancel } = await runSubagent(agent, "t", "/tmp", "m", {
     spawnFn: fakeSpawn(child),
-    maxRuntimeMs: 40,
+    inactivityTimeoutMs: 10,
+    onInactivity: (idle) => notifications.push(idle),
     killDelayMs: 30,
   });
+  cancel("manual");
+  assert.equal(child.killed, "SIGTERM");
+  child.stderr.emit("data", Buffer.from("closing"));
+  t.mock.timers.tick(30);
   const r = await result;
   assert.equal(child.killed, "SIGKILL", "escalation fired after SIGTERM was ignored");
+  assert.equal(notifications.length, 0);
   assert.equal(r.exitCode, 130);
   assert.equal(r.cancelled, true);
-  assert.equal(r.cancellationReason, "timeout");
-  assert.match(r.error, /Cancelled \(timeout\)/);
+  assert.equal(r.cancellationReason, "manual");
+  assert.match(r.error, /Cancelled \(manual\)/);
 });
 
 test("runSubagent: spawn failure rejects", async () => {
@@ -576,12 +717,173 @@ test("runSubagent: emits ordered semantic events without deltas or tool bodies",
   assert.equal(events.every((event) => event.summary.length <= 500 && !/[\r\n\t]/.test(event.summary)), true);
 });
 
-test("runSubagent: event callback exceptions do not interrupt processing", async () => {
+test("runSubagent: steps time assistant attempts without restarting on deltas or requiring text", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  const child = new FakeChild();
+  const timeline: Array<{ at: number; step?: JobStepInput; event?: JobEventInput }> = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    onStep: (step) => timeline.push({ at: Date.now(), step }),
+    onEvent: (event) => timeline.push({ at: Date.now(), event }),
+  });
+  const emit = (event: Record<string, unknown>) => child.stdout.emit("data", Buffer.from(`${JSON.stringify(event)}\n`));
+  emit({ type: "turn_start" });
+  emit({ type: "message_start", message: { role: "user" } });
+  t.mock.timers.tick(20);
+  emit({ type: "message_start", message: { role: "assistant" } });
+  t.mock.timers.tick(20);
+  child.stdout.emit("data", Buffer.from(updateEvent("delta")));
+  t.mock.timers.tick(20);
+  emit({ type: "message_end", message: { role: "assistant", content: [] } });
+  assert.deepEqual(timeline.map(({ at, step }) => [at, step?.phase]), [[10000, "start"], [10060, "end"]]);
+
+  for (const content of [[{ type: "thinking", thinking: "private" }], []]) {
+    emit({ type: "message_start", message: { role: "assistant" } });
+    t.mock.timers.tick(10);
+    emit({ type: "message_end", message: { role: "assistant", content, stopReason: "error" } });
+  }
+  child.stdout.emit("data", Buffer.from(updateEvent("fallback")));
+  t.mock.timers.tick(10);
+  child.stdout.emit("data", Buffer.from(endEvent("answer")));
+  const steps = timeline.flatMap(({ step }) => step ? [step] : []);
+  assert.equal(steps.length, 8);
+  for (let index = 0; index < steps.length; index += 2) {
+    const start = steps[index]!;
+    assert.equal(start.phase, "start");
+    if (start.phase === "start") assert.equal(start.kind, "assistant");
+    assert.deepEqual(steps[index + 1], { phase: "end", id: start.id });
+  }
+  assert.equal(new Set(steps.filter((step) => step.phase === "start").map((step) => step.id)).size, 4);
+  assert.deepEqual(timeline.at(-1)?.event, { kind: "assistant", summary: "answer", stepId: steps.at(-1)!.id });
+  assert.equal(timeline.at(-2)?.step?.phase, "end");
+  assert.equal(JSON.stringify(timeline).includes("private"), false);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: steps pair concurrent same-name tools by call ID and sanitize their arguments", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 10000 });
+  const child = new FakeChild();
+  const timeline: Array<JobStepInput | JobEventInput> = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    onStep: (step) => timeline.push(step),
+    onEvent: (event) => timeline.push(event),
+  });
+  const emit = (event: Record<string, unknown>) => child.stdout.emit("data", Buffer.from(`${JSON.stringify(event)}\n`));
+  for (const id of ["a", "b"]) {
+    emit({ type: "tool_execution_start", toolCallId: `private-call-${id}`, toolName: "write", args: { path: `${id}.txt`, content: "SECRET BODY" } });
+    t.mock.timers.tick(10);
+  }
+  emit({ type: "tool_execution_start", toolCallId: "private-call-a", toolName: "write", args: { path: "a.txt", content: "SECRET BODY" } });
+  emit({ type: "tool_execution_update", toolCallId: "private-call-a", toolName: "write", partialResult: "SECRET BODY" });
+  for (const id of ["b", "a"]) emit({ type: "tool_execution_end", toolCallId: `private-call-${id}`, toolName: "write", result: "SECRET BODY" });
+  emit({ type: "tool_execution_end", toolName: "write" });
+  emit({ type: "tool_execution_end", toolCallId: "unknown", toolName: "write" });
+  const starts = timeline.filter((entry): entry is Extract<JobStepInput, { phase: "start" }> => "phase" in entry && entry.phase === "start");
+  assert.equal(starts.length, 2);
+  assert.notEqual(starts[0]!.id, starts[1]!.id);
+  assert.deepEqual(starts[0]!.toolCall, { name: "write", args: { path: "a.txt", content: undefined, contentLines: 1 } });
+  assert.deepEqual(timeline[4], { kind: "tool-start", summary: "write a.txt", stepId: starts[0]!.id });
+  assert.deepEqual(timeline.slice(5, 9), [
+    { phase: "end", id: starts[1]!.id },
+    { kind: "tool-end", summary: "write success", stepId: starts[1]!.id },
+    { phase: "end", id: starts[0]!.id },
+    { kind: "tool-end", summary: "write success", stepId: starts[0]!.id },
+  ]);
+  assert.deepEqual(timeline.slice(9), [
+    { kind: "tool-end", summary: "write success" }, { kind: "tool-end", summary: "write success" },
+  ]);
+  for (let index = 0; index < 4; index += 2) {
+    assert.equal((timeline[index] as JobStepInput).phase, "start");
+    assert.equal((timeline[index + 1] as JobEventInput).stepId, (timeline[index] as JobStepInput).id);
+  }
+  emit({ type: "turn_start" });
+  emit({ type: "message_end", message: { role: "assistant", content: [] } });
+  emit({ type: "tool_execution_start", toolCallId: "private-call-a", toolName: "write", args: { path: "a.txt", content: "SECRET BODY" } });
+  emit({ type: "tool_execution_end", toolCallId: "private-call-a", toolName: "write", result: "SECRET BODY" });
+  const reused = timeline.at(-4) as Extract<JobStepInput, { phase: "start" }>;
+  assert.equal(reused.phase, "start");
+  assert.equal(reused.kind, "tool");
+  assert.notEqual(reused.id, starts[0]!.id);
+  assert.notEqual(reused.id, starts[1]!.id);
+  assert.deepEqual(timeline.slice(-3), [
+    { kind: "tool-start", summary: "write a.txt", stepId: reused.id },
+    { phase: "end", id: reused.id },
+    { kind: "tool-end", summary: "write success", stepId: reused.id },
+  ]);
+  const offset = timeline.length;
+  emit({ type: "tool_execution_start", toolName: "write", args: { path: "a.txt" } });
+  assert.deepEqual(timeline.slice(offset), [{ kind: "tool-start", summary: "write a.txt" }]);
+  assert.equal(JSON.stringify(timeline).includes("SECRET BODY"), false);
+  assert.equal(JSON.stringify(timeline).includes("private-call-"), false);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: retry steps close on retry end or the next attempt and use unique IDs", async () => {
+  const child = new FakeChild();
+  const timeline: Array<JobStepInput | JobEventInput> = [];
+  const launched = await runSubagent(agent, "t", "/tmp", "m", {
+    spawnFn: fakeSpawn(child),
+    onStep: (step) => timeline.push(step),
+    onEvent: (event) => timeline.push(event),
+  });
+  const emit = (event: Record<string, unknown>) => child.stdout.emit("data", Buffer.from(`${JSON.stringify(event)}\n`));
+  for (let index = 0; index < 2; index += 1) {
+    emit({ type: "turn_start" });
+    emit({ type: "auto_retry_start", attempt: 1, errorMessage: "private provider error" });
+    emit({ type: "auto_retry_end", attempt: 1, success: false });
+  }
+  const starts = timeline.filter((entry): entry is Extract<JobStepInput, { phase: "start" }> => "phase" in entry && entry.phase === "start");
+  assert.deepEqual(starts.map((step) => step.kind), ["assistant", "retry", "assistant", "retry"]);
+  assert.equal(new Set(starts.map((step) => step.id)).size, 4);
+  for (let index = 0; index < timeline.length; index += 6) {
+    const assistant = timeline[index] as JobStepInput;
+    const retry = timeline[index + 2] as JobStepInput;
+    assert.deepEqual(timeline.slice(index + 1, index + 6), [
+      { phase: "end", id: assistant.id },
+      { phase: "start", id: retry.id, kind: "retry", summary: "Retry wait" },
+      { kind: "state", summary: "retrying", stepId: retry.id },
+      { phase: "end", id: retry.id },
+      { kind: "state", summary: "retry ended", stepId: retry.id },
+    ]);
+  }
+  for (const nextAttempt of [
+    { type: "turn_start" },
+    { type: "message_start", message: { role: "assistant" } },
+    { type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "retry" } },
+  ]) {
+    emit({ type: "turn_start" });
+    emit({ type: "auto_retry_start", attempt: 1 });
+    const retry = timeline.at(-2) as JobStepInput;
+    const offset = timeline.length;
+    emit(nextAttempt);
+    const assistant = timeline.at(-1) as JobStepInput;
+    assert.deepEqual(timeline.slice(offset), [
+      { phase: "end", id: retry.id },
+      { phase: "start", id: assistant.id, kind: "assistant", summary: "Assistant response" },
+    ]);
+    emit({ type: "auto_retry_end", attempt: 1, success: true });
+    assert.deepEqual(timeline.slice(offset + 2), [{ kind: "state", summary: "retry ended" }]);
+    emit({ type: "message_end", message: { role: "assistant", content: [] } });
+    assert.deepEqual(timeline.at(-1), { phase: "end", id: assistant.id });
+  }
+  const allStarts = timeline.filter((entry): entry is Extract<JobStepInput, { phase: "start" }> => "phase" in entry && entry.phase === "start");
+  assert.equal(new Set(allStarts.map((step) => step.id)).size, allStarts.length);
+  child.finish(0);
+  await launched.result;
+});
+
+test("runSubagent: event and step callback exceptions do not interrupt processing", async (t) => {
+  t.mock.method(console, "error", () => {});
   const child = new FakeChild();
   const { result } = await runSubagent(agent, "t", "/tmp", "m", {
     spawnFn: fakeSpawn(child),
     onEvent: () => { throw new Error("event callback failed"); },
+    onStep: () => { throw new Error("step callback failed"); },
   });
+  child.stdout.emit("data", Buffer.from(updateEvent("partial")));
   child.stdout.emit("data", Buffer.from(endEvent("final answer")));
   child.finish(0);
   assert.equal((await result).text, "final answer");

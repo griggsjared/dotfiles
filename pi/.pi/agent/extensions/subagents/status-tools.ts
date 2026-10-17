@@ -5,7 +5,7 @@ import { resolveAgentSettings, SESSION_PROFILE_NAME, type AgentConfig, type Suba
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 import { openSubagentTail, TruncatedText } from "./render.ts";
-import { eventColor, eventKindLabel, formatEventSummary } from "./tail.ts";
+import { eventColor, eventKindLabel, formatEventSummary, formatEventTiming, formatLocalTime, formatStepTiming } from "./tail.ts";
 import { PROFILE_ENTRY_TYPE, type JobEvent, type ToolCallInfo } from "./types.ts";
 
 const StatusParams = Type.Object({ jobId: Type.Optional(Type.Integer({ minimum: 1 })) });
@@ -50,6 +50,9 @@ const PeekOutput = Type.Object({
   events: Type.Array(Type.Object({
     seq: Type.Integer({ minimum: 1 }),
     timestamp: Type.Number(),
+    stepId: Type.Optional(Type.String()),
+    startedAt: Type.Optional(Type.Number()),
+    durationMs: Type.Optional(Type.Number()),
     kind: Type.Union([
       Type.Literal("assistant"), Type.Literal("tool-start"), Type.Literal("tool-end"),
       Type.Literal("question"), Type.Literal("state"),
@@ -66,7 +69,7 @@ const DEFAULT_PEEK_CHARS = 2000;
 const MAX_STATUS_TOOL_CALLS = 8;
 
 type StatusJob = Job;
-interface StatusToolDetails { text: string; jobId?: number; outputLines?: number; errorLines?: number; toolCalls?: ToolCallInfo[]; }
+interface StatusToolDetails { text: string; jobId?: number; outputLines?: number; errorLines?: number; toolCalls?: ToolCallInfo[]; toolCallPrefixes?: string[]; }
 interface CancelTarget { jobId: number; agent: string; label: string; }
 interface CancelToolDetails { count: number; targets: CancelTarget[]; }
 interface SendToolDetails {
@@ -104,14 +107,14 @@ function resultText(result: { content: Array<{ type: string; text?: string }> })
 function renderStatusText(
   text: string,
   theme: Theme,
-  sections: Pick<StatusToolDetails, "outputLines" | "errorLines" | "toolCalls"> = {},
+  sections: Pick<StatusToolDetails, "outputLines" | "errorLines" | "toolCalls" | "toolCallPrefixes"> = {},
 ): Component {
   let bodyColor: "toolOutput" | "error" | undefined;
   let bodyLines = 0;
   let waitingForParent = false;
   let readingToolCalls = false;
   let toolCallIndex = 0;
-  const toolCallRows = new Map<number, ToolCallInfo>();
+  const toolCallRows = new Map<number, { call: ToolCallInfo; prefix: string }>();
   const lines = text.split("\n").map((line, index) => {
     if (bodyLines > 0 && bodyColor) {
       bodyLines -= 1;
@@ -146,12 +149,14 @@ function renderStatusText(
     }
 
     if (readingToolCalls && line.startsWith("- ")) {
-      const call = sections.toolCalls?.[toolCallIndex++];
-      if (call) toolCallRows.set(index, call);
+      const call = sections.toolCalls?.[toolCallIndex];
+      const prefix = sections.toolCallPrefixes?.[toolCallIndex] ?? "- ";
+      toolCallIndex += 1;
+      if (call) toolCallRows.set(index, { call, prefix });
       return theme.fg("dim", line);
     }
 
-    const field = line.match(/^([^:]+):(.*)$/);
+    const field = line.startsWith("- ") ? null : line.match(/^([^:]+):(.*)$/);
     if (field?.[1] && field[2] !== undefined) {
       const label = field[1];
       const value = field[2];
@@ -176,8 +181,8 @@ function renderStatusText(
   return {
     render(width: number) {
       const displayLines = lines.map((line, index) => {
-        const call = toolCallRows.get(index);
-        return call ? theme.fg("dim", `- ${toolCallLabel(call.name, call.args, Math.max(0, width - 2))}`) : line;
+        const row = toolCallRows.get(index);
+        return row ? theme.fg("dim", truncateToWidth(`${row.prefix}${toolCallLabel(row.call.name, row.call.args, Math.max(0, width - visibleWidth(row.prefix)))}`, width, "…")) : line;
       });
       return new Text(displayLines.join("\n"), 0, 0).render(width);
     },
@@ -185,19 +190,34 @@ function renderStatusText(
   };
 }
 
+function activeStepLines(job: Job, now: number): string[] {
+  const steps = job.status === "running" ? job.steps.filter((step) => step.endedAt === undefined) : [];
+  return steps.length === 0 ? [] : [
+    `Active steps (${steps.length}):`,
+    ...steps.map((step) => `- ${formatStepTiming(step, now)} · ${step.kind}: ${formatEventSummary({ kind: "assistant", summary: step.summary })}`),
+  ];
+}
+
+function statusToolCalls(job: Job, now: number): { call: ToolCallInfo; prefix: string }[] {
+  const steps = job.steps.filter((step) => step.kind === "tool" && step.toolCall);
+  return steps.length > 0
+    ? steps.map((step) => ({ call: step.toolCall!, prefix: `- ${formatStepTiming(step, job.endTime ?? now)} · ` }))
+    : job.toolCalls.map((call) => ({ call, prefix: "- --:--:-- · " }));
+}
+
 function formatJob(job: StatusJob, now: number): string {
   if (job.status === "running") {
     const elapsed = formatDuration(now - job.startTime);
     const progress = job.pendingQuestions.length > 0
       ? " — waiting for parent"
-      : job.progress ? ` — ${job.progress}` : "";
+      : job.steps.some((step) => step.endedAt === undefined) ? "" : job.progress ? ` — ${job.progress}` : "";
     const metadata = formatUsageStats(undefined, job.model, job.thinkingLevel);
-    return `- ⊙ #${job.id} ${job.agent} (${elapsed}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}${progress}`;
+    return [`- ⊙ #${job.id} ${job.agent} (${formatLocalTime(job.startTime)} · ${elapsed}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}${progress}`, ...activeStepLines(job, now)].join("\n");
   }
   const duration = job.endTime ? formatDuration(job.endTime - job.startTime) : "?";
   const icon = job.status === "completed" ? "✓" : job.status === "cancelled" ? "⊘" : "✗";
   const metadata = formatUsageStats(job.usage, job.model, job.thinkingLevel);
-  return `- ${icon} #${job.id} ${job.agent} (${duration}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}`;
+  return `- ${icon} #${job.id} ${job.agent} (${formatLocalTime(job.startTime)} · ${duration}${metadata ? ` ${metadata}` : ""}): ${jobLabel(job)}`;
 }
 
 function formatDetailedStatus(job: Job, now: number): string {
@@ -210,17 +230,21 @@ function formatDetailedStatus(job: Job, now: number): string {
     `Task: ${normalizeTitle(job.task) ?? "..."}`,
     ...(normalizeTitle(job.title) ? [`Title: ${normalizeTitle(job.title)}`] : []),
     `Elapsed: ${duration}`,
+    `Started: ${formatLocalTime(job.startTime)}`,
+    ...(job.endTime !== undefined ? [`Finished: ${formatLocalTime(job.endTime)}`] : []),
   ];
   if (job.profile) lines.push(`Profile: ${job.profile}`);
   if (metadata) lines.push(`Usage: ${metadata}`);
   if (job.pendingQuestions.length > 0) {
     lines.push(`Waiting for parent (${job.pendingQuestions.length}):`);
     for (const question of job.pendingQuestions) lines.push(`- ${question.id}: ${question.question}`);
-  } else if (job.progress) lines.push(`Progress: ${job.progress}`);
-  if (job.toolCalls.length > 0) {
-    lines.push(`Tool calls (${job.toolCalls.length}):`);
-    for (const call of job.toolCalls.slice(-MAX_STATUS_TOOL_CALLS)) {
-      lines.push(`- ${toolCallLabel(call.name, call.args)}`);
+  } else if (job.progress && !job.steps.some((step) => step.endedAt === undefined)) lines.push(`Progress: ${job.progress}`);
+  lines.push(...activeStepLines(job, now));
+  const toolCalls = statusToolCalls(job, now);
+  if (toolCalls.length > 0) {
+    lines.push(`Tool calls (${toolCalls.length}):`);
+    for (const { call, prefix } of toolCalls.slice(-MAX_STATUS_TOOL_CALLS)) {
+      lines.push(`${prefix}${toolCallLabel(call.name, call.args)}`);
     }
   }
   if (job.text) lines.push(`Latest output:\n${capOutput(job.text, MAX_STATUS_OUTPUT)}`);
@@ -272,6 +296,7 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
       const job = params.jobId === undefined ? undefined : deps.registry.get(params.jobId);
       const output = job?.text ? capOutput(job.text, MAX_STATUS_OUTPUT) : undefined;
       const error = job?.error ? capOutput(job.error, MAX_STATUS_OUTPUT) : undefined;
+      const toolCalls = job ? statusToolCalls(job, now).slice(-MAX_STATUS_TOOL_CALLS) : undefined;
       const jobs = params.jobId !== undefined
         ? job ? [job] : []
         : [...deps.registry.running(), ...deps.registry.recent(20).filter((item) => item.endTime && now - item.endTime < 60000)];
@@ -288,7 +313,10 @@ export function createStatusTool(deps: { registry: JobRegistry }): ToolDefinitio
           jobId: params.jobId,
           outputLines: output?.split("\n").length,
           errorLines: error?.split("\n").length,
-          ...(job ? { toolCalls: job.toolCalls.slice(-MAX_STATUS_TOOL_CALLS) } : {}),
+          ...(toolCalls ? {
+            toolCalls: toolCalls.map((row) => row.call),
+            toolCallPrefixes: toolCalls.map((row) => row.prefix),
+          } : {}),
         },
       };
     },
@@ -349,6 +377,7 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       });
       if (!read) throw new Error(`Unknown subagent job ID: ${params.jobId}`);
       const maxChars = params.maxChars ?? DEFAULT_PEEK_CHARS;
+      const now = Date.now();
       const events: JobEvent[] = [];
       const structuredEvents: JobEvent[] = [];
       const eventLines: string[] = [];
@@ -356,7 +385,8 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
       if (droppedNotice && droppedNotice.length <= maxChars) eventLines.push(droppedNotice);
       for (const event of read.events) {
         const summary = formatEventSummary(event);
-        const line = `[${event.seq}] ${summary}`;
+        const timing = formatEventTiming(event, job, now);
+        const line = `[${event.seq}] ${timing.timestamp} ${summary}${timing.suffix}`;
         const body = eventLines.length > 0 ? `${eventLines.join("\n")}\n${line}` : line;
         if (body.length > maxChars) break;
         events.push({ ...event });
@@ -421,27 +451,35 @@ export function createPeekTool(deps: { registry: JobRegistry }): ToolDefinition<
         });
         const shownInCall = Boolean(context.args) && target === fallbackTarget;
         const label = shortLabel(normalizeTitle(details.title), normalizeTitle(details.task), Infinity);
-        const lines: string[] = [];
-        if (!shownInCall) {
-          lines.push(theme.fg("toolTitle", theme.bold("subagent peek ")) + theme.fg("accent", target));
-        }
-        if (details.task && (!shownInCall || normalizeTitle(details.task) !== label)) lines.push(theme.fg("dim", `Task: ${details.task}`));
-        if (details.title && (!shownInCall || normalizeTitle(details.title) !== label)) lines.push(theme.fg("dim", `Title: ${details.title}`));
-        if (details.droppedBefore !== undefined) {
-          lines.push(theme.fg("warning", `history dropped before event ${details.droppedBefore}`));
-        }
-        if (details.events.length === 0) {
-          lines.push(theme.fg("dim", "no new events"));
-        } else {
-          for (const event of details.events) {
-            const label = eventKindLabel(event.kind).padEnd(9);
-            lines.push(
-              `${theme.fg("dim", `[${event.seq}]`)} ${theme.fg(eventColor(event.kind), label)} ${theme.fg("muted", formatEventSummary(event) || "(empty)")}`,
-            );
-          }
-        }
-        lines.push(theme.fg("dim", `cursor: ${details.nextCursor}`));
-        return new Text(lines.join("\n"), 0, 0);
+        return {
+          render(width: number) {
+            const job = deps.registry.get(details.jobId);
+            const now = Date.now();
+            const lines: string[] = [];
+            if (!shownInCall) {
+              lines.push(theme.fg("toolTitle", theme.bold("subagent peek ")) + theme.fg("accent", target));
+            }
+            if (details.task && (!shownInCall || normalizeTitle(details.task) !== label)) lines.push(theme.fg("dim", `Task: ${details.task}`));
+            if (details.title && (!shownInCall || normalizeTitle(details.title) !== label)) lines.push(theme.fg("dim", `Title: ${details.title}`));
+            if (details.droppedBefore !== undefined) {
+              lines.push(theme.fg("warning", `history dropped before event ${details.droppedBefore}`));
+            }
+            if (details.events.length === 0) {
+              lines.push(theme.fg("dim", "no new events"));
+            } else {
+              for (const event of details.events) {
+                const label = eventKindLabel(event.kind).padEnd(9);
+                const timing = formatEventTiming(event, job, now);
+                lines.push(
+                  `${theme.fg("dim", `[${event.seq}] ${timing.timestamp}`)} ${theme.fg(eventColor(event.kind), label)} ${theme.fg("muted", (formatEventSummary(event) || "(empty)") + timing.suffix)}`,
+                );
+              }
+            }
+            lines.push(theme.fg("dim", `cursor: ${details.nextCursor}`));
+            return new Text(lines.join("\n"), 0, 0).render(width);
+          },
+          invalidate() {},
+        };
       }
       const text = resultText(result);
       const box = new Container();

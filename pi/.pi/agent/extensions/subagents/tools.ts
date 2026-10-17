@@ -11,9 +11,11 @@ import { capOutput, formatDuration, formatResultOutput, normalizeTitle, shortLab
 import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
 import { TruncatedText } from "./render.ts";
+import { formatEventSummary, formatLocalTime, formatStepTiming } from "./tail.ts";
 import {
   ENTRY_TYPE,
   QUESTION_ENTRY_TYPE,
+  type SubagentInactivity,
   type SubagentMessageDetails,
   type SubagentQuestion,
   type SubagentQuestionMessageDetails,
@@ -316,6 +318,29 @@ export class Batch {
     }
   }
 
+  deliverInactivity(jobId: number, notice: SubagentInactivity): void {
+    const job = this.deps.registry.get(jobId);
+    if (!job || job.status !== "running" || job.cancellationReason || job.pendingQuestions.length > 0) return;
+    const active = job.steps.filter((step) => step.endedAt === undefined);
+    const latest = active.length === 0 ? this.deps.registry.readEvents(jobId, { limit: 1 })?.events.at(-1) : undefined;
+    const lines = [
+      `Subagent #${jobId} ${job.agent} inactivity check-in`,
+      `Task: ${job.task}`,
+      `No activity for ${formatDuration(Math.max(0, notice.detectedAt - notice.lastActivityAt))}. Last activity: ${formatLocalTime(notice.lastActivityAt)}.`,
+      ...active.map((step) => `Active: ${formatStepTiming(step, notice.detectedAt)} · ${step.kind}: ${formatEventSummary({ kind: "state", summary: step.summary })}`),
+      ...(latest ? [`Last event: ${formatEventSummary(latest)}`] : []),
+      "The child is still running; it has not been paused or cancelled and is not waiting for a parent reply. The main agent should inspect it with subagent_peek, then wait, steer with subagent_send, or cancel with subagent_cancel as appropriate.",
+    ];
+    try {
+      this.deps.pi.sendMessage(
+        { customType: "subagent-check-in", content: lines.join("\n\n"), display: true, details: { jobId, agent: job.agent, ...notice } },
+        { deliverAs: "steer", triggerTurn: true },
+      );
+    } catch (err) {
+      console.error("subagents: failed to deliver inactivity check-in", err);
+    }
+  }
+
   sendError(
     agent: string,
     task: string,
@@ -463,6 +488,12 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
             spawnFn: deps.spawnFn,
             onEvent: (event) => {
               registry.appendEvent(jobId, event);
+            },
+            onStep: (step) => {
+              registry.recordStep(jobId, step);
+            },
+            onInactivity: (notice) => {
+              batch.deliverInactivity(jobId, notice);
             },
             onQuestion: (question) => {
               if (!registry.recordQuestion(jobId, question)) return;

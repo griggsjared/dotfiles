@@ -8,8 +8,14 @@ export const STATUS_KEY = "subagents";
 export type CancellationReason = "manual" | "parent-abort" | "timeout" | "session-shutdown";
 export type SubagentDelivery = "steer" | "followUp";
 export type JobEventKind = "assistant" | "tool-start" | "tool-end" | "question" | "state";
-export interface JobEvent { seq: number; timestamp: number; kind: JobEventKind; summary: string; }
-export type JobEventInput = Omit<JobEvent, "seq" | "timestamp">;
+export interface JobEvent { seq: number; timestamp: number; kind: JobEventKind; summary: string; stepId?: string; startedAt?: number; durationMs?: number; }
+export type JobEventInput = Pick<JobEvent, "kind" | "summary" | "stepId">;
+export type JobStepKind = "assistant" | "tool" | "retry";
+export interface JobStep { id: string; kind: JobStepKind; summary: string; startedAt: number; endedAt?: number; toolCall?: ToolCallInfo; }
+export type JobStepInput =
+  | { phase: "start"; id: string; kind: JobStepKind; summary: string; toolCall?: ToolCallInfo }
+  | { phase: "end"; id: string };
+export interface SubagentInactivity { lastActivityAt: number; detectedAt: number; inactivityTimeoutMs: number; }
 export interface SubagentQuestion { id: string; question: string; context?: string; }
 
 export interface SubagentUsage {

@@ -35,17 +35,26 @@ test("registry lifecycle: add -> complete -> pendingCompleted -> markCleared", (
   assert.equal(job.thinkingLevel, "high");
   assert.equal(registry.running().length, 1);
 
-  registry.updateLive(id, { text: "partial", progress: "read x.ts", model: "served-model", thinkingLevel: "high" });
+  time = 100;
+  registry.recordStep(id, { phase: "start", id: "assistant", kind: "assistant", summary: "Thinking" });
+  registry.updateLive(id, { text: "partial", progress: "read x.ts", model: "served-model", thinkingLevel: "high", toolCalls: [{ name: "read", args: { path: "x.ts" } }] });
+  assert.equal(job.steps[0]?.startedAt, 100);
+  assert.equal(job.steps[0]?.endedAt, undefined);
   assert.equal(job.text, "partial");
   assert.equal(job.progress, "read x.ts");
   assert.equal(job.model, "served-model");
   assert.equal(job.thinkingLevel, "high");
 
   time = 1000;
-  registry.complete(id, result({ thinkingLevel: "high" }));
+  registry.complete(id, result({ thinkingLevel: "high", toolCalls: [] }));
   assert.equal(job.status, "completed");
   assert.equal(job.thinkingLevel, "high");
   assert.equal(job.endTime, 1000);
+  time = 2000;
+  assert.equal(registry.recordStep(id, { phase: "end", id: "assistant" }), false);
+  assert.equal(registry.recordStep(id, { phase: "start", id: "late", kind: "retry", summary: "Retry" }), false);
+  registry.complete(id, result());
+  assert.deepEqual(job.steps, [{ id: "assistant", kind: "assistant", summary: "Thinking", startedAt: 100, endedAt: 1000 }]);
   assert.equal(registry.running().length, 0);
   assert.deepEqual(registry.pendingCompleted().map((j) => j.id), [id]);
   assert.equal(registry.recent(1).length, 1);
@@ -103,6 +112,82 @@ test("registry: event ring sequences, limits, cursors, and defensive copies", ()
   assert.equal(retained.droppedBefore, 4);
 });
 
+test("registry: concurrent same-name steps correlate events by ID and freeze timing", () => {
+  let time = 10;
+  const registry = createJobRegistry({ now: () => time });
+  const id = registry.add("worker", "task");
+  assert.equal(registry.recordStep(999, { phase: "end", id: "a" }), false);
+  assert.equal(registry.recordStep(id, { phase: "end", id: "missing" }), false);
+  const a = { phase: "start", id: "a", kind: "tool", summary: "read a", toolCall: { name: "read", args: { path: "a" } } } as const;
+  assert.equal(registry.recordStep(id, a), true);
+  registry.appendEvent(id, { kind: "tool-start", summary: "read a", stepId: "a" });
+  time = 20;
+  assert.equal(registry.recordStep(id, a), false);
+  registry.recordStep(id, { phase: "start", id: "b", kind: "tool", summary: "read b", toolCall: { name: "read", args: { path: "b" } } });
+  time = 30;
+  assert.equal(registry.recordStep(id, { phase: "end", id: "b" }), true);
+  registry.appendEvent(id, { kind: "tool-end", summary: "read b", stepId: "b" });
+  assert.equal(registry.get(id)?.steps.find((step) => step.id === "a")?.endedAt, undefined);
+  time = 50;
+  registry.recordStep(id, { phase: "end", id: "a" });
+  time = 100;
+  assert.equal(registry.recordStep(id, { phase: "end", id: "a" }), false);
+  assert.equal(registry.recordStep(id, a), false);
+  registry.appendEvent(id, { kind: "tool-end", summary: "read a", stepId: "a" });
+  registry.appendEvent(id, { kind: "tool-end", summary: "unknown", stepId: "unknown" });
+  assert.deepEqual(registry.readEvents(id)?.events, [
+    { seq: 1, timestamp: 10, kind: "tool-start", summary: "read a", stepId: "a", startedAt: 10 },
+    { seq: 2, timestamp: 30, kind: "tool-end", summary: "read b", stepId: "b", startedAt: 20, durationMs: 10 },
+    { seq: 3, timestamp: 100, kind: "tool-end", summary: "read a", stepId: "a", startedAt: 10, durationMs: 40 },
+    { seq: 4, timestamp: 100, kind: "tool-end", summary: "unknown", stepId: "unknown" },
+  ]);
+  assert.deepEqual(registry.get(id)?.steps.map((step) => step.toolCall), [
+    { name: "read", args: { path: "b" } },
+    { name: "read", args: { path: "a" } },
+  ]);
+
+  registry.recordStep(id, { phase: "start", id: "retry", kind: "retry", summary: "Retry" });
+  time = 90;
+  registry.recordStep(id, { phase: "end", id: "retry" });
+  registry.appendEvent(id, { kind: "state", summary: "Retried", stepId: "retry" });
+  assert.equal(registry.readEvents(id)?.events.at(-1)?.durationMs, 0);
+});
+
+test("registry: active steps survive event eviction and retain the latest 20 completions", () => {
+  let time = 0;
+  const registry = createJobRegistry({ now: () => time++ });
+  const id = registry.add("worker", "task");
+  for (let i = 0; i < 21; i++) {
+    registry.recordStep(id, { phase: "start", id: `active-${i}`, kind: "tool", summary: "read" });
+    registry.appendEvent(id, { kind: "tool-start", summary: "read", stepId: `active-${i}` });
+  }
+  for (let i = 0; i < 21; i++) {
+    registry.recordStep(id, { phase: "start", id: `finished-${i}`, kind: "assistant", summary: "Thinking" });
+    registry.recordStep(id, { phase: "end", id: `finished-${i}` });
+  }
+  for (let i = 0; i < 100; i++) registry.appendEvent(id, { kind: "state", summary: "progress" });
+  assert.equal(registry.readEvents(id)?.events.length, 100);
+  assert.equal(registry.readEvents(id)?.events.some((event) => event.kind === "tool-start"), false);
+  const job = registry.get(id)!;
+  assert.equal(job.steps.filter((step) => step.endedAt === undefined).length, 21);
+  assert.deepEqual(job.steps.filter((step) => step.endedAt !== undefined).map((step) => step.id),
+    Array.from({ length: 20 }, (_, i) => `finished-${i + 1}`));
+
+  const startedAt = job.steps[0]!.startedAt;
+  registry.recordStep(id, { phase: "end", id: "active-0" });
+  registry.appendEvent(id, { kind: "tool-end", summary: "read", stepId: "active-0" });
+  assert.equal(registry.readEvents(id)?.events.at(-1)?.startedAt, startedAt);
+  assert.equal(job.steps.length, 40);
+  assert.equal(job.steps.some((step) => step.id === "finished-1"), false);
+  assert.equal(job.steps.at(-1)?.id, "active-0");
+  registry.appendEvent(id, { kind: "state", summary: "evicted", stepId: "finished-0" });
+  assert.equal(registry.readEvents(id)?.events.at(-1)?.startedAt, undefined);
+
+  registry.complete(id, result());
+  assert.deepEqual(job.steps.map((step) => step.id), Array.from({ length: 20 }, (_, i) => `active-${i + 1}`));
+  assert.ok(job.steps.every((step) => step.endedAt === job.endTime));
+});
+
 test("registry: event rings retain terminal jobs and are pruned with them", () => {
   let time = 0;
   const registry = createJobRegistry({ now: () => time });
@@ -158,16 +243,27 @@ test("registry: recent sorts by endTime descending and limits", () => {
   assert.deepEqual(registry.recent().map((j) => j.agent), ["b", "a"]);
 });
 
-test("registry: cancellation before registration is delivered once", () => {
-  const registry = createJobRegistry();
+test("registry: cancellation before registration is delivered once and freezes steps", () => {
+  let time = 10;
+  const registry = createJobRegistry({ now: () => time });
   const id = registry.add("worker", "task");
+  registry.recordStep(id, { phase: "start", id: "a", kind: "tool", summary: "read" });
+  registry.recordStep(id, { phase: "start", id: "b", kind: "tool", summary: "read" });
+  registry.recordStep(id, { phase: "end", id: "b" });
+  time = 20;
   assert.equal(registry.cancel(id, "session-shutdown"), true);
+  time = 30;
+  registry.cancel(id);
+  assert.equal(registry.recordStep(id, { phase: "end", id: "a" }), false);
+  assert.equal(registry.recordStep(id, { phase: "start", id: "late", kind: "tool", summary: "read" }), false);
+  assert.deepEqual(registry.get(id)?.steps.map((step) => [step.id, step.endedAt]), [["b", 10], ["a", 20]]);
   const reasons: string[] = [];
   registry.registerControl(id, control({ cancel: (reason) => reasons.push(reason) }));
   assert.deepEqual(reasons, ["session-shutdown"]);
   registry.complete(id, result());
   assert.equal(registry.get(id)?.status, "cancelled");
   assert.equal(registry.get(id)?.cancellationReason, "session-shutdown");
+  assert.deepEqual(registry.get(id)?.steps.map((step) => [step.id, step.endedAt]), [["b", 10], ["a", 20]]);
 });
 
 test("registry: unknown, terminal, and duplicate handles cannot become unreachable", () => {

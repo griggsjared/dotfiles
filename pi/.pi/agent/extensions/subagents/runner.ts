@@ -17,7 +17,9 @@ import {
 import type {
   CancellationReason,
   JobEventInput,
+  JobStepInput,
   SubagentDelivery,
+  SubagentInactivity,
   SubagentQuestion,
   SubagentResult,
   SubagentUpdate,
@@ -26,6 +28,7 @@ import type {
 const DEFAULT_TOOLS = ["read", "grep", "find", "ls", "bash"];
 const MAX_CHILD_OUTPUT = 4 * 1024 * 1024; // keep only the tail of child stdout
 const MAX_CHILD_ERROR = 1024 * 1024; // keep only the tail of child stderr
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 300000;
 const STREAM_INTERVAL_MS = 2000; // throttle live progress updates to the model
 const SHUTDOWN_GRACE_MS = 10000;
 const MAX_EVENT_SUMMARY = 500;
@@ -121,8 +124,10 @@ export interface RunSubagentOptions {
   signal?: AbortSignal;
   onUpdate?: (update: SubagentUpdate) => void;
   onEvent?: (event: JobEventInput) => void;
+  onStep?: (step: JobStepInput) => void;
+  onInactivity?: (inactivity: SubagentInactivity) => void;
   onQuestion?: (question: SubagentQuestion) => void;
-  maxRuntimeMs?: number;
+  inactivityTimeoutMs?: number;
   thinkingLevel?: string;
   title?: string;
   bridgeExtensionPath?: string;
@@ -246,7 +251,42 @@ export async function runSubagent(
     let transportError: string | undefined;
     let completionWatchdogFired = false;
     let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const inactivityTimeoutMs = options.inactivityTimeoutMs ?? agent.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS;
+    let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
+    let inactivityGeneration = 0;
+    let lastActivityAt = Date.now();
+    let inactivityDeadline = lastActivityAt + inactivityTimeoutMs;
+    let inactivityNotified = false;
+    const clearInactivity = () => {
+      inactivityGeneration += 1;
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = undefined;
+    };
+    const monitorInactivity = () => {
+      clearInactivity();
+      if (inactivityTimeoutMs <= 0 || settled || cancelled || !accepting || inputEnded || proc.exitCode !== null || proc.signalCode !== null || questions.size > 0 || inactivityNotified) return;
+      const generation = inactivityGeneration;
+      inactivityTimer = setTimeout(() => {
+        if (generation !== inactivityGeneration || settled || cancelled || !accepting || inputEnded || proc.exitCode !== null || proc.signalCode !== null || questions.size > 0 || inactivityNotified) return;
+        const detectedAt = Date.now();
+        if (detectedAt < inactivityDeadline) {
+          monitorInactivity();
+          return;
+        }
+        inactivityNotified = true;
+        try {
+          options.onInactivity?.({ lastActivityAt, detectedAt, inactivityTimeoutMs });
+        } catch (err) {
+          console.error("subagents: inactivity callback failed", err);
+        }
+      }, Math.max(0, inactivityDeadline - Date.now()));
+    };
+    const recordActivity = () => {
+      lastActivityAt = Date.now();
+      inactivityDeadline = lastActivityAt + inactivityTimeoutMs;
+      inactivityNotified = false;
+      monitorInactivity();
+    };
     const cleanup = () => {
       unlink(promptFile).catch(() => {});
       rmdir(tmpDir).catch(() => {});
@@ -266,6 +306,7 @@ export async function runSubagent(
       if (inputEnded) return;
       inputEnded = true;
       accepting = false;
+      clearInactivity();
       try {
         stdin.end();
       } catch { /* child already closed */ }
@@ -339,6 +380,31 @@ export async function runSubagent(
         console.error("subagents: event callback failed", err);
       }
     };
+    const safeStep = (step: JobStepInput) => {
+      try {
+        options.onStep?.(step);
+      } catch (err) {
+        console.error("subagents: step callback failed", err);
+      }
+    };
+    let nextStepId = 1;
+    let assistantStepId: string | undefined;
+    let retryStepId: string | undefined;
+    const toolSteps = new Map<string, string>();
+    const startAssistant = () => {
+      if (assistantStepId) return;
+      const retryId = retryStepId;
+      retryStepId = undefined;
+      if (retryId) safeStep({ phase: "end", id: retryId });
+      assistantStepId = `assistant-${nextStepId++}`;
+      safeStep({ phase: "start", id: assistantStepId, kind: "assistant", summary: "Assistant response" });
+    };
+    const endAssistant = () => {
+      const id = assistantStepId;
+      assistantStepId = undefined;
+      if (id) safeStep({ phase: "end", id });
+      return id;
+    };
     const maybeStream = () => {
       const nowMs = Date.now();
       if (nowMs - lastStreamAt < STREAM_INTERVAL_MS) return;
@@ -383,6 +449,7 @@ export async function runSubagent(
         const question = parseParentQuestion(line);
         if (question && !questions.has(question.id)) {
           questions.set(question.id, question);
+          clearInactivity();
           safeQuestion(question);
         }
       }
@@ -391,17 +458,59 @@ export async function runSubagent(
       maybeStream();
       if (!event || settled) return;
       switch (event.type) {
-        case "tool_execution_start":
-          safeEvent({ kind: "tool-start", summary: toolStartSummary(event) });
+        case "turn_start":
+          startAssistant();
           break;
-        case "tool_execution_end":
-          safeEvent({ kind: "tool-end", summary: toolEndSummary(event) });
+        case "message_start":
+        case "message_update": {
+          const message = event.message as { role?: unknown } | undefined;
+          if (message?.role === "assistant" || (event.type === "message_update" && event.assistantMessageEvent)) startAssistant();
           break;
+        }
+        case "tool_execution_start": {
+          const summary = toolStartSummary(event);
+          const callId = typeof event.toolCallId === "string" && event.toolCallId ? event.toolCallId : undefined;
+          let stepId = callId ? toolSteps.get(callId) : undefined;
+          if (callId && !stepId) {
+            stepId = `tool-${nextStepId++}`;
+            toolSteps.set(callId, stepId);
+            const name = toolName(event);
+            const args = truncateStrings(sanitizeToolCallArgs(name, toolArgs(event))) as Record<string, unknown>;
+            safeStep({ phase: "start", id: stepId, kind: "tool", summary, toolCall: { name, args } });
+          }
+          safeEvent({ kind: "tool-start", summary, ...(stepId ? { stepId } : {}) });
+          break;
+        }
+        case "tool_execution_end": {
+          const callId = typeof event.toolCallId === "string" ? event.toolCallId : "";
+          const stepId = toolSteps.get(callId);
+          if (stepId) {
+            toolSteps.delete(callId);
+            safeStep({ phase: "end", id: stepId });
+          }
+          safeEvent({ kind: "tool-end", summary: toolEndSummary(event), ...(stepId ? { stepId } : {}) });
+          break;
+        }
+        case "auto_retry_start":
+          endAssistant();
+          if (retryStepId) safeStep({ phase: "end", id: retryStepId });
+          retryStepId = `retry-${nextStepId++}`;
+          safeStep({ phase: "start", id: retryStepId, kind: "retry", summary: "Retry wait" });
+          safeEvent({ kind: "state", summary: "retrying", stepId: retryStepId });
+          break;
+        case "auto_retry_end": {
+          const stepId = retryStepId;
+          retryStepId = undefined;
+          if (stepId) safeStep({ phase: "end", id: stepId });
+          safeEvent({ kind: "state", summary: "retry ended", ...(stepId ? { stepId } : {}) });
+          break;
+        }
         case "message_end": {
           const message = event.message;
           if (message && typeof message === "object" && (message as { role?: unknown }).role === "assistant") {
+            const stepId = endAssistant();
             const text = assistantText((message as { content?: unknown }).content);
-            if (text) safeEvent({ kind: "assistant", summary: flattenSummary(text) });
+            if (text) safeEvent({ kind: "assistant", summary: flattenSummary(text), ...(stepId ? { stepId } : {}) });
           }
           break;
         }
@@ -425,7 +534,7 @@ export async function runSubagent(
       settled = true;
       accepting = false;
       removeAbortListener();
-      if (timeoutId) clearTimeout(timeoutId);
+      clearInactivity();
       if (shutdownTimer) clearTimeout(shutdownTimer);
       rejectCommands(new Error("Subagent process closed"));
       questions.clear();
@@ -478,6 +587,7 @@ export async function runSubagent(
     };
 
     proc.stdout?.on("data", (data) => {
+      if (data.length > 0) recordActivity();
       // The capped stdout buffer is only a parse fallback for close; live
       // state (final text, tool calls, usage) is parsed incrementally from
       // complete JSONL lines, so the cap never affects it.
@@ -502,6 +612,7 @@ export async function runSubagent(
       for (const line of lines) handleLine(line);
     });
     proc.stderr?.on("data", (data) => {
+      if (data.length > 0) recordActivity();
       stderr += data.toString();
       if (stderr.length > MAX_CHILD_ERROR) stderr = stderr.slice(-MAX_CHILD_ERROR);
     });
@@ -510,6 +621,7 @@ export async function runSubagent(
       if (settled || cancelled) return;
       cancelled = true;
       accepting = false;
+      clearInactivity();
       cancellationReason = reason;
       rejectCommands(new Error(`Subagent cancelled (${reason})`));
       questions.clear();
@@ -523,18 +635,21 @@ export async function runSubagent(
       try {
         await writePayload({ type: "extension_ui_response", id: questionId, value: answer });
         questions.delete(questionId);
+        if (questions.size === 0) {
+          inactivityDeadline = Date.now() + inactivityTimeoutMs;
+          inactivityNotified = false;
+          monitorInactivity();
+        }
         finishSettling();
       } finally {
         answeringQuestions.delete(questionId);
       }
     };
 
-    const timeoutMs = options.maxRuntimeMs ?? agent.maxRuntimeMs ?? 0;
     const onAbort = () => cancelJob("parent-abort");
-    const onTimeout = () => cancelJob("timeout");
     const removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
 
-    if (timeoutMs > 0) timeoutId = setTimeout(onTimeout, timeoutMs);
+    monitorInactivity();
     if (options.signal) {
       if (options.signal.aborted) cancelJob("parent-abort");
       else options.signal.addEventListener("abort", onAbort, { once: true });

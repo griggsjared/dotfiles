@@ -42,7 +42,7 @@ test("loadAgentFile parses fields", async () => {
     "model: opencode-go/deepseek-v4-pro",
     "thinkingLevel: high",
     "tools: read, grep, bash, edit",
-    "maxRuntimeMs: 300000",
+    "inactivityTimeoutMs: 300000",
     "---",
     "You are a worker.",
   ].join("\n"));
@@ -53,23 +53,29 @@ test("loadAgentFile parses fields", async () => {
     assert.equal(agent?.model, "opencode-go/deepseek-v4-pro");
     assert.equal(agent?.thinkingLevel, "high");
     assert.deepEqual(agent?.tools, ["read", "grep", "bash", "edit"]);
-    assert.equal(agent?.maxRuntimeMs, 300000);
+    assert.equal(agent?.inactivityTimeoutMs, 300000);
     assert.equal(agent?.systemPrompt, "You are a worker.");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("loadAgentFile falls back to filename and tolerates invalid maxRuntimeMs", async () => {
+test("loadAgentFile falls back to filename and validates inactivityTimeoutMs strictly", async () => {
   const dir = await mkdtemp(join(tmpdir(), "subagents-test-"));
   const file = join(dir, "fallback.md");
-  await writeFile(file, "---\ndescription: no name\nmaxRuntimeMs: banana\n---\nbody");
   try {
-    const agent = await loadAgentFile(file);
-    assert.equal(agent?.name, "fallback");
-    assert.equal(agent?.maxRuntimeMs, undefined);
-    assert.equal(agent?.description, "no name");
-    assert.equal(agent?.systemPrompt, "body");
+    for (const [value, expected] of [
+      ["0", 0], ["2147483647", 2147483647],
+      ["banana", undefined], ["", undefined], ["10ms", undefined],
+      ["1.5", undefined], ["1e3", undefined], ["-1", undefined], ["2147483648", undefined],
+    ] as const) {
+      await writeFile(file, `---\ndescription: no name\ninactivityTimeoutMs: ${value}\n---\nbody`);
+      const agent = await loadAgentFile(file);
+      assert.equal(agent?.name, "fallback");
+      assert.equal(agent?.inactivityTimeoutMs, expected, value);
+      assert.equal(agent?.description, "no name");
+      assert.equal(agent?.systemPrompt, "body");
+    }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -117,6 +123,17 @@ test("parseSubagentSettings maps legacy settings to default and validates overri
   assert.deepEqual(settings.profiles.default!.defaults, { model: "gpt-5", thinkingLevel: "max" });
   assert.deepEqual(settings.profiles.default!.agents.scout, { model: "sonnet:high", thinkingLevel: "high" });
   assert.equal(settings.profiles.default!.agents.invalid, undefined);
+});
+
+test("parseSubagentSettings preserves timeout-only overrides and validates inactivityTimeoutMs", () => {
+  for (const value of [0, 2147483647, -1, 2147483648, 1.5, "100", null, NaN, Infinity]) {
+    const settings = parseSubagentSettings({
+      profiles: { idle: { defaults: { inactivityTimeoutMs: value }, agents: { worker: { inactivityTimeoutMs: value } } } },
+    });
+    const expected = value === 0 || value === 2147483647 ? { inactivityTimeoutMs: value } : {};
+    assert.deepEqual(settings.profiles.idle!.defaults, expected);
+    assert.deepEqual(settings.profiles.idle!.agents, Object.keys(expected).length ? { worker: expected } : {});
+  }
 });
 
 test("loadSubagentSettings uses session for missing or malformed configuration", async () => {
@@ -215,38 +232,42 @@ test("resolveExtensionPaths reads entry points from each package manifest", asyn
 
 test("resolveAgentSettings gives local overrides precedence over frontmatter and defaults", () => {
   const settings = parseSubagentSettings({
-    defaults: { model: "default/model", thinkingLevel: "low" },
-    agents: { scout: { model: "local/model", thinkingLevel: "high" } },
+    defaults: { model: "default/model", thinkingLevel: "low", inactivityTimeoutMs: 100 },
+    agents: { scout: { model: "local/model", thinkingLevel: "high", inactivityTimeoutMs: 0 } },
   });
   const agent = resolveAgentSettings({
     name: "scout", description: "", model: "frontmatter/model", thinkingLevel: "medium",
-    tools: ["read"], systemPrompt: "",
+    tools: ["read"], systemPrompt: "", inactivityTimeoutMs: 200,
   }, settings, "default");
   assert.equal(agent.model, "local/model");
   assert.equal(agent.thinkingLevel, "high");
+  assert.equal(agent.inactivityTimeoutMs, 0);
   assert.deepEqual(agent.tools, ["read"]);
 
   const frontmatter = resolveAgentSettings({
-    name: "worker", description: "", model: "frontmatter/model", thinkingLevel: "medium", systemPrompt: "",
+    name: "worker", description: "", model: "frontmatter/model", thinkingLevel: "medium", systemPrompt: "", inactivityTimeoutMs: 0,
   }, settings, "default");
   assert.equal(frontmatter.model, "frontmatter/model");
   assert.equal(frontmatter.thinkingLevel, "medium");
+  assert.equal(frontmatter.inactivityTimeoutMs, 0);
 
   const defaults = resolveAgentSettings({ name: "worker", description: "", systemPrompt: "" }, settings, "default");
   assert.equal(defaults.model, "default/model");
   assert.equal(defaults.thinkingLevel, "low");
+  assert.equal(defaults.inactivityTimeoutMs, 100);
 });
 
-test("resolveAgentSettings ignores agent models for session while retaining agent thinking", () => {
+test("resolveAgentSettings ignores agent models for session while retaining agent thinking and inactivity", () => {
   const settings = parseSubagentSettings({
     profiles: { other: { defaults: { model: "other/model", thinkingLevel: "low" } } },
   });
   const agent = {
-    name: "scout", description: "", model: "frontmatter/model", thinkingLevel: "high", systemPrompt: "",
+    name: "scout", description: "", model: "frontmatter/model", thinkingLevel: "high", systemPrompt: "", inactivityTimeoutMs: 0,
   };
   const resolved = resolveAgentSettings(agent, settings, SESSION_PROFILE_NAME);
   assert.equal(resolved.model, undefined);
   assert.equal(resolved.thinkingLevel, "high");
+  assert.equal(resolved.inactivityTimeoutMs, 0);
   assert.equal(agent.model, "frontmatter/model");
   assert.equal(resolveAgentSettings(agent, settings).model, "frontmatter/model");
 

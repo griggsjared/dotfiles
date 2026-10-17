@@ -1278,6 +1278,64 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
   assert.equal(discoveries, 2);
 });
 
+test("subagent-profile picker shows one usage line per distinct provider, requested once", async () => {
+  const settings = parseSubagentSettings({
+    profiles: {
+      mixed: { defaults: { model: "anthropic/a" }, agents: { worker: { model: "openai-codex/b" }, helper: { model: "untracked/c" } } },
+      other: { defaults: { model: "openai-codex/x" }, agents: {} },
+    },
+  });
+  const agents = [AGENT, { ...AGENT, name: "worker" }, { ...AGENT, name: "helper" }, { ...AGENT, name: "extra" }];
+  const requests: string[] = [];
+  const replies = new Map<string, (text: string | undefined) => void>();
+  let renders = 0;
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  registerStatusCommands({
+    appendEntry: () => {},
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
+    registerShortcut: () => {},
+  } as unknown as ExtensionAPI, {
+    registry: createJobRegistry(),
+    profiles: {
+      settings,
+      discover: async () => agents,
+      getActiveProfile: () => "mixed",
+      setActiveProfile: () => {},
+      requestUsage: (provider) => {
+        requests.push(provider);
+        return new Promise((resolve) => replies.set(provider, resolve));
+      },
+    },
+  });
+  const usageLines = (component: Component, width = 120) => {
+    const lines = component.render(width);
+    return lines.slice(lines.indexOf("Provider usage") + 1, -2).map((line) => line.trimEnd());
+  };
+  await commands.get("subagent-profile")!.handler("", {
+    mode: "tui",
+    hasUI: true,
+    ui: {
+      notify: () => {},
+      custom: customProfilePicker(async (component) => {
+        assert.deepEqual(usageLines(component), ["anthropic     …", "openai-codex  …", "untracked     …"]);
+        replies.get("anthropic")!("5h 12%(3h)");
+        replies.get("openai-codex")!("b:$4.20");
+        replies.get("untracked")!(undefined);
+        await sleep(0);
+        assert.equal(renders, 3);
+        assert.deepEqual(usageLines(component), ["anthropic     5h 12%(3h)", "openai-codex  b:$4.20"]);
+        for (const width of [12, 20]) assert.ok(component.render(width).every((line) => visibleWidth(line) <= width));
+        component.handleInput!("\u001b[B");
+        assert.deepEqual(usageLines(component), ["openai-codex  b:$4.20"]);
+        component.handleInput!("\u001b[A");
+        assert.match(renderText(component), /Resolved settings: mixed/);
+        assert.deepEqual(requests, ["anthropic", "openai-codex", "untracked"]);
+        component.handleInput!("\u001b");
+      }, () => { renders += 1; }),
+    },
+  });
+});
+
 test("restoreActiveProfile uses the latest valid session selection", () => {
   const settings = parseSubagentSettings({ profiles: { primary: {}, backup: {} } });
   assert.equal(restoreActiveProfile([], settings), undefined);
@@ -2016,12 +2074,13 @@ function makeTool(
   return { tool, registry, sendMessage, sendUserMessage, appendEntry, handlers, activeTickers, activeProcs, child, ctx };
 }
 
-test("execute: profile confirmation surfaces a paused progress update", async () => {
+test("execute: profile confirmation surfaces a paused progress update", async (t) => {
   const updates: Array<{ content: unknown; details: unknown }> = [];
-  const { tool, ctx } = makeTool(undefined, undefined, undefined, async (_ctx, onPause) => {
+  const { tool, activeTickers, child, ctx } = makeTool(undefined, undefined, undefined, async (_ctx, onPause) => {
     onPause?.("Paused: waiting for subagent profile selection");
     return true;
   });
+  t.after(() => { child.finish(0); for (const ticker of activeTickers) clearInterval(ticker); });
   await tool.execute(
     "call1",
     { agent: "scout", task: "t" },
@@ -2249,10 +2308,10 @@ test("execute: inactivity steers a busy parent once per idle stretch without sto
   const { tool, registry, sendMessage, appendEntry, activeTickers, child, ctx } = makeTool();
   t.after(() => { child.finish(0); for (const ticker of activeTickers) clearInterval(ticker); });
   (ctx as unknown as { isIdle: () => boolean }).isIdle = () => false;
-  await tool.execute("launch", { agent: "scout", task: "Inspect the slow tool" }, undefined, undefined, ctx);
-  await sleep(10);
   const now = Date.now();
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now });
+  await tool.execute("launch", { agent: "scout", task: "Inspect the slow tool" }, undefined, undefined, ctx);
+  while (child.stdin.commands().length === 0) await new Promise<void>((resolve) => setImmediate(resolve));
   child.stdout.emit("data", Buffer.from(`${JSON.stringify({
     type: "tool_execution_start", toolCallId: "read-1", toolName: "read", args: { path: "src/auth.ts" },
   })}\n`));
@@ -2420,12 +2479,12 @@ test("stale UI context does not duplicate cancellation completion", async () => 
 test("cancelling a child waiting on the parent invalidates its question and suppresses check-ins", async (t) => {
   const { tool, registry, sendMessage, activeTickers, child, ctx } = makeTool();
   t.after(() => { child.finish(0); for (const ticker of activeTickers) clearInterval(ticker); });
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.now() });
   await tool.execute("call1", { agent: "scout", task: "t" }, undefined, undefined, ctx);
-  await sleep(10);
+  while (child.stdin.commands().length === 0) await new Promise<void>((resolve) => setImmediate(resolve));
   const initial = child.stdin.commands()[0];
   assert.ok(initial);
   child.stdout.emit("data", Buffer.from(responseEvent(initial)));
-  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.now() });
   child.stdout.emit("data", Buffer.from(questionEvent("question-1", "Continue?")));
   assert.deepEqual(registry.get(1)?.pendingQuestions.map((question) => question.id), ["question-1"]);
   t.mock.timers.tick(600000);
@@ -2733,15 +2792,15 @@ function fakeTheme() {
   };
 }
 
-function customProfilePicker(interact: (component: Component) => void) {
+function customProfilePicker(interact: (component: Component) => void | Promise<void>, requestRender = () => {}) {
   return (factory: (
     tui: { requestRender: () => void },
     theme: ReturnType<typeof fakeTheme>,
     keybindings: unknown,
     done: (result: string | undefined) => void,
-  ) => Component) => new Promise<string | undefined>((resolve) => {
-    const component = factory({ requestRender: () => {} }, fakeTheme(), {}, resolve);
-    interact(component);
+  ) => Component) => new Promise<string | undefined>((resolve, reject) => {
+    const component = factory({ requestRender }, fakeTheme(), {}, resolve);
+    Promise.resolve(interact(component)).catch(reject);
   });
 }
 

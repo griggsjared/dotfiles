@@ -747,6 +747,8 @@ interface ProfileCommandDeps {
   setActiveProfile: (name: string) => void;
   /** True while the session still needs a profile choice before subagents run. */
   needsConfirmation?: () => boolean;
+  /** Themed usage text for a provider; undefined when the provider isn't tracked. */
+  requestUsage?: (provider: string, theme: Theme) => Promise<string | undefined>;
 }
 
 async function chooseProfile(
@@ -773,6 +775,12 @@ async function chooseProfile(
       noMatch: (text) => theme.fg("warning", text),
     });
     let previewName: string | undefined;
+    // null marks a pending request; each provider is requested once per picker open.
+    const usage = new Map<string, string | undefined | null>();
+    const providersFor = (profile: string) => [...new Set(agents.flatMap((agent) => {
+      const model = resolveAgentSettings(agent, profiles.settings, profile).model ?? parentModel;
+      return model ? [model.split("/")[0]!] : [];
+    }))];
     const details: Component = {
       render(width: number) {
         if (!previewName) return [];
@@ -802,6 +810,11 @@ async function chooseProfile(
           Math.min(Math.max(...rows.map((row) => visibleWidth(row[1]!))), Math.max(0, available - agentWidth - thinkingWidth)),
           thinkingWidth,
         ];
+        const usageRows = providersFor(previewName).flatMap((provider) => {
+          const text = usage.get(provider);
+          return text === undefined ? [] : [[provider, text ?? theme.fg("dim", "…")] as const];
+        });
+        const providerWidth = Math.max(0, ...usageRows.map(([provider]) => visibleWidth(provider)));
         return [
           "",
           theme.fg("accent", theme.bold(`Resolved settings: ${previewName}`)),
@@ -816,12 +829,28 @@ async function chooseProfile(
               : theme.fg("dim", line);
           }),
           ...(agents.length === 0 ? [theme.fg("dim", "No agents discovered")] : []),
+          ...(usageRows.length === 0 ? [] : [
+            theme.fg("muted", theme.bold("Provider usage")),
+            ...usageRows.map(([provider, text]) =>
+              theme.fg("dim", provider + " ".repeat(providerWidth - visibleWidth(provider))) + gap + text),
+          ]),
           "",
         ].map((line) => truncateToWidth(line, width, "…"));
       },
       invalidate() {},
     };
-    list.onSelectionChange = (item) => { previewName = item.value; };
+    list.onSelectionChange = (item) => {
+      previewName = item.value;
+      if (!profiles.requestUsage) return;
+      for (const provider of providersFor(item.value)) {
+        if (usage.has(provider)) continue;
+        usage.set(provider, null);
+        void profiles.requestUsage(provider, theme).catch(() => undefined).then((text) => {
+          usage.set(provider, text);
+          tui.requestRender();
+        });
+      }
+    };
     list.onSelect = (item) => done(item.value);
     list.onCancel = () => done(undefined);
     list.setSelectedIndex(Math.max(0, names.indexOf(current ?? "")));

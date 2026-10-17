@@ -12,9 +12,9 @@ const capturedAt = 1_700_000_000_000;
 
 test("entry wiring registers the footer and publishes provider status", async () => {
 	const handlers = new Map<string, Array<(event: any, context: any) => void>>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) {
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) {
 		handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-	} } as ExtensionAPI);
+	} } as unknown as ExtensionAPI);
 	let footerSet = false;
 	const statuses: Array<string | undefined> = [];
 	const context = {
@@ -74,7 +74,7 @@ test("normalizes DeepSeek balance responses", () => {
 
 test("fetches DeepSeek balance from the fixed endpoint with an auth header", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	let url: string | undefined;
 	let request: RequestInit | undefined;
@@ -108,11 +108,51 @@ test("fetches DeepSeek balance from the fixed endpoint with an auth header", asy
 	}
 });
 
+test("answers provider usage requests for non-active providers without touching the footer", async () => {
+	const handlers = new Map<string, (event: any, context: any) => void>();
+	let request: ((data: unknown) => void) | undefined;
+	providerUsage({
+		events: { on(channel: string, handler: (data: unknown) => void) { if (channel === "provider-usage:request") request = handler; return () => {}; }, emit() {} },
+		on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); },
+	} as unknown as ExtensionAPI);
+	const originalFetch = globalThis.fetch;
+	let calls = 0;
+	globalThis.fetch = async () => ++calls === 1
+		? new Response(JSON.stringify({ balance_infos: [{ currency: "USD", total_balance: "42.50" }] }))
+		: new Response("nope", { status: 503 });
+	const statuses: Array<string | undefined> = [];
+	const context = {
+		hasUI: true, model: { provider: "anthropic" },
+		modelRegistry: { getProvider: () => ({ baseUrl: "https://api.deepseek.com" }), getProviderAuth: async () => ({ auth: { apiKey: "sk-test" } }) },
+		ui: { setStatus(_key: string, value: string | undefined) { statuses.push(value); } },
+	};
+	const ask = (provider: string) => new Promise<string | undefined>((resolve) => {
+		request?.({ provider, theme: { fg: (_color: string, text: string) => text }, reply: resolve });
+	});
+	try {
+		handlers.get("session_start")?.({}, context);
+		const footerUpdates = statuses.length;
+		assert.equal(await ask("google"), undefined);
+		assert.equal(await ask("deepseek"), "b:$42.50");
+		assert.equal(await ask("deepseek"), "b:$42.50");
+		assert.equal(calls, 1);
+		assert.equal(statuses.length, footerUpdates);
+
+		// A new session drops the cache, so the next request refetches and the failure has no stale value.
+		handlers.get("session_start")?.({}, context);
+		assert.equal(await ask("deepseek"), "quota:?");
+		assert.equal(calls, 2);
+	} finally {
+		handlers.get("session_shutdown")?.({}, context);
+		globalThis.fetch = originalFetch;
+	}
+});
+
 test("rejects DeepSeek balance fetches to non-official endpoints", async () => {
 	const originalFetch = globalThis.fetch;
 	for (const baseUrl of ["https://api.deepseek.com.evil.tld/v1", "http://api.deepseek.com", "https://api.deepseek.com:8443/v1", "not a url"]) {
 		const handlers = new Map<string, (event: any, context: any) => void>();
-		providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+		providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 		let fetched = false;
 		globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
 		const statuses: Array<string | undefined> = [];
@@ -137,7 +177,7 @@ test("does not fetch DeepSeek balance without an API key", async () => {
 	const originalFetch = globalThis.fetch;
 	for (const auth of [undefined, { auth: {} }]) {
 		const handlers = new Map<string, (event: any, context: any) => void>();
-		providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+		providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 		let fetched = false;
 		globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
 		const statuses: Array<string | undefined> = [];
@@ -161,7 +201,7 @@ test("does not fetch DeepSeek balance without an API key", async () => {
 test("bounds DeepSeek auth resolution so a later refresh can still run", async (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout"] });
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	let fetchCalls = 0;
 	let authCalls = 0;
@@ -192,7 +232,7 @@ test("bounds DeepSeek auth resolution so a later refresh can still run", async (
 
 test("preserves a cached DeepSeek balance when a refresh fails", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	const originalNow = Date.now;
 	let now = originalNow();
@@ -242,9 +282,9 @@ test("normalizes Anthropic unified rate-limit headers", () => {
 
 test("publishes Anthropic usage from response headers without fetching", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) {
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) {
 		handlers.set(event, handler);
-	} } as ExtensionAPI);
+	} } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	let fetched = false;
 	globalThis.fetch = async () => { fetched = true; return new Response("{}"); };
@@ -368,9 +408,9 @@ test("limits response bodies while streaming", async () => {
 
 test("does not expose OpenCode credentials through status or errors", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) {
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) {
 		handlers.set(event, handler);
-	} } as ExtensionAPI);
+	} } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	const originalWorkspace = process.env.OPENCODE_GO_WORKSPACE_ID;
 	const originalCookie = process.env.OPENCODE_GO_AUTH_COOKIE;
@@ -399,7 +439,7 @@ test("does not expose OpenCode credentials through status or errors", async () =
 
 test("preserves cached usage when a refresh fails", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	const originalWorkspace = process.env.OPENCODE_GO_WORKSPACE_ID;
 	const originalCookie = process.env.OPENCODE_GO_AUTH_COOKIE;
@@ -433,7 +473,7 @@ test("preserves cached usage when a refresh fails", async () => {
 
 test("Codex requests use the fixed endpoint, redirect policy, and auth headers", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	const account = "acct_test";
 	const token = `x.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).toString("base64url")}.x`;
@@ -454,7 +494,7 @@ test("Codex requests use the fixed endpoint, redirect policy, and auth headers",
 
 test("same-provider selection aborts the old request", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const originalFetch = globalThis.fetch;
 	let aborted = false;
 	globalThis.fetch = (_url, init) => new Promise<Response>((_, reject) => {
@@ -477,10 +517,11 @@ test("same-provider selection aborts the old request", async () => {
 test("ignores a stale OpenCode response after switching providers", async () => {
 	const handlers = new Map<string, (event: any, context: any) => void>();
 	providerUsage({
+		events: { on() { return () => {}; }, emit() {} },
 		on(event: string, handler: (event: any, context: any) => void) {
 			handlers.set(event, handler);
 		},
-	} as ExtensionAPI);
+	} as unknown as ExtensionAPI);
 
 	let resolveFetch: ((response: Response) => void) | undefined;
 	const originalFetch = globalThis.fetch;

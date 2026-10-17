@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { discoverAgents, loadSubagentSettings, resolveExtensionPaths, type SubagentSettings } from "./agents.ts";
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
@@ -58,6 +58,8 @@ export default async function (pi: ExtensionAPI) {
       if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, activeProfile);
     },
     needsConfirmation: () => !profileConfirmed,
+    requestUsage: (provider: string, theme: Theme) => new Promise<string | undefined>((resolve) =>
+      pi.events.emit("provider-usage:request", { provider, theme, reply: resolve })),
   };
 
   registerRenderers(pi);

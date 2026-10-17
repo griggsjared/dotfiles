@@ -248,7 +248,7 @@ function settle(): Promise<void> {
 
 function entryContext() {
 	const handlers = new Map<string, (event: any, context: any) => void>();
-	providerUsage({ on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as ExtensionAPI);
+	providerUsage({ events: { on() { return () => {}; }, emit() {} }, on(event: string, handler: (event: any, context: any) => void) { handlers.set(event, handler); } } as unknown as ExtensionAPI);
 	const statuses: Array<string | undefined> = [];
 	const context = {
 		hasUI: true, model: { provider: "claude-bridge" },

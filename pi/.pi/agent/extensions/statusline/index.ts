@@ -1,9 +1,9 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { ANTHROPIC_PROVIDER, normalizeAnthropicHeaders } from "./providers/anthropic.ts";
 import { CLAUDE_CACHE_TTL_MS, CLAUDE_PROVIDER, fetchClaudeUsage } from "./providers/claude.ts";
 import { CODEX_CACHE_TTL_MS, CODEX_PROVIDER, fetchCodexUsage } from "./providers/codex.ts";
 import { DEEPSEEK_CACHE_TTL_MS, DEEPSEEK_PROVIDER, fetchDeepseekUsage } from "./providers/deepseek.ts";
-import { registerStatusline } from "./footer.ts";
+import { formatFooterBalance, formatFooterUsage, registerStatusline } from "./footer.ts";
 import { REQUEST_TIMEOUT_MS } from "./http.ts";
 import { OPENCODE_CACHE_TTL_MS, OPENCODE_PROVIDER, fetchOpencodeUsage } from "./providers/opencode.ts";
 import {
@@ -29,6 +29,31 @@ const USAGE_ADAPTERS: Partial<Record<UsageProvider, UsageAdapter>> = {
 	[DEEPSEEK_PROVIDER]: { cacheTtlMs: DEEPSEEK_CACHE_TTL_MS, load: fetchDeepseekUsage },
 };
 
+type ProviderUsageRequest = {
+	provider: string;
+	theme: Pick<Theme, "fg">;
+	reply: (text: string | undefined) => void;
+};
+
+const isProviderUsageRequest = (value: unknown): value is ProviderUsageRequest => {
+	if (!value || typeof value !== "object") return false;
+	const { provider, theme, reply } = value as Record<string, unknown>;
+	return typeof provider === "string" && typeof reply === "function" &&
+		!!theme && typeof theme === "object" && typeof (theme as { fg?: unknown }).fg === "function";
+};
+
+// Mirrors the footer's right-hand usage text, without width limits.
+const formatRequestedUsage = (usage: UsageStatus | undefined, theme: Pick<Theme, "fg">): string => {
+	if (usage?.state !== "ready") return theme.fg("dim", "quota:?");
+	const parts = usage.windows.length > 0 ? [formatFooterUsage(usage, Date.now(), Infinity, theme)] : [];
+	if (usage.balance) {
+		const color = usage.balance.currency === "USD" && usage.balance.amount < 0.5 ? "error"
+			: usage.balance.currency === "USD" && usage.balance.amount < 1 ? "warning" : "dim";
+		parts.push(theme.fg(color, formatFooterBalance(usage.balance)));
+	}
+	return parts.length > 0 ? parts.join(" ") : theme.fg("dim", "no quota");
+};
+
 export default function providerUsage(pi: ExtensionAPI): void {
 	registerStatusline(pi);
 	let activeContext: ExtensionContext | undefined;
@@ -40,6 +65,10 @@ export default function providerUsage(pi: ExtensionAPI): void {
 	let requestController: AbortController | undefined;
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
 	let sessionActive = false;
+	// Usage for non-active providers, fetched on request and never published to the footer.
+	let sessionGeneration = 0;
+	const providerCache = new Map<UsageProvider, { status: UsageStatus; fetchedAt: number }>();
+	const providerRequests = new Map<UsageProvider, { controller: AbortController; promise: Promise<UsageStatus | undefined> }>();
 
 	const supported = (provider: string | undefined): provider is UsageProvider =>
 		isUsageProvider(provider);
@@ -48,6 +77,13 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		requestController?.abort();
 		requestController = undefined;
 		refreshPromise = undefined;
+	};
+
+	const clearProviderUsage = (): void => {
+		sessionGeneration++;
+		for (const { controller } of providerRequests.values()) controller.abort();
+		providerRequests.clear();
+		providerCache.clear();
 	};
 
 	const clearUsage = (ctx: ExtensionContext): void => {
@@ -122,11 +158,59 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		return promise;
 	};
 
+	const fetchProviderUsage = (provider: UsageProvider, adapter: UsageAdapter, ctx: ExtensionContext): Promise<UsageStatus | undefined> => {
+		const cached = providerCache.get(provider);
+		if (cached && Date.now() - cached.fetchedAt < adapter.cacheTtlMs) return Promise.resolve(cached.status);
+		const inFlight = providerRequests.get(provider);
+		if (inFlight) return inFlight.promise;
+
+		const requestGeneration = sessionGeneration;
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+		const promise = (async () => {
+			try {
+				const usage = await adapter.load(ctx, controller.signal);
+				if (requestGeneration !== sessionGeneration) return undefined;
+				providerCache.set(provider, { status: usage, fetchedAt: Date.now() });
+				return usage;
+			} catch {
+				return requestGeneration === sessionGeneration ? providerCache.get(provider)?.status : undefined;
+			} finally {
+				clearTimeout(timeout);
+			}
+		})();
+		providerRequests.set(provider, { controller, promise });
+		void promise.then(() => {
+			if (providerRequests.get(provider)?.promise === promise) providerRequests.delete(provider);
+		});
+		return promise;
+	};
+
+	pi.events.on("provider-usage:request", (data) => {
+		if (!isProviderUsageRequest(data)) return;
+		const { provider, theme, reply } = data;
+		const ctx = activeContext;
+		if (!sessionActive || !ctx || !supported(provider)) {
+			reply(undefined);
+			return;
+		}
+		const latestFor = () => latestUsage?.provider === provider ? latestUsage : undefined;
+		const adapter = USAGE_ADAPTERS[provider];
+		if (!adapter) {
+			reply(formatRequestedUsage(latestFor(), theme));
+		} else if (provider === activeProvider) {
+			void refresh(ctx).then(() => reply(formatRequestedUsage(latestFor(), theme)));
+		} else {
+			void fetchProviderUsage(provider, adapter, ctx).then((usage) => reply(formatRequestedUsage(usage, theme)));
+		}
+	});
+
 	pi.on("session_start", (_event, ctx) => {
 		// A reload can start a new runtime without delivering the old shutdown
 		// event. Do not let an in-flight request or cached quota cross sessions.
 		generation++;
 		clearRequest();
+		clearProviderUsage();
 		if (refreshTimer) clearInterval(refreshTimer);
 		refreshTimer = undefined;
 		latestUsage = undefined;
@@ -186,6 +270,7 @@ export default function providerUsage(pi: ExtensionAPI): void {
 		sessionActive = false;
 		generation++;
 		clearRequest();
+		clearProviderUsage();
 		if (refreshTimer) clearInterval(refreshTimer);
 		refreshTimer = undefined;
 		activeContext = undefined;

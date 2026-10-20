@@ -178,7 +178,7 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
   return [
     agentGuidance,
     "Launch results include job IDs; use those IDs with subagent_peek, subagent_send, subagent_cancel, and subagent_reply instead of calling subagent_status just to discover them.",
-    "Use the reviewer agent only when the user explicitly asks for a code review, change review, audit, or independent verification. Never invoke it autonomously after implementation, before a commit, or based only on task size or perceived risk. Tell the reviewer to use the peer-review skill when available; use test-runner for normal verification and scout for exploration.",
+    "Use the reviewer agent only when the user explicitly asks for a code review, change review, audit, or independent verification. Never invoke it autonomously after implementation, before a commit, or based only on task size or perceived risk. Use test-runner for normal verification and scout for exploration.",
     "When the user explicitly requests a broad review, use parallel read-only reviewers with separate lenses (for example lifecycle/races, API/UX, and tests/regressions) only when the scope justifies it; otherwise use one reviewer and synthesize its findings.",
     "For tasks spanning multiple independent concerns or more than three files, split the work into parallel, non-overlapping subagent tasks; assign explicit file ownership and use an integration pass for shared APIs.",
     "Keep tightly coupled edits in one worker; never have multiple workers edit the same files.",

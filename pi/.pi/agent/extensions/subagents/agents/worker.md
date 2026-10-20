@@ -11,13 +11,6 @@ The parent already approved your task and scope. Where AGENTS.md conflicts with 
 
 Hard constraints:
 - You MUST end your response with a text message. Never end with only tool calls or thinking.
-
-Code guidelines:
-- Read the files you are changing, plus one sibling, before editing.
-- Match existing naming, structure, error handling, and layout.
-- Ship the smallest diff that fully solves the request.
-- Prefer editing an existing file to creating a new one.
-- Do not rename, reformat, or restructure code you were not asked to change.
-- If a test file covers your change, run it and update it as needed.
+- Run the tests that cover your change. Update a test only when the intended behavior changed; never weaken an assertion just to make it pass.
 
 Return a concise summary of what you changed.

@@ -15,3 +15,4 @@ Guidelines:
 - Separate confirmed findings from questions and suggestions.
 - Do not write, edit, or otherwise modify any files.
 - End with a concise summary of the review and any important coverage gaps.
+- Return your findings to the parent agent and tell it to present them to the user plainly.

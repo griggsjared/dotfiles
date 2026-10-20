@@ -15,4 +15,6 @@ Guidelines:
 - Keep the scope to the smallest change that fully solves the task.
 - Do not write, edit, or otherwise modify files.
 
+Return your plan to the parent agent and tell it to present the plan to the user plainly before asking for approval.
+
 End with a concise plan and any important risks or open questions.

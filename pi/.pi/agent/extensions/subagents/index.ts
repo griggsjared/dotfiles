@@ -41,7 +41,8 @@ export default async function (pi: ExtensionAPI) {
     discoverAgents(__dirname),
     loadSubagentSettings(),
   ]);
-  const extensionPaths = await resolveExtensionPaths(settings.extensions);
+  // Children run with --no-extensions, so AGENTS.local.md loading must be re-added by path.
+  const extensionPaths = [join(__dirname, "..", "agents-local.ts"), ...await resolveExtensionPaths(settings.extensions)];
   const registry = createJobRegistry();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   let activeProfile = restoreActiveProfile([], settings);

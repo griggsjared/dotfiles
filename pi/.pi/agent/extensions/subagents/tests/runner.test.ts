@@ -478,7 +478,6 @@ test("runSubagent: spawns the child with the full pi CLI contract", async () => 
   assert.deepEqual(flags.slice(0, 4), ["--mode", "rpc", "--no-session", "--no-extensions"]);
   assert.equal(flags.includes("-p"), false);
   assert.ok(flags.includes("--no-extensions"), "no recursive subagent spawns");
-  assert.ok(flags.includes("--no-context-files"));
   const extensionIdx = flags.indexOf("--extension");
   assert.equal(flags[extensionIdx + 1], BRIDGE_EXTENSION);
   const toolsIdx = flags.indexOf("--tools");

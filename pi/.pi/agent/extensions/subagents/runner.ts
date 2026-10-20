@@ -184,7 +184,6 @@ export async function runSubagent(
     "--no-extensions",
     ...(hasBridgeExtension ? ["--extension", bridgeExtension] : []),
     ...extraExtensions.flatMap((path) => ["--extension", path]),
-    "--no-context-files",
     ...(model ? ["--model", model] : []),
     ...(options.thinkingLevel ? ["--thinking", options.thinkingLevel] : []),
     "--tools",

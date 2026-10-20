@@ -188,6 +188,7 @@ function buildGuidelines(agents: AgentConfig[]): string[] {
     "Subagent jobs are always asynchronous: launch them, then end your turn or continue with independent work; results arrive as follow-up messages.",
     "The subagent tool returns immediately; do not block or poll for normal completion.",
     "After launching subagents, the parent does not need to keep working for the sake of working. It may end its turn and wait for their follow-up results; continue only when there is useful independent work, and never sleep or poll for results.",
+    "When related subagents are still running, acknowledge each result in one line and wait; report all findings together once the last arrives. Act on a result early only if it changes the plan, unblocks other work, or the user asked for incremental updates.",
     "Use subagent_status only when you need a snapshot of running or recent subagents; completion is automatic, so do not poll for it.",
     "Use subagent_cancel with a jobId or all, or /subagent-cancel <id|all>, when running subagents are stalled or no longer needed; cancellation stops the selected jobs.",
     "When a subagent asks a question, answer it with subagent_reply. Call ask_user first when the decision belongs to the user, then relay that answer to the child.",

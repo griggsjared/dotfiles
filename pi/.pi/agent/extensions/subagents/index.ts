@@ -16,20 +16,25 @@ import { createSubagentTool } from "./tools.ts";
 import { PROFILE_ENTRY_TYPE, STATUS_KEY, WIDGET_KEY } from "./types.ts";
 
 export function restoreActiveProfile(entries: readonly unknown[], settings: SubagentSettings): string | undefined {
+  const models = new Set<string>();
+  let choice: unknown;
+  let found = false;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index] as { type?: unknown; customType?: unknown; data?: { name?: unknown } } | undefined;
-    const name = entry?.data?.name;
-    if (entry?.type === "custom" && entry.customType === PROFILE_ENTRY_TYPE && typeof name === "string" && Object.hasOwn(settings.profiles, name)) {
-      return name;
+    const entry = entries[index] as { type?: unknown; customType?: unknown; provider?: unknown; modelId?: unknown; data?: { name?: unknown } } | undefined;
+    if (entry?.type === "model_change") {
+      models.add(`${String(entry.provider)}\0${String(entry.modelId)}`);
+      if (found) break;
+    } else if (!found && entry?.type === "custom" && entry.customType === PROFILE_ENTRY_TYPE) {
+      choice = entry.data?.name;
+      found = true;
     }
   }
+  // `models` holds the model in use when the choice was made plus any later ones. A switch to another
+  // model cleared the profile at that switch, as it does live. pi also writes model_change when the
+  // same model is picked again, so only a different model counts.
+  if (models.size <= 1 && typeof choice === "string" && Object.hasOwn(settings.profiles, choice)) return choice;
   const names = Object.keys(settings.profiles);
   return names.length === 1 ? names[0] : undefined;
-}
-
-/** A main-model change re-arms the profile gate; `restore` is a resume, not a change. */
-export function reArmsProfileGate(source: string): boolean {
-  return source !== "restore";
 }
 
 export default async function (pi: ExtensionAPI) {
@@ -46,7 +51,6 @@ export default async function (pi: ExtensionAPI) {
   const registry = createJobRegistry();
   const activeTickers = new Set<ReturnType<typeof setInterval>>();
   let activeProfile = restoreActiveProfile([], settings);
-  let profileConfirmed = false;
   let lastUiContext: UiContext | undefined;
 
   const profileDeps = {
@@ -55,10 +59,9 @@ export default async function (pi: ExtensionAPI) {
     getActiveProfile: () => activeProfile,
     setActiveProfile: (name: string) => {
       activeProfile = name;
-      profileConfirmed = true;
       if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, activeProfile);
     },
-    needsConfirmation: () => !profileConfirmed,
+    needsConfirmation: () => activeProfile === undefined,
     requestUsage: (provider: string, theme: Theme) => new Promise<string | undefined>((resolve) =>
       pi.events.emit("provider-usage:request", { provider, theme, reply: resolve })),
   };
@@ -103,15 +106,14 @@ export default async function (pi: ExtensionAPI) {
     activeProfile = typeof requested === "string"
       ? requested
       : restoreActiveProfile(ctx.mode === "tui" ? ctx.sessionManager.getEntries() : [], settings);
-    profileConfirmed = typeof requested === "string";
     const { hasUI, ui } = ctx;
     lastUiContext = { hasUI, ui };
     if (hasUI) ui.setStatus(PROFILE_ENTRY_TYPE, activeProfile);
   });
 
-  pi.on("model_select", (event) => {
-    if (!reArmsProfileGate(event.source)) return;
-    profileConfirmed = false;
+  pi.on("model_select", () => {
+    // An explicit --subagent-profile holds for the whole run.
+    if (typeof pi.getFlag("subagent-profile") === "string") return;
     if (Object.keys(settings.profiles).length > 1) {
       activeProfile = undefined;
       if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
@@ -123,11 +125,9 @@ export default async function (pi: ExtensionAPI) {
     activeTickers.clear();
     registry.cancelAll("session-shutdown");
     if (lastUiContext?.hasUI) {
-      try {
-        lastUiContext.ui.setWidget(WIDGET_KEY, []);
-        lastUiContext.ui.setStatus(STATUS_KEY, undefined);
-        lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
-      } catch { /* stale ctx after session change */ }
+      lastUiContext.ui.setWidget(WIDGET_KEY, []);
+      lastUiContext.ui.setStatus(STATUS_KEY, undefined);
+      lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
     }
   });
 }

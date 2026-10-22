@@ -880,8 +880,10 @@ async function chooseProfile(
 }
 
 /**
- * Pauses the first subagent launch of a session for a profile choice when more
- * than one profile is configured. Returns false when the user cancels.
+ * Pauses a subagent launch for a profile choice when more than one profile is
+ * configured and the session still needs one, such as on its first launch or
+ * after the main model changes without a --subagent-profile flag. Returns false
+ * when the user cancels.
  */
 export async function confirmSubagentProfile(
   pi: ExtensionAPI,

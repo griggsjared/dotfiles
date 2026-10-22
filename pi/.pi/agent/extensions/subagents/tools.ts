@@ -6,7 +6,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
-import { resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
+import { OFF_PROFILE_NAME, resolveAgentSettings, type AgentConfig, type SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatResultOutput, normalizeTitle, shortLabel } from "./format.ts";
 import type { Job, JobRegistry } from "./registry.ts";
 import { formatModel, runSubagent, runWithConcurrencyLimit } from "./runner.ts";
@@ -426,9 +426,15 @@ export function createSubagentTool(deps: SubagentToolDeps): ToolDefinition<typeo
           details: { status: "cancelled", targets },
         };
       }
+      const profile = deps.getActiveProfile();
+      if (profile === OFF_PROFILE_NAME) {
+        return {
+          content: [{ type: "text", text: `subagent launch ${targetSummary}: blocked, the user turned subagents off. Do the work without subagents.` }],
+          details: { status: "failed", targets },
+        };
+      }
       const defaultModel = formatModel(ctx.model);
       const parentThinkingLevel = ctx.thinkingLevel;
-      const profile = deps.getActiveProfile();
       const agents: ResolvedAgent[] = (await deps.discover()).map((agent) => {
         const resolved = resolveAgentSettings(agent, deps.settings, profile);
         return {

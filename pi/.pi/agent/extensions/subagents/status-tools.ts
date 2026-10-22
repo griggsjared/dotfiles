@@ -1,7 +1,7 @@
 import { Container, SelectList, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext, Theme, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { resolveAgentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "./agents.ts";
+import { OFF_PROFILE_NAME, resolveAgentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "./agents.ts";
 import { capOutput, formatDuration, formatUsageStats, normalizeTitle, shortLabel, toolCallLabel } from "./format.ts";
 import type { JobRegistry, Job } from "./registry.ts";
 import { openSubagentTail, TruncatedText } from "./render.ts";
@@ -756,8 +756,8 @@ async function chooseProfile(
   profiles: ProfileCommandDeps,
   ctx: ExtensionContext,
 ): Promise<string | undefined> {
-  const names = Object.keys(profiles.settings.profiles).sort((left, right) =>
-    Number(right === SESSION_PROFILE_NAME) - Number(left === SESSION_PROFILE_NAME));
+  const names = [...Object.keys(profiles.settings.profiles).sort((left, right) =>
+    Number(right === SESSION_PROFILE_NAME) - Number(left === SESSION_PROFILE_NAME)), OFF_PROFILE_NAME];
   const current = profiles.getActiveProfile();
   const agents = await profiles.discover();
   const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
@@ -765,7 +765,7 @@ async function chooseProfile(
     const container = new Container();
     container.addChild(new Text(theme.fg("accent", theme.bold(`Subagent profile (active: ${current ?? "none"})`)), 0, 0));
     const list = new SelectList(names.map((name) => {
-      const label = name === SESSION_PROFILE_NAME ? `${name} (built-in)` : name;
+      const label = name === SESSION_PROFILE_NAME ? `${name} (built-in)` : name === OFF_PROFILE_NAME ? `${name} (no subagents)` : name;
       return { value: name, label: name === current ? `${label} (active)` : label };
     }), Math.min(names.length, 5), {
       selectedPrefix: (text) => theme.fg("accent", text),
@@ -777,13 +777,16 @@ async function chooseProfile(
     let previewName: string | undefined;
     // null marks a pending request; each provider is requested once per picker open.
     const usage = new Map<string, string | undefined | null>();
-    const providersFor = (profile: string) => [...new Set(agents.flatMap((agent) => {
+    const providersFor = (profile: string) => profile === OFF_PROFILE_NAME ? [] : [...new Set(agents.flatMap((agent) => {
       const model = resolveAgentSettings(agent, profiles.settings, profile).model ?? parentModel;
       return model ? [model.split("/")[0]!] : [];
     }))];
     const details: Component = {
       render(width: number) {
         if (!previewName) return [];
+        if (previewName === OFF_PROFILE_NAME) {
+          return ["", theme.fg("dim", "Subagents are off. New launches are blocked."), ""].map((line) => truncateToWidth(line, width, "…"));
+        }
         const rows = [
           ["Agent", "Model", "Thinking"],
           ...agents.map((agent) => {
@@ -869,13 +872,15 @@ async function chooseProfile(
     };
   });
   if (!name) return undefined;
-  if (!profiles.settings.profiles[name]) {
+  if (name !== OFF_PROFILE_NAME && !profiles.settings.profiles[name]) {
     if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
     return undefined;
   }
   profiles.setActiveProfile(name);
   pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
-  if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
+  if (ctx.hasUI) ctx.ui.notify(name === OFF_PROFILE_NAME
+    ? "Subagents turned off. New launches are blocked."
+    : `Subagent profile switched to ${name}. New jobs will use it.`, "info");
   return name;
 }
 
@@ -926,24 +931,36 @@ export function registerStatusCommands(
   const switchProfile = async (requested: string, ctx: ExtensionContext): Promise<void> => {
     const profiles = deps.profiles;
     if (!profiles) return;
-    const names = Object.keys(profiles.settings.profiles);
+    const names = [...Object.keys(profiles.settings.profiles), OFF_PROFILE_NAME];
     const current = profiles.getActiveProfile() ?? "none";
-    const name = requested.trim();
+    let name: string | undefined = requested.trim();
     if (!name) {
       if (ctx.mode !== "tui") {
         if (ctx.hasUI) ctx.ui.notify(`Active subagent profile: ${current}. Available: ${names.join(", ") || "none"}`, "info");
         return;
       }
-      await chooseProfile(pi, profiles, ctx);
-      return;
+      name = await chooseProfile(pi, profiles, ctx);
+      if (!name) return;
+    } else {
+      if (name !== OFF_PROFILE_NAME && !profiles.settings.profiles[name]) {
+        if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
+        return;
+      }
+      profiles.setActiveProfile(name);
+      pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
+      if (ctx.hasUI) ctx.ui.notify(name === OFF_PROFILE_NAME
+        ? "Subagents turned off. New launches are blocked."
+        : `Subagent profile switched to ${name}. New jobs will use it.`, "info");
     }
-    if (!profiles.settings.profiles[name]) {
-      if (ctx.hasUI) ctx.ui.notify(`Unknown subagent profile "${name}". Available: ${names.join(", ")}`, "error");
-      return;
-    }
-    profiles.setActiveProfile(name);
-    pi.appendEntry(PROFILE_ENTRY_TYPE, { name });
-    if (ctx.hasUI) ctx.ui.notify(`Subagent profile switched to ${name}. New jobs will use it.`, "info");
+    // A launch-triggered choice reaches the agent through the tool result, so only manual switches send
+    // this. It joins the context without starting a turn.
+    pi.sendMessage({
+      customType: PROFILE_ENTRY_TYPE,
+      content: name === OFF_PROFILE_NAME
+        ? "The user turned subagents off. Do not launch subagents until the user turns them back on."
+        : `The user switched the subagent profile to ${name}. Subagents are available.`,
+      display: true,
+    });
   };
 
   pi.registerCommand("subagent-profile", {

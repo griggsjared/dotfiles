@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join, parse } from "node:path";
 
 export const SESSION_PROFILE_NAME = "session";
+/** A profile choice that blocks new subagent launches; it is not an entry in settings.profiles. */
+export const OFF_PROFILE_NAME = "off";
 
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
@@ -115,6 +117,9 @@ export function parseSubagentSettings(value: unknown): SubagentSettings {
     for (const [name, profile] of Object.entries(config.profiles)) {
       if (name === SESSION_PROFILE_NAME) {
         throw new Error(`Invalid subagent configuration: profile name "${SESSION_PROFILE_NAME}" is reserved for the built-in session profile.`);
+      }
+      if (name === OFF_PROFILE_NAME) {
+        throw new Error(`Invalid subagent configuration: profile name "${OFF_PROFILE_NAME}" is reserved for turning subagents off.`);
       }
       if (!isValidProfileName(name)) continue;
       const parsed = parseProfile(profile);

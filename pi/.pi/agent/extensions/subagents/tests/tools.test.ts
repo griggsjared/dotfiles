@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { Box, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { Check } from "typebox/value";
 import type { ExtensionAPI, ExtensionContext, ExtensionToolContext } from "@earendil-works/pi-coding-agent";
-import { parseSubagentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "../agents.ts";
+import { OFF_PROFILE_NAME, parseSubagentSettings, SESSION_PROFILE_NAME, type AgentConfig, type SubagentSettings } from "../agents.ts";
 import subagentsExtension, { restoreActiveProfile } from "../index.ts";
 import { createJobRegistry } from "../registry.ts";
 import { refreshUi, registerRenderers, renderFullWidget } from "../render.ts";
@@ -1152,11 +1152,17 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
   let activeProfile = "primary";
   const entries: Array<[string, unknown]> = [];
   const notices: Array<{ text: string; level: string }> = [];
+  const agentNotes: string[] = [];
   let pickerOpens = 0;
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
   const shortcuts = new Map<string, { handler: (ctx: unknown) => Promise<void> | void }>();
   const pi = {
     appendEntry: (type: string, data: unknown) => entries.push([type, data]),
+    sendMessage: (message: { customType: string; content: string }, options?: unknown) => {
+      assert.equal(message.customType, PROFILE_ENTRY_TYPE);
+      assert.equal(options, undefined);
+      agentNotes.push(message.content);
+    },
     registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => commands.set(name, command),
     registerShortcut: (key: string, shortcut: { handler: (ctx: unknown) => Promise<void> | void }) => shortcuts.set(key, shortcut),
   } as unknown as ExtensionAPI;
@@ -1276,6 +1282,15 @@ test("/subagent-profile and its ctrl+shift+l shortcut preview, validate, and per
   assert.equal(activeProfile, "backup");
   assert.deepEqual(entries.at(-1), [PROFILE_ENTRY_TYPE, { name: "backup" }]);
   assert.equal(discoveries, 2);
+
+  await command.handler("off", ctx);
+  assert.equal(activeProfile, "off");
+  assert.deepEqual(agentNotes, [
+    "The user switched the subagent profile to backup. Subagents are available.",
+    "The user switched the subagent profile to primary. Subagents are available.",
+    "The user switched the subagent profile to backup. Subagents are available.",
+    "The user turned subagents off. Do not launch subagents until the user turns them back on.",
+  ]);
 });
 
 test("subagent-profile picker shows one usage line per distinct provider, requested once", async () => {
@@ -1356,6 +1371,8 @@ test("restoreActiveProfile restores only the latest session selection", () => {
   assert.equal(restoreActiveProfile([model("b"), model("a"), backup, model("a")], settings), "backup");
   assert.equal(restoreActiveProfile([model("a"), backup, model("b"), model("a")], settings), undefined);
   assert.equal(restoreActiveProfile([model("team/m", "custom"), backup, model("m", "custom/team")], settings), undefined);
+  const off = { type: "custom", customType: PROFILE_ENTRY_TYPE, data: { name: OFF_PROFILE_NAME } };
+  assert.equal(restoreActiveProfile([model("a"), off, model("b")], settings), OFF_PROFILE_NAME);
 });
 
 test("extension selects profiles explicitly and uses the headless fallback", async (t) => {
@@ -1420,6 +1437,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
       let latestStatuses = statuses;
       const titles: string[] = [];
       const notices: string[] = [];
+      const profileNotes: string[] = [];
       const pi = {
         registerFlag: (name: string, options: { type: string }) => flags.push([name, options.type]),
         getFlag: (name: string) => name === "subagent-profile" ? entry.flag : undefined,
@@ -1430,7 +1448,9 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         registerMessageRenderer: () => {},
         on: (event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(event, handler),
         appendEntry: entries.fn,
-        sendMessage: () => {},
+        sendMessage: (message: { customType: string; content: string }) => {
+          if (message.customType === PROFILE_ENTRY_TYPE) profileNotes.push(message.content);
+        },
       } as unknown as ExtensionAPI;
       const ctx = {
         cwd: dir,
@@ -1475,11 +1495,12 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
         }
         if (entry.mode === "print" && names.length === 1) {
           await commands.get("subagent-profile")!.handler("", { ...ctx, hasUI: true });
-          assert.deepEqual(notices, ["Active subagent profile: session. Available: session"]);
+          assert.deepEqual(notices, ["Active subagent profile: session. Available: session, off"]);
         }
         const result = await tool.execute("launch", { agent: "scout", task: "t" }, undefined, undefined, ctx);
         assert.equal(result.details.profile, entry.profile);
         assert.deepEqual(titles, entry.picker ? [`Subagent profile (active: ${initialProfile ?? "none"})`] : []);
+        assert.deepEqual(profileNotes, []);
         assert.deepEqual(statuses.calls.at(-1), entry.mode === "tui" ? [PROFILE_ENTRY_TYPE, entry.profile] : undefined);
         await sleep(10);
         assert.equal(calls.length, 1);
@@ -1494,6 +1515,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           const beforeTitles = [...titles];
           const beforeModelSelect = [...statuses.calls];
           await handlers.get("model_select")!({ source: "set" }, ctx);
+          await handlers.get("model_select")!({ source: "set" }, ctx);
           assert.deepEqual(statuses.calls, after.picker
             ? [...beforeModelSelect, [PROFILE_ENTRY_TYPE, undefined]]
             : beforeModelSelect);
@@ -1501,6 +1523,9 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
             ...ctx, model: { provider: "p", id: "next" }, thinkingLevel: "xhigh",
           } as ExtensionToolContext);
           assert.equal(next.details.profile, after.profile);
+          assert.deepEqual(profileNotes, after.picker
+            ? ["The main model changed, so the subagent profile was cleared. The next subagent launch asks the user to choose one."]
+            : []);
           assert.deepEqual(statuses.calls.at(-1), entry.mode === "tui" ? [PROFILE_ENTRY_TYPE, after.profile] : undefined);
           assert.deepEqual(titles, after.picker ? [...beforeTitles, "Subagent profile (active: none)"] : beforeTitles);
           if (after.picker) {
@@ -1544,6 +1569,7 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           const command = commands.get("subagent-profile")!;
           await command.handler("backup", ctx);
           assert.deepEqual(statuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
+          assert.deepEqual(profileNotes, ["The user switched the subagent profile to backup. Subagents are available."]);
           const beforeInvalid = [...statuses.calls];
           await command.handler("missing", ctx);
           assert.deepEqual(statuses.calls, beforeInvalid);
@@ -1573,6 +1599,34 @@ test("extension selects profiles explicitly and uses the headless fallback", asy
           await command.handler("backup", resetCtx);
           assert.deepEqual(resetStatuses.calls.at(-1), [PROFILE_ENTRY_TYPE, "backup"]);
           assert.deepEqual(statuses.calls, beforeReset);
+
+          await handlers.get("model_select")!({ source: "set" }, resetCtx);
+          const launchesBeforeOff = calls.length;
+          const notesBeforeOff = profileNotes.length;
+          const offCtx = {
+            ...resetCtx,
+            ui: {
+              ...resetCtx.ui,
+              custom: customProfilePicker((component) => {
+                for (let step = 0; step < 3; step += 1) component.handleInput!("\u001b[B");
+                assert.match(renderText(component), /\u2192 off \(no subagents\)/);
+                assert.match(renderText(component), /Subagents are off/);
+                component.handleInput!("\r");
+              }),
+            },
+          } as unknown as ExtensionToolContext;
+          const blocked = await tool.execute("off", { agent: "scout", task: "t" }, undefined, undefined, offCtx);
+          assert.equal(blocked.details.status, "failed");
+          assert.match((blocked.content[0] as { text: string }).text, /turned subagents off/);
+          assert.deepEqual(entries.calls.at(-1), [PROFILE_ENTRY_TYPE, { name: OFF_PROFILE_NAME }]);
+          assert.deepEqual(resetStatuses.calls.at(-1), [PROFILE_ENTRY_TYPE, OFF_PROFILE_NAME]);
+          await handlers.get("model_select")!({ source: "set" }, resetCtx);
+          assert.deepEqual(resetStatuses.calls.at(-1), [PROFILE_ENTRY_TYPE, OFF_PROFILE_NAME]);
+          const stillBlocked = await tool.execute("off-again", { agent: "scout", task: "t" }, undefined, undefined, resetCtx as unknown as ExtensionToolContext);
+          assert.equal(stillBlocked.details.status, "failed");
+          await sleep(10);
+          assert.equal(calls.length, launchesBeforeOff);
+          assert.equal(profileNotes.length, notesBeforeOff);
         }
       } finally {
         await handlers.get("session_shutdown")?.({}, ctx);

@@ -293,9 +293,10 @@ test("parseSubagentSettings validates profiles and ignores defaultProfile", () =
   assert.equal(getSubagentProfile(settings, "slow"), settings.profiles.slow);
 });
 
-test("parseSubagentSettings reserves session even for disabled or malformed profiles", () => {
-  for (const session of [{}, { enabled: false }, null]) {
-    assert.throws(() => parseSubagentSettings({ profiles: { session } }), /profile name "session" is reserved/);
+test("parseSubagentSettings reserves session and off even for disabled or malformed profiles", () => {
+  for (const profile of [{}, { enabled: false }, null]) {
+    assert.throws(() => parseSubagentSettings({ profiles: { session: profile } }), /profile name "session" is reserved/);
+    assert.throws(() => parseSubagentSettings({ profiles: { off: profile } }), /profile name "off" is reserved/);
   }
 });
 

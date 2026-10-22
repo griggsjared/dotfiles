@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import { discoverAgents, loadSubagentSettings, resolveExtensionPaths, type SubagentSettings } from "./agents.ts";
+import { discoverAgents, loadSubagentSettings, OFF_PROFILE_NAME, resolveExtensionPaths, type SubagentSettings } from "./agents.ts";
 import { refreshUi, registerRenderers, type UiContext } from "./render.ts";
 import { createJobRegistry } from "./registry.ts";
 import {
@@ -29,6 +29,8 @@ export function restoreActiveProfile(entries: readonly unknown[], settings: Suba
       found = true;
     }
   }
+  // Off survives model switches live, so it does here too.
+  if (choice === OFF_PROFILE_NAME) return choice;
   // `models` holds the model in use when the choice was made plus any later ones. A switch to another
   // model cleared the profile at that switch, as it does live. pi also writes model_change when the
   // same model is picked again, so only a different model counts.
@@ -74,7 +76,7 @@ export default async function (pi: ExtensionAPI) {
     settings,
     getActiveProfile: () => activeProfile,
     confirmProfile: async (ctx, onPause) => {
-      if (activeProfile !== undefined && !Object.hasOwn(settings.profiles, activeProfile)) {
+      if (activeProfile !== undefined && activeProfile !== OFF_PROFILE_NAME && !Object.hasOwn(settings.profiles, activeProfile)) {
         throw new Error(`Unknown subagent profile "${activeProfile}". Available: ${Object.keys(settings.profiles).join(", ") || "none"}`);
       }
       return confirmSubagentProfile(pi, profileDeps, ctx, onPause);
@@ -114,9 +116,14 @@ export default async function (pi: ExtensionAPI) {
   pi.on("model_select", () => {
     // An explicit --subagent-profile holds for the whole run.
     if (typeof pi.getFlag("subagent-profile") === "string") return;
-    if (Object.keys(settings.profiles).length > 1) {
+    if (activeProfile !== undefined && activeProfile !== OFF_PROFILE_NAME && Object.keys(settings.profiles).length > 1) {
       activeProfile = undefined;
       if (lastUiContext?.hasUI) lastUiContext.ui.setStatus(PROFILE_ENTRY_TYPE, undefined);
+      pi.sendMessage({
+        customType: PROFILE_ENTRY_TYPE,
+        content: "The main model changed, so the subagent profile was cleared. The next subagent launch asks the user to choose one.",
+        display: true,
+      });
     }
   });
 

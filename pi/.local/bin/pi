@@ -21,6 +21,18 @@ if [[ -z "$real_pi" ]]; then
   exit 1
 fi
 
+pi_guy="${PI_GUY_DIR:-$HOME/projects/pi-guy}"
+# Subcommands must come first; a leading -e makes Pi start a session instead.
+case "$1" in
+  install|remove|uninstall|update|list|config|auth|mcp) ;;
+  *)
+    # Pi still loads explicit -e paths under --no-extensions, so skip it there.
+    if [[ -d "$pi_guy" ]] && (( ! ${argv[(Ie)-ne]} && ! ${argv[(Ie)--no-extensions]} )); then
+      set -- -e "$pi_guy" "$@"
+    fi
+    ;;
+esac
+
 if [[ ! -f "$shared" ]]; then
   exec "$real_pi" "$@"
 fi

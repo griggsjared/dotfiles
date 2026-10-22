@@ -11,6 +11,8 @@ If no scope or focus was supplied, use the current approved slice.
 
 Use the `peer-review`, `refactor`, `writing-tests`, and `code-documentation` skills. Check correctness, justified simplifications, test value or redundancy, and in-code documentation against our documentation rules. Identify retained coverage before recommending test removal.
 
+Retain tests only for meaningful application logic, not proof of what changed. Never test framework or imported-library behavior; code changes alone do not justify tests.
+
 Run necessary focused checks or clearly reuse still-current results. Report readiness, actionable findings, and verification limits. Separate regressions from existing issues.
 
 Do not edit, stage, or commit. Propose cleanup and wait for approval. Never override environment or configuration without approval.

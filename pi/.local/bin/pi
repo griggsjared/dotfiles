@@ -8,12 +8,14 @@ snapshot="$agent_dir/.settings.snapshot.json"
 wrapper_path="${0:A}"
 real_pi=""
 
-for dir in "${path[@]}"; do
-  candidate="${dir:-.}/pi"
-  if [[ -f "$candidate" && -x "$candidate" && "${candidate:A}" != "$wrapper_path" ]]; then
-    real_pi="${candidate:A}"
-    break
-  fi
+for executable in pi-bolt pi; do
+  for dir in "${path[@]}"; do
+    candidate="${dir:-.}/$executable"
+    if [[ -f "$candidate" && -x "$candidate" && "${candidate:A}" != "$wrapper_path" ]]; then
+      real_pi="${candidate:A}"
+      break 2
+    fi
+  done
 done
 
 if [[ -z "$real_pi" ]]; then

@@ -26,7 +26,7 @@ fi
 pi_guy="${PI_GUY_DIR:-$HOME/projects/pi-guy}"
 # Subcommands must come first; a leading -e makes Pi start a session instead.
 case "$1" in
-  install|remove|uninstall|update|list|config|auth|mcp) ;;
+  install|remove|uninstall|update|list|config|auth|mcp|compile|doctor) ;;
   *)
     # Pi still loads explicit -e paths under --no-extensions, so skip it there.
     if [[ -d "$pi_guy" ]] && (( ! ${argv[(Ie)-ne]} && ! ${argv[(Ie)--no-extensions]} )); then

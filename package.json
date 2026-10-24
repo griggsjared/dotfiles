@@ -12,6 +12,7 @@
     "blade-formatter": "latest",
     "eslint_d": "latest",
     "intelephense": "latest",
+    "pi-bolt": "latest",
     "svelte-language-server": "latest",
     "vscode-langservers-extracted": "latest"
   }

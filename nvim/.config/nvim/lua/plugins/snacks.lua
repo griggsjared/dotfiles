@@ -271,7 +271,14 @@ return {
 				char = "┊",
 			},
 		},
-		image = { enabled = true },
+		image = {
+			enabled = true,
+			convert = {
+				magick = {
+					svg = { "-density", 192, "-background", "none", "{src}[{page}]" },
+				},
+			},
+		},
 		lazygit = {
 			enabled = true,
 			config = {

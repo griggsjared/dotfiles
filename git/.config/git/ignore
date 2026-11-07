@@ -1,6 +1,7 @@
 _notes/
 .nvim
 .DS_Store
+.null-ls_*
 
 AGENTS.local.md
 CLAUDE.local.md

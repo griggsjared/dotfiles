@@ -20,4 +20,5 @@ theme = rpg
 macos-titlebar-style = "tabs"
 macos-icon = "retro"
 
-#custom-shader = shaders/cursor_smear.glsl
+custom-shader = shaders/cursor_smear.glsl
+#custom-shader = shaders/cursor_shine.glsl

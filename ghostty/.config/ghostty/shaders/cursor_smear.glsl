@@ -4,7 +4,6 @@
 // 1. Constructing a hexagon from current and previous cursor positions
 // 2. Using signed distance fields (SDF) for smooth antialiased rendering
 // 3. Animating the trailing corner with easing for fluid motion
-// 4. Fixed trail color (no cursor color sync)
 
 // Process each edge: compute distance and determine if point is inside
 void processEdge(vec2 p, vec2 a, vec2 b, inout float minDist, inout float inside) {
@@ -97,7 +96,11 @@ float easeClamped(float x) {
 
 // Trail animation duration in seconds
 const float DURATION = 0.3;
-const vec4 TRAIL_COLOR = vec4(1.0, 1.0, 1.0, 1.0);
+const mat3 SRGB_TO_DISPLAY_P3 = mat3(
+    0.8225454004, 0.0331759500, 0.0171495037,
+    0.1773585407, 0.9668828671, 0.0724234159,
+    0.0000208942, -0.0000707143, 0.9108229646
+);
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // Calculate animation progress with easing
@@ -157,8 +160,22 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 currentCenter = currentPos + vec2(halfCurrentSize.x, -halfCurrentSize.y);
     float sdfCurrentCursor = sdRectangle(normCoord, currentCenter, halfCurrentSize);
 
+    // Cursor uniforms are sRGB; Ghostty's native Metal pass uses gamma-encoded Display P3.
+    vec3 cursorColor = iCurrentCursorColor.rgb;
+    vec3 linearColor = mix(
+        pow((cursorColor + 0.055) / 1.055, vec3(2.4)),
+        cursorColor / 12.92,
+        lessThanEqual(cursorColor, vec3(0.04045))
+    );
+    linearColor = SRGB_TO_DISPLAY_P3 * linearColor;
+    cursorColor = mix(
+        1.055 * pow(linearColor, vec3(1.0 / 2.4)) - 0.055,
+        linearColor * 12.92,
+        lessThanEqual(linearColor, vec3(0.0031308))
+    );
+
     vec4 originalColor = fragColor;
-    fragColor.rgb = mix(fragColor.rgb, TRAIL_COLOR.rgb, alpha);
+    fragColor.rgb = mix(fragColor.rgb, cursorColor, alpha);
 
     // Remove trail where it overlaps with current cursor
     fragColor.rgb = mix(fragColor.rgb, originalColor.rgb, step(sdfCurrentCursor, 0.0));

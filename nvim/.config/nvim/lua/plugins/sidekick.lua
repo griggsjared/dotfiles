@@ -146,7 +146,7 @@ end
 
 local function resize_clis(tab)
 	local wins = vim.tbl_filter(function(win)
-		return vim.w[win].sidekick_session_id ~= nil
+		return vim.w[win].sidekick_session_id ~= nil and vim.api.nvim_win_get_config(win).relative == ""
 	end, vim.api.nvim_tabpage_list_wins(tab))
 	if #wins == 0 then
 		return
@@ -157,14 +157,28 @@ local function resize_clis(tab)
 	end
 end
 
-vim.api.nvim_create_autocmd("WinNew", {
-	callback = function()
-		local win = vim.api.nvim_get_current_win()
-		local tab = vim.api.nvim_get_current_tabpage()
+-- Scheduled because sidekick tags its window only after WinNew fires, and
+-- WinClosed fires before the window is gone.
+local resize_pending = false
+vim.api.nvim_create_autocmd({ "WinNew", "WinClosed", "VimResized", "TabEnter" }, {
+	callback = function(args)
+		local win = args.event == "WinClosed" and tonumber(args.match)
+			or args.event == "WinNew" and vim.api.nvim_get_current_win()
+			or nil
+		if
+			win
+			and vim.api.nvim_win_is_valid(win)
+			and vim.api.nvim_win_get_config(win).relative ~= ""
+		then
+			return
+		end
+		if resize_pending then
+			return
+		end
+		resize_pending = true
 		vim.schedule(function()
-			if vim.api.nvim_win_is_valid(win) and vim.w[win].sidekick_session_id then
-				resize_clis(tab)
-			end
+			resize_pending = false
+			resize_clis(vim.api.nvim_get_current_tabpage())
 		end)
 	end,
 })

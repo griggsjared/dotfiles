@@ -5,3 +5,5 @@ export NVM_DIR="$HOME/.nvm"
   [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"
 
 source $HOME/.nvm/nvm.sh
+
+source ~/.orbstack/shell/init.zsh 2>/dev/null || :

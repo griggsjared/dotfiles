@@ -4,6 +4,7 @@
 # Casks (GUI Applications)
 cask "alt-tab"
 cask "ghostty"
+cask "orbstack"
 cask "raycast"
 cask "thaw"
 

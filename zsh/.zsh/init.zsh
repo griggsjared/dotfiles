@@ -17,9 +17,6 @@ if type brew &>/dev/null; then
     compinit
 fi
 
-# Load Docker init if available
-[[ -f "$HOME/.docker/init-zsh.sh" ]] && source "$HOME/.docker/init-zsh.sh"
-
 # NVM bash completion
 [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"
 

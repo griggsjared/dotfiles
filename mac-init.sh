@@ -85,6 +85,11 @@ if [ -n "$SAVED_PHP_VERSION" ] && command -v brew &> /dev/null; then
     fi
 fi
 
+# OrbStack has no color setting; a per-app accent color overrides its pink
+# while the system accent stays on Multicolor. 4 = blue.
+echo "Setting OrbStack accent color..."
+defaults write dev.kdrag0n.MacVirt AppleAccentColor -int 4
+
 echo ""
 echo "Installing Go Tools..."
 echo "========================="

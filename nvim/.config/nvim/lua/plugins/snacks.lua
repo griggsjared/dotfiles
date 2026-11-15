@@ -1,3 +1,68 @@
+-- Git does not record where a branch was created from, so guess: the reflog's
+-- "Created from" entry, then the ref the branch has the fewest commits past,
+-- then the remote's default branch.
+local function detect_branch_base(cwd)
+	local function git(args)
+		local out = vim.system(vim.list_extend({ "git" }, args), { text = true, cwd = cwd }):wait()
+		return out.code == 0 and vim.trim(out.stdout) or nil
+	end
+
+	local branch = git({ "branch", "--show-current" }) or ""
+	-- A remote copy of this branch (origin/feat on feat) would show an empty diff.
+	-- Each remote's HEAD shortens to the bare remote name (origin) and duplicates
+	-- the default branch, so skip those too.
+	local skip = { [branch] = true }
+	for remote in (git({ "remote" }) or ""):gmatch("%S+") do
+		skip[remote] = true
+		skip[remote .. "/" .. branch] = true
+		skip["refs/remotes/" .. remote .. "/" .. branch] = true
+	end
+	if branch ~= "" then
+		local reflog = git({ "reflog", "show", "--format=%gs", "refs/heads/" .. branch }) or ""
+		local lines = vim.split(reflog, "\n")
+		local from = lines[#lines]:match("^branch: Created from (.+)$")
+		if
+			from
+			and from ~= "HEAD"
+			and not skip[from]
+			and git({ "rev-parse", "--verify", "--quiet", from .. "^{commit}" })
+		then
+			return from, "reflog"
+		end
+	end
+
+	local default = git({ "symbolic-ref", "--short", "-q", "refs/remotes/origin/HEAD" })
+	local refs = git({
+		"for-each-ref",
+		"--format=%(refname:short) %(ahead-behind:HEAD)",
+		"refs/heads",
+		"refs/remotes",
+	}) or ""
+	local best, best_behind, best_ahead
+	for line in refs:gmatch("[^\n]+") do
+		-- ahead: commits the ref has that HEAD lacks; behind: commits HEAD has that the ref lacks.
+		local ref, ahead, behind = line:match("^(%S+) (%d+) (%d+)$")
+		ahead, behind = tonumber(ahead), tonumber(behind)
+		-- behind == 0 with ahead > 0: the ref already has every commit on this branch, so it can't be the base.
+		if ref and not skip[ref] and not (behind == 0 and ahead > 0) then
+			local better = not best
+				or behind < best_behind
+				or (behind == best_behind and ref == default)
+				or (behind == best_behind and best ~= default and ahead < best_ahead)
+			if better then
+				best, best_behind, best_ahead = ref, behind, ahead
+			end
+		end
+	end
+	if best then
+		return best, "nearest branch"
+	end
+
+	if default then
+		return default, "origin/HEAD"
+	end
+end
+
 local keys = {
 	{
 		"<leader>bc",
@@ -200,22 +265,36 @@ local keys = {
 	{
 		"<leader>fP",
 		function()
+			local cwd = vim.fn.getcwd()
 			vim.system(
 				{ "gh", "pr", "view", "--json", "number,baseRefName" },
-				{ text = true, cwd = vim.fn.getcwd() },
+				{ text = true, cwd = cwd },
 				vim.schedule_wrap(function(out)
-					if out.code ~= 0 then
-						vim.notify("No open PR found for the current branch", vim.log.levels.ERROR)
-						return
-					end
 					local ok, d = pcall(vim.json.decode, out.stdout)
-					if not ok or not d or not d.baseRefName then
-						vim.notify("Failed to parse `gh pr view` output", vim.log.levels.ERROR)
-						return
+					local title, base
+					if out.code == 0 and ok and d and d.baseRefName then
+						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")"
+						base = d.baseRefName
+					else
+						local source
+						base, source = detect_branch_base(cwd)
+						if not base then
+							vim.notify("No open PR and no base branch found", vim.log.levels.ERROR)
+							return
+						end
+						title = "Branch Diff (base: " .. base .. ", via " .. source .. ")"
 					end
-					Snacks.picker.git_diff({
-						title = "PR #" .. d.number .. " Diff (base: " .. d.baseRefName .. ")",
-						base = d.baseRefName,
+					Snacks.picker({
+						title = title,
+						-- git diff never lists untracked files, so take only those from git status.
+						multi = { "git_diff", "git_status" },
+						transform = function(item)
+							if item.status and item.status ~= "??" then
+								return false
+							end
+						end,
+						base = base,
+						group = true,
 						win = {
 							input = {
 								keys = {
@@ -241,7 +320,7 @@ local keys = {
 				end)
 			)
 		end,
-		desc = "GitHub PR diff",
+		desc = "PR or branch diff",
 	},
 	{
 		"<leader>fr",

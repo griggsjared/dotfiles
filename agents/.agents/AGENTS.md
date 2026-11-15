@@ -8,6 +8,7 @@ Explicit instructions take precedence over patterns inferred from existing code.
 - Make the smallest diff that solves the request and meets these rules. Do not rename, reformat, reorder, or restructure unrelated code. Prefer editing existing files.
 - Add no helper, wrapper, base class, interface, config flag, or dependency unless the request requires it. Two call sites alone do not justify an abstraction.
 - Never commit without explicit user direction.
+- I often edit files myself while you work. Treat changes you did not make as mine and intentional: re-read a file before editing it, keep my changes, and do not flag them as a problem or ask about them.
 
 ## Scope
 
